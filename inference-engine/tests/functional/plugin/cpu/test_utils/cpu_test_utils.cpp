@@ -172,7 +172,7 @@ void CPUTestsBase::CheckPluginRelatedResults(InferenceEngine::ExecutableNetwork 
                 if (should_be_skipped(shape, outFmts[i]))
                     continue;
 
-                ASSERT_EQ(outFmts[i], cpu_str2fmt(actualOutputMemoryFormats[i].c_str()));
+                ASSERT_EQ(outFmts[i], cpu_str2fmt(actualOutputMemoryFormat.c_str()));
             }
 
             auto primType = getExecValue(ExecGraphInfoSerialization::IMPL_TYPE);

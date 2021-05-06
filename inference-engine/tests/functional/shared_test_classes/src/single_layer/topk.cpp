@@ -34,8 +34,14 @@ void TopKLayerTest::SetUp() {
     InferenceEngine::Precision netPrecision;
     int64_t keepK, axis;
     ngraph::opset4::TopK::Mode mode;
-    ngraph::opset4::TopK::SortType sort;
     std::tie(keepK, axis, mode, sort, netPrecision, inPrc, outPrc, inLayout, inputShape, targetDevice) = this->GetParam();
+
+    axis_idx = axis < 0 ? static_cast<size_t>(axis + static_cast<int64_t>(inputShape.size())) : static_cast<size_t>(axis);
+    top_k = static_cast<size_t>(keepK);
+    for (size_t i = 0; i < axis_idx; i++)
+        outer_size *= inputShape[i];
+    for (size_t i = axis_idx + 1; i < static_cast<size_t>(inputShape.size()); i++)
+        inner_size *= inputShape[i];
 
     auto ngPrc = FuncTestUtils::PrecisionUtils::convertIE2nGraphPrc(netPrecision);
     auto params = ngraph::builder::makeParams(ngPrc, {inputShape});
@@ -51,5 +57,45 @@ void TopKLayerTest::SetUp() {
         results.push_back(std::make_shared<ngraph::opset4::Result>(topk->output(i)));
     }
     function = std::make_shared<ngraph::Function>(results, params, "TopK");
+}
+
+void TopKLayerTest::Validate() {
+    auto expectedOutputs = CalculateRefs();
+    const auto &actualOutputs = GetOutputs();
+
+    if (expectedOutputs.empty()) {
+        return;
+    }
+
+    IE_ASSERT(actualOutputs.size() == expectedOutputs.size())
+    << "nGraph interpreter has " << expectedOutputs.size() << " outputs, while IE " << actualOutputs.size();
+
+    // Spec TopK_3.md allows to use unstable sorting, thus
+    // a. Skip comparing of index results, because an element in actual index tensor can be different with
+    //    its counterpart in expected index tensor
+    // b. If SortType is SORT_INDICES or NONE, the test program still needs to apply std::sort for all pairs
+    //    of 1xk value vectors in expected and actual output tensor before comparing them
+    std::vector<std::pair<ngraph::element::Type, std::vector<std::uint8_t>>> expectedOutput = {expectedOutputs[0]};
+    std::vector<InferenceEngine::Blob::Ptr> actualOutput = {actualOutputs[0]};
+    if (sort == ngraph::opset4::TopK::SortType::SORT_VALUES) {
+        LayerTestsCommon::Compare(expectedOutput, actualOutput);
+    } else {
+        Compare(expectedOutput, actualOutput);
+    }
+}
+
+void TopKLayerTest::Compare(const std::vector<std::pair<ngraph::element::Type, std::vector<std::uint8_t>>> &expectedOutputs,
+             const std::vector<InferenceEngine::Blob::Ptr> &actualOutputs) {
+    Compare(expectedOutputs, actualOutputs, threshold);
+}
+
+void TopKLayerTest::Compare(const std::vector<std::pair<ngraph::element::Type, std::vector<std::uint8_t>>> &expectedOutputs,
+                               const std::vector<InferenceEngine::Blob::Ptr> &actualOutputs,
+                               float threshold) {
+    for (std::size_t outputIndex = 0; outputIndex < expectedOutputs.size(); ++outputIndex) {
+        const auto &expected = expectedOutputs[outputIndex];
+        const auto &actual = actualOutputs[outputIndex];
+        Compare(expected, actual, threshold);
+    }
 }
 }  // namespace LayerTestsDefinitions

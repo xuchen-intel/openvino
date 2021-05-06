@@ -42,6 +42,7 @@
 #include <nodes/mkldnn_strided_slice_node.h>
 #include <nodes/mkldnn_reference_node.h>
 #include <nodes/mkldnn_fake_quantize_node.h>
+#include <nodes/mkldnn_topk_node.h>
 #include <mkldnn_types.h>
 #include <dnnl_types.h>
 #include "mkldnn_extension_utils.h"
@@ -174,7 +175,8 @@ static const InferenceEngine::details::caseless_unordered_map<std::string, Type>
         { "GatherND", GatherND},
         { "OneHot", OneHot},
         { "RegionYolo", RegionYolo},
-        { "Select", Select}
+        { "Select", Select},
+        { "TopK", TopK}
 };
 
 Type TypeFromName(const std::string type) {

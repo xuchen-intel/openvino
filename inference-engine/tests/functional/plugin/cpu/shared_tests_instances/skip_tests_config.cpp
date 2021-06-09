@@ -76,6 +76,8 @@ std::vector<std::string> disabledTestPatterns() {
         R"(.*NonZeroLayerTest.*)",
         // need to implement Export / Import
         R"(.*IEClassImportExportTestP.*)",
+        // Issue: 53914. Disabled the reduce to pooling transformation
+        R"(.*smoke_LPT.*Reduce.*Transformation.*)",
         // azure is failing after #6199
         R"(.*/NmsLayerTest.*)"
     };

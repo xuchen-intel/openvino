@@ -25,9 +25,18 @@ struct jit_reduce_call_args {
     const void *src;
     void *dst;
     size_t work_amount;
-    size_t reduce_w = 2;  // only used in planar layout  [1: reduce width dimension]   [0: reduce other dimension] [other value: N/A]
-    size_t reduce_c = 2;  // only used in blocked layout [1: reduce channel dimension] [0: reduce other dimension] [other value: N/A]
-    const float *divisor; // mean = sum / divisor
+    size_t work_batch = 1;
+    size_t reduce_w = 2;    // only used in planar layout  [1: reduce width dimension]   [0: reduce other dimension] [other value: N/A]
+    size_t reduce_w_stride; // only used in planar layout while reducing dimensions except for width
+};
+
+struct jit_reduce_post_call_args {
+    const void *src;
+    void *dst;
+    size_t work_amount;
+    size_t reduce_c = 2;    // only used in blocked layout [1: reduce channel dimension] [0: reduce other dimension] [other value: N/A]
+    size_t oc_off;          // offset in byte along channel on output tensor
+    const float *divisor;   // mean = sum / divisor
 };
 
 struct jit_uni_reduce_kernel {
@@ -47,19 +56,20 @@ struct jit_uni_reduce_kernel {
 };
 
 struct jit_uni_reduce_post_kernel {
-    void (*ker_)(const jit_reduce_call_args *);
+    void (*ker_)(const jit_reduce_post_call_args *);
 
-    void operator()(const jit_reduce_call_args *args) {
+    void operator()(const jit_reduce_post_call_args *args) {
         assert(ker_);
         ker_(args);
     }
 
-    virtual void create_ker() = 0;
-
-    explicit jit_uni_reduce_post_kernel(jit_reduce_config_params jcp) : ker_(nullptr), jcp_(jcp) {}
+    explicit jit_uni_reduce_post_kernel(jit_reduce_config_params jcp, const mkldnn_primitive_attr &attr) : ker_(nullptr), jcp_(jcp), attr_(attr) {}
     virtual ~jit_uni_reduce_post_kernel() {}
 
+    virtual void create_ker() = 0;
+
     jit_reduce_config_params jcp_;
+    const mkldnn_primitive_attr &attr_;
 };
 
 class MKLDNNReduceNode : public MKLDNNNode {
@@ -82,21 +92,26 @@ private:
     void reduce_PLN(const uint8_t *in_ptr, uint8_t *out_ptr);
     void reduce_BLK(const uint8_t *in_ptr, uint8_t *out_ptr);
     void reduce_BLK_concern_padding(const uint8_t *in_ptr, uint8_t *out_ptr);
-    inline void reduce_kernel_process(const uint8_t *in_p, uint8_t *out_p, size_t work_amount, size_t reduce_w = 2);
+    inline void reduce_kernel_process(const uint8_t *in_p, uint8_t *out_p, size_t work_amount, size_t reduce_w = 2, size_t work_batch = 1);
     inline void reduce_kernel_post_process(uint8_t *out_ptr);
     inline void init_dst_data(uint8_t *out_ptr, size_t dst_size);
     inline void calc_process_dst_dims(const int32_t *idx_data);
     inline void reduce_ref(const float *in_ptr, float *out_ptr);
     void reduce_ref_process(const float *in_ptr, float *out_ptr, float init_value, std::function<float(float, float)> func);
     inline void reduce_ref_map(float *out_ptr, size_t work_amount_dst, size_t reduced_dims_work_amount);
+    void nspc2ncsp(uint8_t *proc_ptr, uint8_t *out_ptr);
+    void blocked2ncsp(uint8_t *proc_ptr, uint8_t *out_ptr);
+    void setPostOps(mkldnn::primitive_attr &attr, bool initWeights = false);
 
     size_t blk_size;
     size_t dims_size;
     static const size_t REDUCE_DATA = 0;
     static const size_t REDUCE_INDEXES = 1;
-    bool planar_layout = true;
     bool jit_mode = true;
     bool keep_dims = true;
+    bool planar_layout = true;
+    bool is_nspc = false;
+    bool is_hybrid_layout = false;
     bool ReduceN, ReduceC, ReduceD, ReduceH, ReduceW;
     size_t IB, IC, ID, IH, IW;
     size_t OB, OC, OD, OH, OW;
@@ -106,6 +121,8 @@ private:
     InferenceEngine::SizeVector src_strides;
     InferenceEngine::SizeVector process_dst_dims;
     InferenceEngine::SizeVector axes_for_reduction;
+
+    mkldnn::primitive_attr attr;
 
     std::shared_ptr<jit_uni_reduce_kernel> reduce_kernel;
     std::shared_ptr<jit_uni_reduce_post_kernel> reduce_post_kernel;

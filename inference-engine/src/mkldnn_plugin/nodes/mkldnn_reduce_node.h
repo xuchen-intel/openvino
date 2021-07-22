@@ -27,6 +27,7 @@ struct jit_reduce_call_args {
     size_t work_amount;
     size_t reduce_w = 2;  // only used in planar layout  [1: reduce width dimension]   [0: reduce other dimension] [other value: N/A]
     size_t reduce_c = 2;  // only used in blocked layout [1: reduce channel dimension] [0: reduce other dimension] [other value: N/A]
+    size_t oc_off;        // offset in byte along channel on output tensor
     const float *divisor; // mean = sum / divisor
 };
 
@@ -54,12 +55,13 @@ struct jit_uni_reduce_post_kernel {
         ker_(args);
     }
 
-    virtual void create_ker() = 0;
-
-    explicit jit_uni_reduce_post_kernel(jit_reduce_config_params jcp) : ker_(nullptr), jcp_(jcp) {}
+    explicit jit_uni_reduce_post_kernel(jit_reduce_config_params jcp, const mkldnn_primitive_attr &attr) : ker_(nullptr), jcp_(jcp), attr_(attr) {}
     virtual ~jit_uni_reduce_post_kernel() {}
 
+    virtual void create_ker() = 0;
+
     jit_reduce_config_params jcp_;
+    const mkldnn_primitive_attr &attr_;
 };
 
 class MKLDNNReduceNode : public MKLDNNNode {
@@ -91,6 +93,7 @@ private:
     inline void reduce_ref_map(float *out_ptr, size_t work_amount_dst, size_t reduced_dims_work_amount);
     void nspc2ncsp(uint8_t *proc_ptr, uint8_t *out_ptr);
     void blocked2ncsp(uint8_t *proc_ptr, uint8_t *out_ptr);
+    void setPostOps(mkldnn::primitive_attr &attr, bool initWeights = false);
 
     size_t blk_size;
     size_t dims_size;
@@ -110,6 +113,8 @@ private:
     InferenceEngine::SizeVector src_strides;
     InferenceEngine::SizeVector process_dst_dims;
     InferenceEngine::SizeVector axes_for_reduction;
+
+    mkldnn::primitive_attr attr;
 
     std::shared_ptr<jit_uni_reduce_kernel> reduce_kernel;
     std::shared_ptr<jit_uni_reduce_post_kernel> reduce_post_kernel;

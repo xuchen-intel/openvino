@@ -5,6 +5,7 @@
 #include "mkldnn_reduce_node.h"
 
 #include "mkldnn_fake_quantize_node.h"
+#include "mkldnn_eltwise_node.h"
 #include <mkldnn.hpp>
 #include <string>
 #include <vector>
@@ -814,8 +815,8 @@ template <cpu_isa_t isa>
 struct jit_uni_reduce_post_kernel_f32 : public jit_uni_reduce_post_kernel, public jit_generator {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_reduce_post_kernel_f32)
 
-    explicit jit_uni_reduce_post_kernel_f32(jit_reduce_config_params jcp)
-    : jit_uni_reduce_post_kernel(jcp), jit_generator() {}
+    explicit jit_uni_reduce_post_kernel_f32(jit_reduce_config_params jcp, const mkldnn_primitive_attr &attr)
+    : jit_uni_reduce_post_kernel(jcp, attr), jit_generator() {}
 
     void create_ker() override {
         jit_generator::create_kernel();
@@ -823,6 +824,21 @@ struct jit_uni_reduce_post_kernel_f32 : public jit_uni_reduce_post_kernel, publi
     }
 
     void generate() override {
+        const auto &p = attr_.post_ops_;
+        for (int i = 0; i < p.len(); i++) {
+            auto &post_op = p.entry_[i];
+            if (post_op.is_eltwise()) {
+                eltwise_injectors.push_back(std::make_shared<jit_uni_eltwise_injector_f32<isa>>(
+                        this, post_op.eltwise.alg, post_op.eltwise.alpha, post_op.eltwise.beta, post_op.eltwise.scale));
+            } else if (post_op.is_depthwise()) {
+                depthwise_injectors.push_back(std::make_shared<jit_uni_depthwise_injector_f32<isa>>(
+                        this, post_op.depthwise.alg));
+            } else if (post_op.is_quantization()) {
+                quantization_injectors.push_back(std::make_shared<jit_uni_quantization_injector_f32<isa>>(
+                        this, post_op, vmm_d_weights, vmm_d_bias, reg_d_weights, reg_d_bias));
+            }
+        }
+
         if (jcp_.reduce_mode == ReduceLogSum || jcp_.reduce_mode == ReduceLogSumExp) {
             log_injector.reset(new jit_uni_eltwise_injector_f32<isa>(this, alg_kind::eltwise_log, 0.f, 0.f, 1.f));
         }
@@ -837,6 +853,8 @@ struct jit_uni_reduce_post_kernel_f32 : public jit_uni_reduce_post_kernel, publi
         mov(reg_divisor, ptr[reg_params + GET_OFF(divisor)]);
         if (!jcp_.planar_layout)
             mov(reg_reduce_c, ptr[reg_params + GET_OFF(reduce_c)]);
+        if (attr_.post_ops_.len() != 0)
+            mov(reg_oc_off, ptr[reg_params + GET_OFF(oc_off)]);
 
         if (isa == cpu::x64::avx512_common)
             uni_vpxor(vmm_zero, vmm_zero, vmm_zero);
@@ -853,6 +871,9 @@ struct jit_uni_reduce_post_kernel_f32 : public jit_uni_reduce_post_kernel, publi
         if (jcp_.reduce_mode == ReduceLogSum || jcp_.reduce_mode == ReduceLogSumExp) {
             log_injector->prepare_table();
         }
+
+        for (auto& inj : eltwise_injectors)
+            inj->prepare_table();
     }
 
 private:
@@ -870,6 +891,10 @@ private:
     Xbyak::Reg32 reg_tmp_32 = r12d;
     Xbyak::Reg64 reg_tmp_64 = r12;
 
+    Xbyak::Reg64 reg_oc_off = rax;
+    Xbyak::Reg64 reg_d_weights = rbx;
+    Xbyak::Reg64 reg_d_bias = rdx;
+
     Vmm vmm_aux = Vmm(0);
     Xmm xmm_aux = Xmm(0);
     Vmm vmm_dst = Vmm(1);
@@ -880,9 +905,15 @@ private:
     Xbyak::Xmm xmm_aux2 = Xbyak::Xmm(5);
     Xbyak::Xmm xmm_aux3 = Xbyak::Xmm(6);
 
+    Vmm vmm_d_weights = Vmm(7);
+    Vmm vmm_d_bias = Vmm(8);
+
     std::unique_ptr<jit_emu_vcvtneps2bf16> emu_vcvtneps2bf16;
 
     std::shared_ptr<jit_uni_eltwise_injector_f32<isa>> log_injector;
+    std::vector<std::shared_ptr<jit_uni_eltwise_injector_f32<isa>>> eltwise_injectors;
+    std::vector<std::shared_ptr<jit_uni_depthwise_injector_f32<isa>>> depthwise_injectors;
+    std::vector<std::shared_ptr<jit_uni_quantization_injector_f32<isa>>> quantization_injectors;
 
     inline void reduce_post_main() {
         Xbyak::Label reduce_channel_label;
@@ -947,20 +978,22 @@ private:
                     cmp(reg_work_amount, step);
                     jl(reduce_loop_end_label, T_NEAR);
 
-                    // load
                     load_vector(vmm_dst, ptr[reg_dst], jcp_.dst_dt);
-                    if (isa == cpu::x64::sse41)
-                        load_vector(vmm_dst_aux, ptr[reg_dst + 4 * jcp_.dst_data_size], jcp_.dst_dt);
-
-                    // reduce
                     reduce_map_kernel(vmm_dst);
-                    if (isa == cpu::x64::sse41)
-                        reduce_map_kernel(vmm_dst_aux);
-
-                    // store
+                    if (attr_.post_ops_.len() != 0)
+                        apply_post_ops(jcp_.dst_dt, jcp_.planar_layout);
                     store_vector(ptr[reg_dst], vmm_dst, jcp_.dst_dt);
-                    if (isa == cpu::x64::sse41)
-                        store_vector(ptr[reg_dst + 4 * jcp_.dst_data_size], vmm_dst_aux, jcp_.dst_dt);
+
+                    if (isa == cpu::x64::sse41) {
+                        load_vector(vmm_dst, ptr[reg_dst + 4 * jcp_.dst_data_size], jcp_.dst_dt);
+                        reduce_map_kernel(vmm_dst);
+                        if (attr_.post_ops_.len() != 0) {
+                            add(reg_oc_off, 4 * sizeof(float));
+                            apply_post_ops(jcp_.dst_dt, jcp_.planar_layout);
+                            sub(reg_oc_off, 4 * sizeof(float));
+                        }
+                        store_vector(ptr[reg_dst + 4 * jcp_.dst_data_size], vmm_dst, jcp_.dst_dt);
+                    }
 
                     add(reg_dst, step * jcp_.dst_data_size);
                     sub(reg_work_amount, step);
@@ -968,6 +1001,36 @@ private:
                     jmp(reduce_loop_label, T_NEAR);
                 }
                 L(reduce_loop_end_label);
+            } else {
+                if (attr_.post_ops_.len() != 0) {
+                    Xbyak::Label reduce_loop_label;
+                    Xbyak::Label reduce_loop_end_label;
+
+                    int step = vlen / sizeof(float) < 8 ? 8 : vlen / sizeof(float);
+                    L(reduce_loop_label);
+                    {
+                        cmp(reg_work_amount, step);
+                        jl(reduce_loop_end_label, T_NEAR);
+
+                        load_vector(vmm_dst, ptr[reg_dst], jcp_.dst_dt);
+                        apply_post_ops(jcp_.dst_dt, jcp_.planar_layout);
+                        store_vector(ptr[reg_dst], vmm_dst, jcp_.dst_dt);
+
+                        if (isa == cpu::x64::sse41) {
+                            load_vector(vmm_dst, ptr[reg_dst + 4 * jcp_.dst_data_size], jcp_.dst_dt);
+                            add(reg_oc_off, 4 * sizeof(float));
+                            apply_post_ops(jcp_.dst_dt, jcp_.planar_layout);
+                            sub(reg_oc_off, 4 * sizeof(float));
+                            store_vector(ptr[reg_dst + 4 * jcp_.dst_data_size], vmm_dst, jcp_.dst_dt);
+                        }
+
+                        add(reg_dst, step * jcp_.dst_data_size);
+                        sub(reg_work_amount, step);
+
+                        jmp(reduce_loop_label, T_NEAR);
+                    }
+                    L(reduce_loop_end_label);
+                }
             }
         }
     }
@@ -996,6 +1059,8 @@ private:
                 reduce_map_kernel_scalar(xmm_dst);
 
                 // store
+                if (attr_.post_ops_.len() != 0)
+                    apply_post_ops(jcp_.dst_dt, jcp_.planar_layout);
                 store_scalar(ptr[reg_dst], xmm_dst, jcp_.dst_dt);
 
                 add(reg_dst, step * jcp_.dst_data_size);
@@ -1004,6 +1069,70 @@ private:
                 jmp(reduce_loop_label, T_NEAR);
             }
             L(reduce_loop_end_label);
+        } else {
+            if (attr_.post_ops_.len() != 0) {
+                Xbyak::Label reduce_loop_label;
+                Xbyak::Label reduce_loop_end_label;
+
+                int step = 1;
+                L(reduce_loop_label);
+                {
+                    cmp(reg_work_amount, step);
+                    jl(reduce_loop_end_label, T_NEAR);
+
+                    // load
+                    load_scalar(xmm_dst, ptr[reg_dst], jcp_.dst_dt);
+
+                    // store
+                    apply_post_ops(jcp_.dst_dt, jcp_.planar_layout);
+                    store_scalar(ptr[reg_dst], xmm_dst, jcp_.dst_dt);
+
+                    add(reg_dst, step * jcp_.dst_data_size);
+                    sub(reg_work_amount, step);
+
+                    jmp(reduce_loop_label, T_NEAR);
+                }
+                L(reduce_loop_end_label);
+            }
+        }
+    }
+
+    void apply_post_ops(memory::data_type dst_dt, bool is_broadcast) {
+        const auto &p = attr_.post_ops_;
+        int eltwise_inj_idx = 0;
+        int depthwise_inj_idx = 0;
+        int quantization_inj_idx = 0;
+        for (int i = 0; i < p.len(); i++) {
+            auto& post_op = p.entry_[i];
+            if (post_op.is_eltwise()) {
+                eltwise_injectors[eltwise_inj_idx]->compute_vector_range(vmm_dst.getIdx(), vmm_dst.getIdx() + 1);
+                eltwise_inj_idx++;
+            } else if (post_op.is_depthwise()) {
+                mov(reg_d_weights, reinterpret_cast<size_t>(post_op.depthwise.weights_data));
+                mov(reg_d_bias, reinterpret_cast<size_t>(post_op.depthwise.biases_data));
+                add(reg_d_weights, reg_oc_off);
+                add(reg_d_bias, reg_oc_off);
+                depthwise_injectors[depthwise_inj_idx]->compute_vector_range(vmm_dst.getIdx(), vmm_dst.getIdx() + 1, reg_d_weights, reg_d_bias, is_broadcast);
+                depthwise_inj_idx++;
+            } else if (post_op.is_quantization()) {
+                bool do_dequantization = post_op.quantization.alg == alg_kind::quantization_quantize_dequantize;
+                bool do_rounding = do_dequantization || isFloatCompatible(dst_dt) || i != p.len() - 1;
+
+                int s_idx = vmm_dst.getIdx();
+
+                quantization_injectors[quantization_inj_idx]->init_crop_ptrs(reg_oc_off);
+                quantization_injectors[quantization_inj_idx]->compute_crop(s_idx, s_idx + 1, 0, 0, is_broadcast);
+
+                quantization_injectors[quantization_inj_idx]->init_input_scale_shift_ptrs(reg_oc_off);
+                quantization_injectors[quantization_inj_idx]->compute_input_scale_shift(s_idx, s_idx + 1, 0, do_rounding, 0, is_broadcast);
+
+                if (do_dequantization) {
+                    quantization_injectors[quantization_inj_idx]->init_output_scale_shift_ptrs(reg_oc_off);
+                    quantization_injectors[quantization_inj_idx]->compute_output_scale_shift(s_idx, s_idx + 1, 0, 0, is_broadcast);
+                }
+
+                quantization_inj_idx++;
+            }
         }
     }
 
@@ -1298,6 +1427,8 @@ void MKLDNNReduceNode::getSupportedDescriptors() {
     if (!descs.empty())
         return;
 
+    setPostOps(attr, true);
+
     if (getParentEdges().size() != 2)
         IE_THROW() << errorPrefix << " gets incorrect number of input edges!";
     if (getChildEdges().empty())
@@ -1478,15 +1609,15 @@ void MKLDNNReduceNode::createPrimitive() {
 
     if (mayiuse(cpu::x64::avx512_common)) {
         reduce_kernel.reset(new jit_uni_reduce_kernel_f32<cpu::x64::avx512_common>(jcp));
-        reduce_post_kernel.reset(new jit_uni_reduce_post_kernel_f32<cpu::x64::avx512_common>(jcp));
+        reduce_post_kernel.reset(new jit_uni_reduce_post_kernel_f32<cpu::x64::avx512_common>(jcp, *attr.get()));
         blk_size = 16;
     } else if (mayiuse(cpu::x64::avx2)) {
         reduce_kernel.reset(new jit_uni_reduce_kernel_f32<cpu::x64::avx2>(jcp));
-        reduce_post_kernel.reset(new jit_uni_reduce_post_kernel_f32<cpu::x64::avx2>(jcp));
+        reduce_post_kernel.reset(new jit_uni_reduce_post_kernel_f32<cpu::x64::avx2>(jcp, *attr.get()));
         blk_size = 8;
     } else if (mayiuse(cpu::x64::sse41)) {
         reduce_kernel.reset(new jit_uni_reduce_kernel_f32<cpu::x64::sse41>(jcp));
-        reduce_post_kernel.reset(new jit_uni_reduce_post_kernel_f32<cpu::x64::sse41>(jcp));
+        reduce_post_kernel.reset(new jit_uni_reduce_post_kernel_f32<cpu::x64::sse41>(jcp, *attr.get()));
         blk_size = 8;
     }
 
@@ -1944,25 +2075,25 @@ inline void MKLDNNReduceNode::reduce_kernel_process(const uint8_t *in_p, uint8_t
 inline void MKLDNNReduceNode::reduce_kernel_post_process(uint8_t *out_ptr) {
     const float divisor = static_cast<float>(IB * IC * ID * IH * IW / (OB * OC * OD * OH * OW));
     if (planar_layout) {
-        size_t parallel_amount = OB * OC * OD;
-        parallel_for(parallel_amount, [&](size_t i) {
-            uint8_t *out_p = out_ptr + i * OH * OW * dst_data_size;
+        parallel_for2d(OB, OC, [&](size_t ob, size_t oc) {
+            uint8_t *out_p = out_ptr + (ob * OC + oc) * OD * OH * OW * dst_data_size;
             auto arg = jit_reduce_call_args();
             arg.dst = static_cast<void *>(out_p);
             arg.reduce_c = 2;
-            arg.work_amount = OH * OW;
+            arg.oc_off = oc * dst_data_size;
+            arg.work_amount = OD * OH * OW;
             arg.divisor = &divisor;
             (*reduce_post_kernel)(&arg);
         });
     } else {
         size_t OCB = div_up(OC, blk_size);
-        size_t parallel_amount = OB * OCB * OD;
-        parallel_for(parallel_amount, [&](size_t i) {
-            uint8_t *out_p = out_ptr + i * OH * OW * blk_size * dst_data_size;
+        parallel_for2d(OB, OCB, [&](size_t ob, size_t ocb) {
+            uint8_t *out_p = out_ptr + (ob * OCB + ocb) * OD * OH * OW * blk_size * dst_data_size;
             auto arg = jit_reduce_call_args();
             arg.dst = static_cast<void *>(out_p);
             arg.reduce_c = ReduceC ? 1 : 0;
-            arg.work_amount = OH * OW * blk_size;
+            arg.oc_off = ocb * blk_size * dst_data_size;
+            arg.work_amount = OD * OH * OW * blk_size;
             arg.divisor = &divisor;
             (*reduce_post_kernel)(&arg);
         });
@@ -2205,6 +2336,25 @@ inline void MKLDNNReduceNode::reduce_ref_map(float *out_ptr, size_t work_amount_
         default:
             IE_THROW() << errorPrefix << "gets unsupported reduce mode.";
     }
+}
+
+void MKLDNNReduceNode::setPostOps(mkldnn::primitive_attr &attr, bool initWeights) {
+    mkldnn::post_ops ops;
+    for (auto &node : fusedWith) {
+        auto* fakeQuantizeNode = dynamic_cast<MKLDNNFakeQuantizeNode *>(node.get());
+        if (fakeQuantizeNode) {
+            fakeQuantizeNode->appendPostOps(ops);
+            continue;
+        }
+
+        auto* eltwiseNode = dynamic_cast<MKLDNNEltwiseNode *>(node.get());
+        if (eltwiseNode) {
+            eltwiseNode->appendPostOps(ops);
+            continue;
+        }
+        IE_THROW() << "Fusing of " << NameFromType(node->getType()) << " operation to " << NameFromType(this->getType()) << " node is not implemented";
+    }
+    attr.set_post_ops(ops);
 }
 
 bool MKLDNNReduceNode::created() const {

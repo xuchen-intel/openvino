@@ -52,4 +52,6 @@ void TopKLayerTest::SetUp() {
     }
     function = std::make_shared<ngraph::Function>(results, params, "TopK");
 }
+
+void TopKLayerTest::Validate() {}
 }  // namespace LayerTestsDefinitions

@@ -25,7 +25,7 @@ typedef std::tuple<
 > TopKParams;
 
 class TopKLayerTest : public testing::WithParamInterface<TopKParams>,
-                      virtual public LayerTestsUtils::LayerTestsCommon {
+                      public LayerTestsUtils::LayerTestsCommon {
 public:
     static std::string getTestCaseName(testing::TestParamInfo<TopKParams> obj);
 

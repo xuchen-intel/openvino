@@ -281,6 +281,8 @@ CPUTestsBase::modifyGraph(const ngraph::element::Type &ngPrc, ngraph::ParameterV
 std::vector<CPUSpecificParams> filterCPUSpecificParams(std::vector<CPUSpecificParams> &paramsVector) {
 auto adjustBlockedFormatByIsa = [](std::vector<cpu_memory_format_t>& formats) {
         for (int i = 0; i < formats.size(); i++) {
+            if (formats[i] == nCw16c)
+                formats[i] = nCw8c;
             if (formats[i] == nChw16c)
                 formats[i] = nChw8c;
             if (formats[i] == nCdhw16c)

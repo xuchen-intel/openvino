@@ -141,6 +141,12 @@ std::map<std::string, std::string> additional_config;
 
 std::vector<Precision> netPrc = {Precision::BF16, Precision::FP32};
 
+std::vector<CPUSpecificParams> cpuParams_3D = {
+        CPUSpecificParams({nCw16c, nCw16c}, {nCw16c}, {}, {}),
+        CPUSpecificParams({nwc, nwc}, {nwc}, {}, {}),
+        CPUSpecificParams({ncw, ncw}, {ncw}, {}, {})
+};
+
 std::vector<CPUSpecificParams> cpuParams_4D = {
         CPUSpecificParams({nChw16c, nChw16c}, {nChw16c}, {}, {}),
         CPUSpecificParams({nhwc, nhwc}, {nhwc}, {}, {}),
@@ -152,6 +158,45 @@ std::vector<CPUSpecificParams> cpuParams_5D = {
         CPUSpecificParams({ndhwc, ndhwc}, {ndhwc}, {}, {}),
         CPUSpecificParams({ncdhw, ncdhw}, {ncdhw}, {}, {})
 };
+
+std::vector<std::pair<std::vector<ngraph::PartialShape>, std::vector<std::vector<ngraph::Shape>>>> inShapes_3D = {
+        {{}, {{{2, 4, 1}}}},
+        {{}, {{{2, 17, 4}}}},
+        {{}, {{{2, 17, 4}, {1, 17, 1}}}},
+        {{}, {{{2, 17, 1}, {1, 17, 4}}}},
+};
+
+const auto params_3D = ::testing::Combine(
+        ::testing::Combine(
+            ::testing::ValuesIn(inShapes_3D),
+            ::testing::ValuesIn(eltwiseOpTypesBinInp),
+            ::testing::ValuesIn(secondaryInputTypes),
+            ::testing::ValuesIn(opTypes),
+            ::testing::ValuesIn(netPrc),
+            ::testing::Values(InferenceEngine::Precision::FP32),
+            ::testing::Values(InferenceEngine::Precision::FP32),
+            ::testing::Values(InferenceEngine::Layout::ANY),
+            ::testing::Values(CommonTestUtils::DEVICE_CPU),
+            ::testing::Values(additional_config)),
+        ::testing::ValuesIn(filterCPUSpecificParams(cpuParams_3D)));
+
+INSTANTIATE_TEST_SUITE_P(smoke_CompareWithRefs_3D_MemOrder, EltwiseLayerCPUTest, params_3D, EltwiseLayerCPUTest::getTestCaseName);
+
+const auto params_3D_emptyCPUSpec = ::testing::Combine(
+        ::testing::Combine(
+                ::testing::ValuesIn(inShapes_3D),
+                ::testing::ValuesIn(eltwiseOpTypesDiffInp),
+                ::testing::ValuesIn(secondaryInputTypes),
+                ::testing::ValuesIn(opTypes),
+                ::testing::ValuesIn(netPrc),
+                ::testing::Values(InferenceEngine::Precision::FP32),
+                ::testing::Values(InferenceEngine::Precision::FP32),
+                ::testing::Values(InferenceEngine::Layout::ANY),
+                ::testing::Values(CommonTestUtils::DEVICE_CPU),
+                ::testing::Values(additional_config)),
+        ::testing::Values(emptyCPUSpec));
+
+INSTANTIATE_TEST_SUITE_P(smoke_CompareWithRefs_3D_emptyCPUSpec, EltwiseLayerCPUTest, params_3D_emptyCPUSpec, EltwiseLayerCPUTest::getTestCaseName);
 
 std::vector<std::pair<std::vector<ngraph::PartialShape>, std::vector<std::vector<ngraph::Shape>>>> inShapes_4D = {
         {{}, {{{2, 4, 4, 1}}}},
@@ -230,6 +275,56 @@ const auto params_5D_emptyCPUSpec = ::testing::Combine(
         ::testing::Values(emptyCPUSpec));
 
 INSTANTIATE_TEST_SUITE_P(smoke_CompareWithRefs_5D, EltwiseLayerCPUTest, params_5D_emptyCPUSpec, EltwiseLayerCPUTest::getTestCaseName);
+
+std::vector<std::pair<std::vector<ngraph::PartialShape>, std::vector<std::vector<ngraph::Shape>>>> inShapes_3D_Blocked_Planar = {
+        {{}, {{{2, 17, 3}, {2, 1, 3}}}},
+        {{}, {{{2, 17, 1}, {2, 1, 4}}}},
+};
+
+std::vector<CPUSpecificParams> cpuParams_3D_Blocked_Planar = {
+        CPUSpecificParams({nCw16c, ncw}, {nCw16c}, {}, {}),
+};
+
+const auto params_3D_Blocked_Planar = ::testing::Combine(
+        ::testing::Combine(
+            ::testing::ValuesIn(inShapes_3D_Blocked_Planar),
+            ::testing::ValuesIn(eltwiseOpTypesBinInp),
+            ::testing::Values(ngraph::helpers::InputLayerType::CONSTANT),
+            ::testing::ValuesIn(opTypes),
+            ::testing::ValuesIn(netPrc),
+            ::testing::Values(InferenceEngine::Precision::FP32),
+            ::testing::Values(InferenceEngine::Precision::FP32),
+            ::testing::Values(InferenceEngine::Layout::ANY),
+            ::testing::Values(CommonTestUtils::DEVICE_CPU),
+            ::testing::Values(additional_config)),
+        ::testing::ValuesIn(filterCPUSpecificParams(cpuParams_3D_Blocked_Planar)));
+
+INSTANTIATE_TEST_SUITE_P(smoke_CompareWithRefs_3D_Blocked_Planar, EltwiseLayerCPUTest, params_3D_Blocked_Planar, EltwiseLayerCPUTest::getTestCaseName);
+
+std::vector<std::pair<std::vector<ngraph::PartialShape>, std::vector<std::vector<ngraph::Shape>>>> inShapes_3D_Planar_Blocked = {
+        {{}, {{{2, 1, 3}, {2, 17, 3}}}},
+        {{}, {{{2, 1, 4}, {2, 17, 1}}}},
+};
+
+std::vector<CPUSpecificParams> cpuParams_3D_Planar_Blocked = {
+        CPUSpecificParams({ncw, nCw16c}, {nCw16c}, {}, {}),
+};
+
+const auto params_3D_Planar_Blocked = ::testing::Combine(
+        ::testing::Combine(
+            ::testing::ValuesIn(inShapes_3D_Planar_Blocked),
+            ::testing::ValuesIn(eltwiseOpTypesBinInp),
+            ::testing::Values(ngraph::helpers::InputLayerType::CONSTANT),
+            ::testing::ValuesIn(opTypes),
+            ::testing::ValuesIn(netPrc),
+            ::testing::Values(InferenceEngine::Precision::FP32),
+            ::testing::Values(InferenceEngine::Precision::FP32),
+            ::testing::Values(InferenceEngine::Layout::ANY),
+            ::testing::Values(CommonTestUtils::DEVICE_CPU),
+            ::testing::Values(additional_config)),
+        ::testing::ValuesIn(filterCPUSpecificParams(cpuParams_3D_Planar_Blocked)));
+
+INSTANTIATE_TEST_SUITE_P(smoke_CompareWithRefs_3D_Planar_Blocked, EltwiseLayerCPUTest, params_3D_Planar_Blocked, EltwiseLayerCPUTest::getTestCaseName);
 
 std::vector<std::pair<std::vector<ngraph::PartialShape>, std::vector<std::vector<ngraph::Shape>>>> inShapes_4D_Blocked_Planar = {
         {{}, {{{2, 17, 31, 3}, {2, 1, 31, 3}}}},
@@ -334,6 +429,32 @@ const auto params_5D_Planar_Blocked = ::testing::Combine(
 
 INSTANTIATE_TEST_SUITE_P(smoke_CompareWithRefs_5D_Planar_Blocked, EltwiseLayerCPUTest, params_5D_Planar_Blocked, EltwiseLayerCPUTest::getTestCaseName);
 
+std::vector<std::pair<std::vector<ngraph::PartialShape>, std::vector<std::vector<ngraph::Shape>>>> inShapes_3D_1D = {
+        {{}, {{{2, 17, 4}, {4}}}},
+        {{}, {{{1, 3, 3}, {3}}}},
+};
+
+std::vector<CPUSpecificParams> cpuParams_3D_1D = {
+        CPUSpecificParams({nCw16c, x}, {nCw16c}, {}, {}),
+        CPUSpecificParams({nwc, x}, {nwc}, {}, {}),
+        CPUSpecificParams({ncw, x}, {ncw}, {}, {})
+};
+
+const auto params_3D_1D = ::testing::Combine(
+        ::testing::Combine(
+                ::testing::ValuesIn(inShapes_3D_1D),
+                ::testing::Values(ngraph::helpers::EltwiseTypes::ADD, ngraph::helpers::EltwiseTypes::MULTIPLY),
+                ::testing::ValuesIn(secondaryInputTypes),
+                ::testing::ValuesIn(opTypes),
+                ::testing::ValuesIn(netPrc),
+                ::testing::Values(InferenceEngine::Precision::FP32),
+                ::testing::Values(InferenceEngine::Precision::FP32),
+                ::testing::Values(InferenceEngine::Layout::ANY),
+                ::testing::Values(CommonTestUtils::DEVICE_CPU),
+                ::testing::Values(additional_config)),
+        ::testing::ValuesIn(filterCPUSpecificParams(cpuParams_3D_1D)));
+
+INSTANTIATE_TEST_SUITE_P(smoke_CompareWithRefs_3D_1D, EltwiseLayerCPUTest, params_3D_1D, EltwiseLayerCPUTest::getTestCaseName);
 
 std::vector<std::pair<std::vector<ngraph::PartialShape>, std::vector<std::vector<ngraph::Shape>>>> inShapes_4D_1D = {
         {{}, {{{2, 17, 5, 4}, {4}}}},
@@ -396,6 +517,67 @@ std::vector<ngraph::helpers::EltwiseTypes> eltwiseOpTypesBinDyn = {
         ngraph::helpers::EltwiseTypes::SUBTRACT,
         ngraph::helpers::EltwiseTypes::SQUARED_DIFF,
 };
+
+// ============================================ 3D ============================================
+std::vector<std::pair<std::vector<ngraph::PartialShape>, std::vector<std::vector<ngraph::Shape>>>> inShapes_3D_dyn_const = {
+        {
+            // dynamic
+            {{-1, {2, -1}, -1}},
+            // target
+            {
+                {{3, 2, 1}},
+                {{3, 2, 1}},
+                {{3, 2, 6}},
+                {{3, 2, 11}},
+            }
+        },
+};
+
+const auto params_3D_dyn_const = ::testing::Combine(
+        ::testing::Combine(
+            ::testing::ValuesIn(inShapes_3D_dyn_const),
+            ::testing::ValuesIn(eltwiseOpTypesBinInp),
+            ::testing::Values(ngraph::helpers::InputLayerType::CONSTANT),
+            ::testing::ValuesIn(opTypes),
+            ::testing::ValuesIn(netPrc),
+            ::testing::Values(InferenceEngine::Precision::FP32),
+            ::testing::Values(InferenceEngine::Precision::FP32),
+            ::testing::Values(InferenceEngine::Layout::ANY),
+            ::testing::Values(CommonTestUtils::DEVICE_CPU),
+            ::testing::Values(additional_config)),
+        ::testing::ValuesIn(filterCPUSpecificParams(cpuParams_3D)));
+
+INSTANTIATE_TEST_SUITE_P(smoke_CompareWithRefs_3D_MemOrder_dyn_const, EltwiseLayerCPUTest, params_3D_dyn_const, EltwiseLayerCPUTest::getTestCaseName);
+
+std::vector<std::pair<std::vector<ngraph::PartialShape>, std::vector<std::vector<ngraph::Shape>>>> inShapes_3D_dyn_param = {
+        {
+            // dynamic
+            {{-1, {2, -1}, -1},
+             {-1, {2, -1}, -1}},
+            // target
+            {
+                {{3, 2, 1}, {1, 2, 1}},
+                {{1, 7, 1}, {3, 7, 10}},
+                {{3, 3, 11}, {3, 3, 11}},
+            }
+        },
+};
+
+const auto params_3D_dyn_param = ::testing::Combine(
+        ::testing::Combine(
+            ::testing::ValuesIn(inShapes_3D_dyn_param),
+            ::testing::ValuesIn(eltwiseOpTypesBinDyn),
+            ::testing::Values(ngraph::helpers::InputLayerType::PARAMETER),
+            ::testing::ValuesIn(opTypes),
+            ::testing::ValuesIn(netPrc),
+            ::testing::Values(InferenceEngine::Precision::FP32),
+            ::testing::Values(InferenceEngine::Precision::FP32),
+            ::testing::Values(InferenceEngine::Layout::ANY),
+            ::testing::Values(CommonTestUtils::DEVICE_CPU),
+            ::testing::Values(additional_config)),
+        ::testing::ValuesIn(filterCPUSpecificParams(cpuParams_3D)));
+
+INSTANTIATE_TEST_SUITE_P(smoke_CompareWithRefs_3D_MemOrder_dyn_param, EltwiseLayerCPUTest, params_3D_dyn_param, EltwiseLayerCPUTest::getTestCaseName);
 
 // ============================================ 4D ============================================
 std::vector<std::pair<std::vector<ngraph::PartialShape>, std::vector<std::vector<ngraph::Shape>>>> inShapes_4D_dyn_const = {

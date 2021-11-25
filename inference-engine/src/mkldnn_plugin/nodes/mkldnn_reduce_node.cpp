@@ -1924,8 +1924,7 @@ void MKLDNNReduceNode::reduce_type(const uint8_t *in_ptr, uint8_t *out_ptr, size
     if (layout == ReduceLayoutType::reduce_ncsp || layout == ReduceLayoutType::reduce_nspc) {
         reduce_PLN(in_ptr, out_ptr);
     } else {
-        if ((algorithm == ReduceAnd || algorithm == ReduceLogSumExp || algorithm == ReduceMax ||
-             algorithm == ReduceMin || algorithm == ReduceProd) && ReduceC && (IC % blk_size)) {
+        if (ReduceC && (IC % blk_size)) {
             reduce_BLK_concern_padding(in_ptr, out_ptr);
         } else {
             reduce_BLK(in_ptr, out_ptr);
@@ -2822,6 +2821,16 @@ bool MKLDNNReduceNode::canFuse(const MKLDNNNodePtr& node) const {
     Precision output_prec = getOriginalOutputPrecisionAtPort(0);
     if (!canApplyJIT(input_prec, output_prec) || jit_beyond_5D || algorithm == ReduceAnd || algorithm == ReduceOr) {
         return false;
+    }
+
+    // In jit mode we use the output memory as an intermediate accumulator for certain reduce modes.
+    // If the post ops node has a lower precision for such modes, post ops fusing won't be supposted, in order to avoid accuracy loss.
+    if (output_prec == Precision::FP32 &&
+        !node->getOriginalOutputPrecisions().empty() && node->getOriginalOutputPrecisionAtPort(0) != Precision::FP32) {
+        if (algorithm != ReduceAnd && algorithm != ReduceOr &&
+            algorithm != ReduceMin && algorithm != ReduceMax) {
+            return false;
+        }
     }
 
     return canFuseSimpleOperation(node);

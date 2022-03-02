@@ -158,7 +158,7 @@ protected:
             }
         }
 
-        function = makeNgraphFunction(netPrecision, params, reduce, "Reduce");
+        function = makeNgraphFunction(netPrecision, params, reduce, "Reduce", channelAxis);
     }
 
     void generate_inputs(const std::vector<ngraph::Shape>& targetInputStaticShapes) override {

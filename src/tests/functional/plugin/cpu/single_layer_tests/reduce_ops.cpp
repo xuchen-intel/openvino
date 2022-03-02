@@ -143,6 +143,21 @@ protected:
             }
         }
 
+        ChannelAxis channelAxis = ChannelAxis::CHANNEL_AXIS_ONE;
+        if (!keepDims) {
+            for (auto axis : axes) {
+                if (axis < 0)
+                    axis += static_cast<int>(inputDynamicShapes[0].size());
+
+                if (axis == 1) {
+                    channelAxis = ChannelAxis::CHANNEL_AXIS_NONE;
+                    break;
+                } else if (axis == 0) {
+                    channelAxis = ChannelAxis::CHANNEL_AXIS_ZERO;
+                }
+            }
+        }
+
         function = makeNgraphFunction(netPrecision, params, reduce, "Reduce");
     }
 
@@ -186,6 +201,133 @@ TEST_P(ReduceCPULayerTest, CompareWithRefs) {
     CheckPluginRelatedResults(compiledModel, "Reduce");
 }
 namespace {
+#if 1
+const std::vector<ElementType> inpOutPrc = {ElementType::f32};
+
+const std::vector<std::vector<int>> axes = {
+        {0},
+//        {1},
+//        {2},
+//        {3}
+};
+
+const std::vector<std::vector<int>> axesNDFusing = {
+        {0, 1},
+        {0, 2},
+        {0, 3},
+        {1, 2},
+        {1, 3},
+        {2, 3},
+};
+
+const std::vector<std::vector<int>> axes5DFusing = {
+        {2, 4},
+        {0, 2, 4},
+};
+
+std::vector<CommonTestUtils::OpType> opTypes = {
+//        CommonTestUtils::OpType::SCALAR,
+        CommonTestUtils::OpType::VECTOR,
+};
+
+const std::vector<ngraph::helpers::ReductionType> reductionTypesFusing = {
+        ngraph::helpers::ReductionType::Mean,
+//        ngraph::helpers::ReductionType::Max,
+//        ngraph::helpers::ReductionType::L2,
+};
+
+std::vector<std::vector<ov::test::InputShape>> inputShapesFusingKeepNoDims = {
+    {{{}, {{2, 19, 2, 9}}}},
+//    {{{{1, 5}, 19, 2, 9}, {{2, 19, 2, 9}, {3, 19, 2, 9}}}},
+};
+
+std::vector<std::vector<ov::test::InputShape>> inputShapesFusingKeepNoDims_5D = {
+    {{{}, {{2, 19, 2, 2, 9}}}},
+    {{{{1, 5}, 19, 2, 2, 2}, {{2, 19, 2, 2, 2}, {3, 19, 2, 2, 2}}}},
+};
+
+std::vector<CPUSpecificParams> cpuParams_HybridLayout_4D = {
+        CPUSpecificParams({nChw16c}, {}, {}, {}),
+        CPUSpecificParams({nhwc}, {}, {}, {})
+};
+
+std::vector<CPUSpecificParams> cpuParams_HybridLayout_5D = {
+        CPUSpecificParams({nCdhw16c}, {}, {}, {}),
+        CPUSpecificParams({ndhwc}, {}, {}, {})
+};
+
+const std::vector<fusingSpecificParams> fusingParamsSet {
+//        /* activations */
+//        fusingSwish,
+
+//        /* FQ */
+//        fusingFakeQuantizePerChannelRelu,
+//        fusingFakeQuantizePerTensorRelu,
+        /* another patterns */
+        fusingScaleShift
+};
+
+/* ================================ 2.2 Fusion - KeepNoDims ================================ */
+const auto params_OneAxis_fusing_KeepNoDims = testing::Combine(
+        testing::Combine(
+            testing::ValuesIn(axes),
+            testing::ValuesIn(opTypes),
+            testing::Values(false),
+            testing::ValuesIn(reductionTypesFusing),
+            testing::ValuesIn(inpOutPrc),
+            testing::Values(ElementType::undefined),
+            testing::Values(ElementType::undefined),
+            testing::ValuesIn(inputShapesFusingKeepNoDims)),
+        testing::Values(emptyCPUSpec),
+        testing::ValuesIn(fusingParamsSet));
+
+//const auto params_MultiAxis_4D_Hybrid_fusing_KeepNoDims = testing::Combine(
+//        testing::Combine(
+//            testing::ValuesIn(axesNDFusing),
+//            testing::Values(CommonTestUtils::OpType::VECTOR),
+//            testing::Values(false),
+//            testing::ValuesIn(reductionTypesFusing),
+//            testing::ValuesIn(inpOutPrc),
+//            testing::Values(ElementType::undefined),
+//            testing::Values(ElementType::undefined),
+//            testing::ValuesIn(inputShapesFusingKeepNoDims)),
+//        testing::ValuesIn(filterCPUSpecificParams(cpuParams_HybridLayout_4D)),
+//        testing::ValuesIn(fusingParamsSet));
+
+//const auto params_MultiAxis_5D_Hybrid_fusing_KeepNoDims = testing::Combine(
+//        testing::Combine(
+//            testing::ValuesIn(axes5DFusing),
+//            testing::Values(CommonTestUtils::OpType::VECTOR),
+//            testing::Values(false),
+//            testing::ValuesIn(reductionTypesFusing),
+//            testing::ValuesIn(inpOutPrc),
+//            testing::Values(ElementType::undefined),
+//            testing::Values(ElementType::undefined),
+//            testing::ValuesIn(inputShapesFusingKeepNoDims_5D)),
+//        testing::ValuesIn(filterCPUSpecificParams(cpuParams_HybridLayout_5D)),
+//        testing::ValuesIn(fusingParamsSet));
+
+INSTANTIATE_TEST_SUITE_P(
+        smoke_Reduce_OneAxis_fusing_KeepNoDims_CPU,
+        ReduceCPULayerTest,
+        params_OneAxis_fusing_KeepNoDims,
+        ReduceCPULayerTest::getTestCaseName
+);
+
+//INSTANTIATE_TEST_SUITE_P(
+//        smoke_Reduce_MultiAxis_4D_Hybrid_fusing_KeepNoDims_CPU,
+//        ReduceCPULayerTest,
+//        params_MultiAxis_4D_Hybrid_fusing_KeepNoDims,
+//        ReduceCPULayerTest::getTestCaseName
+//);
+
+//INSTANTIATE_TEST_SUITE_P(
+//        smoke_Reduce_MultiAxis_5D_Hybrid_fusing_KeepNoDims_CPU,
+//        ReduceCPULayerTest,
+//        params_MultiAxis_5D_Hybrid_fusing_KeepNoDims,
+//        ReduceCPULayerTest::getTestCaseName
+//);
+#else
 const std::vector<ElementType> inpOutPrc = {ElementType::bf16, ElementType::f32};
 
 const std::vector<bool> keepDims = {
@@ -693,6 +835,7 @@ INSTANTIATE_TEST_SUITE_P(
         params_MultiAxis_5D_Hybrid_fusing_KeepNoDims,
         ReduceCPULayerTest::getTestCaseName
 );
+#endif
 } // namespace
 } // namespace CPULayerTestsDefinitions
 

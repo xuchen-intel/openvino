@@ -91,6 +91,15 @@ namespace CPUTestUtils {
         std::string                       // selected primitive type
     >;
 
+    // ChannelAxis locates the channel dimension, the default value is CHANNEL_AXIS_ONE;
+    // set CHANNEL_AXIS_ZERO, when Shape[0] is removed, e.g. Shape[0] is reduced when keepDims set false in Reduce layer;
+    // set CHANNEL_AXIS_NONE, when Shape[1] is removed, e.g. Shape[1] is reduced when keepDims set false in Reduce layer.
+    enum ChannelAxis {
+        CHANNEL_AXIS_NONE = -1,
+        CHANNEL_AXIS_ZERO = 0,
+        CHANNEL_AXIS_ONE
+    };
+
     enum class nodeType {
         convolution,
         convolutionBackpropData,
@@ -134,7 +143,8 @@ public:
     std::shared_ptr<ngraph::Function> makeNgraphFunction(const ngraph::element::Type &ngPrc,
                                                          ngraph::ParameterVector &params,
                                                          const std::shared_ptr<ngraph::Node> &lastNode,
-                                                         std::string name);
+                                                         std::string name,
+                                                         ChannelAxis channelAxis = ChannelAxis::CHANNEL_AXIS_ONE);
 
     void CheckPluginRelatedResults(InferenceEngine::ExecutableNetwork &execNet, const std::string& nodeType) const;
     void CheckPluginRelatedResults(const ov::CompiledModel &execNet, const std::string& nodeType) const;
@@ -146,11 +156,13 @@ protected:
      * @param ngPrc Graph precision.
      * @param params Graph parameters vector.
      * @param lastNode The last node of the initial graph.
+     * @param channelAxis The axis of channel
      * @return The last node of the modified graph.
      */
     virtual std::shared_ptr<ngraph::Node> modifyGraph(const ngraph::element::Type &ngPrc,
                                                       ngraph::ParameterVector &params,
-                                                      const std::shared_ptr<ngraph::Node> &lastNode);
+                                                      const std::shared_ptr<ngraph::Node> &lastNode,
+                                                      ChannelAxis channelAxis);
 
 protected:
     std::string getPrimitiveType() const;

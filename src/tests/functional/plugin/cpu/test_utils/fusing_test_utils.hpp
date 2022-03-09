@@ -107,6 +107,7 @@ static size_t getFusingAxis(const std::shared_ptr<ngraph::Node>& node, ChannelAx
 }
 
 static ngraph::Shape generatePerChannelShape(const postNodeConfig& cfg) {
+    //const auto &node = cfg.target;
     const auto &node = cfg.input;
     const auto shape = node->get_output_partial_shape(0);
     if (shape.size() == 0)

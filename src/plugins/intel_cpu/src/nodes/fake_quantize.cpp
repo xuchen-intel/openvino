@@ -1852,11 +1852,13 @@ void MKLDNNFakeQuantizeNode::appendPostOpsImpl(mkldnn::post_ops& ops, const Vect
     }
 }
 
-void MKLDNNFakeQuantizeNode::appendPostOps(mkldnn::post_ops& ops, const VectorDims &postOpDims, std::vector<MKLDNNMemoryPtr>& postOpsMem) {
+void MKLDNNFakeQuantizeNode::appendPostOps(mkldnn::post_ops& ops, const VectorDims &postOpDims, std::vector<MKLDNNMemoryPtr>& postOpsMem,
+                                           const size_t channelAxis) {
     appendPostOpsImpl(ops, postOpDims, postOpsMem);
 }
 
-void MKLDNNFakeQuantizeNode::appendPostOps(mkldnn::post_ops& ops, const VectorDims &postOpDims, std::vector<const void*>& postOpsMem) {
+void MKLDNNFakeQuantizeNode::appendPostOps(mkldnn::post_ops& ops, const VectorDims &postOpDims, std::vector<const void*>& postOpsMem,
+                                           const size_t channelAxis) {
     appendPostOpsImpl(ops, postOpDims, postOpsMem);
 }
 

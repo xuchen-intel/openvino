@@ -2052,7 +2052,7 @@ void MKLDNNEltwiseNode::appendMemory(const std::vector<float> &data, MKLDNNMemor
 }
 
 template <typename T>
-void MKLDNNEltwiseNode::appendPostOpsImpl(mkldnn::post_ops& ops, const VectorDims &postOpDims, std::vector<T>& postOpsMem) {
+void MKLDNNEltwiseNode::appendPostOpsImpl(mkldnn::post_ops& ops, const VectorDims &postOpDims, std::vector<T>& postOpsMem, const size_t channelAxis) {
     const std::string errorPrefix = "Appending Eltwise node with name '" + getName() + "' ";
 
     if (getMKLDNNAlgorithm() != mkldnn::algorithm::undef) {
@@ -2082,7 +2082,7 @@ void MKLDNNEltwiseNode::appendPostOpsImpl(mkldnn::post_ops& ops, const VectorDim
         default: IE_THROW() << errorPrefix << "as post operation is not supported";
         }
     } else {
-        const size_t chIdx = postOpDims.size() > 1 ? getFusingAxis() : 0;
+        const size_t chIdx = postOpDims.size() > 1 ? channelAxis : 0;
         // since legacy depthwise post ops mechanism requires broadcasted data we need to reinitilize it in case of changed shape
         if (depthwiseData.empty() || depthwiseDataSize != 2 * postOpDims[chIdx]) {
             depthwiseData.clear();
@@ -2140,12 +2140,12 @@ void MKLDNNEltwiseNode::appendPostOpsImpl(mkldnn::post_ops& ops, const VectorDim
     }
 }
 
-void MKLDNNEltwiseNode::appendPostOps(mkldnn::post_ops& ops, const VectorDims &postOpDims, std::vector<MKLDNNMemoryPtr>& postOpsMem) {
-    appendPostOpsImpl(ops, postOpDims, postOpsMem);
+void MKLDNNEltwiseNode::appendPostOps(mkldnn::post_ops& ops, const VectorDims &postOpDims, std::vector<MKLDNNMemoryPtr>& postOpsMem, const size_t channelAxis) {
+    appendPostOpsImpl(ops, postOpDims, postOpsMem, channelAxis);
 }
 
-void MKLDNNEltwiseNode::appendPostOps(mkldnn::post_ops& ops, const VectorDims &postOpDims, std::vector<const void*>& postOpsMem) {
-    appendPostOpsImpl(ops, postOpDims, postOpsMem);
+void MKLDNNEltwiseNode::appendPostOps(mkldnn::post_ops& ops, const VectorDims &postOpDims, std::vector<const void*>& postOpsMem, const size_t channelAxis) {
+    appendPostOpsImpl(ops, postOpDims, postOpsMem, channelAxis);
 }
 
 void MKLDNNEltwiseNode::appendBinPostOps(mkldnn::post_ops& ops, const VectorDims& postOpDims, std::vector<MKLDNNMemoryPtr>& binaryPostOpsMem) {

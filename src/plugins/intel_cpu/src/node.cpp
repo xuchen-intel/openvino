@@ -1129,11 +1129,11 @@ InferenceEngine::Layout MKLDNNNode::getWeightsLayoutByDims(SizeVector dims, bool
     }
 }
 
-void MKLDNNNode::appendPostOps(mkldnn::post_ops& ops, const VectorDims &postOpDims, std::vector<MKLDNNMemoryPtr>& postOpsMem) {
+void MKLDNNNode::appendPostOps(mkldnn::post_ops& ops, const VectorDims &postOpDims, std::vector<MKLDNNMemoryPtr>& postOpsMem, const size_t channelAxis) {
     IE_THROW() << "Fusing of " << NameFromType(this->getType()) << " operation is not implemented";
 }
 
-void MKLDNNNode::appendPostOps(mkldnn::post_ops& ops, const VectorDims &postOpDims, std::vector<const void*>& postOpsMem) {
+void MKLDNNNode::appendPostOps(mkldnn::post_ops& ops, const VectorDims &postOpDims, std::vector<const void*>& postOpsMem, const size_t channelAxis) {
     IE_THROW() << "Fusing of " << NameFromType(this->getType()) << " operation is not implemented";
 }
 

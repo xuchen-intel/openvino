@@ -94,6 +94,7 @@ public:
     void execute(mkldnn::stream strm) override;
     std::vector<VectorDims> shapeInfer() const override;
     void executeDynamicImpl(mkldnn::stream strm) override;
+    size_t getFusingAxis() const override;
     bool canFuse(const MKLDNNNodePtr& node) const override;
     bool canBeInPlace() const override {
         return false;

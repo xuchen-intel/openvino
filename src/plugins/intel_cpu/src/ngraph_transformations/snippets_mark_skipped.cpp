@@ -167,7 +167,29 @@ bool isSuitablePoolChild(const std::shared_ptr<const Node> &node) {
     const bool has_only_child = (out.size() == 1) && (out[0].get_target_inputs().size() == 1);
     return is_suitable_node && has_only_child;
 }
-bool isSuitableChildForFusingSimple(const std::shared_ptr<const Node> &node, const size_t channelAxis = 1) {
+size_t getChannelAxis(const ov::AxisSet &axes) {
+    size_t channelAxis = 1;
+    for (auto &axis : axes) {
+        if (axis == 1) {
+            channelAxis = -1; // channel axis has been reduced and doesn't exist any more
+            break;
+        } else if (axis == 0) {
+            channelAxis = 0;
+        }
+    }
+    return channelAxis;
+}
+bool isSuitableChildForFusingSimple(const std::shared_ptr<const Node> &node, size_t channelAxis = 1) {
+    for (const auto &parent_out : node->input_values()) {
+        const auto parent = parent_out.get_node_shared_ptr();
+        if (const auto reduce = std::dynamic_pointer_cast<const ngraph::op::util::ArithmeticReductionKeepDims>(parent)) {
+            if (!reduce->get_keep_dims())
+                channelAxis = getChannelAxis(reduce->get_reduction_axes());
+        } else if (const auto reduce = std::dynamic_pointer_cast<const ngraph::op::util::LogicalReductionKeepDims>(parent)) {
+            if (!reduce->get_keep_dims())
+                channelAxis = getChannelAxis(reduce->get_reduction_axes());
+        }
+    }
     // Note: Fusing child is allowed to have several users, but that must be the end of the chain
     return SupportsFusingWithConvolution_Simple(node, channelAxis) && getNumNonConstInputs(node) == 1;
 }

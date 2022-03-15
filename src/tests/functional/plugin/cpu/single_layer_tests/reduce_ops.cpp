@@ -143,7 +143,22 @@ protected:
             }
         }
 
-        function = makeNgraphFunction(netPrecision, params, reduce, "Reduce");
+        ChannelAxis channelAxis = ChannelAxis::CHANNEL_AXIS_ONE;
+        if (!keepDims) {
+            for (auto axis : axes) {
+                if (axis < 0)
+                    axis += static_cast<int>(inputDynamicShapes[0].size());
+
+                if (axis == 1) {
+                    channelAxis = ChannelAxis::CHANNEL_AXIS_NONE;
+                    break;
+                } else if (axis == 0) {
+                    channelAxis = ChannelAxis::CHANNEL_AXIS_ZERO;
+                }
+            }
+        }
+
+        function = makeNgraphFunction(netPrecision, params, reduce, "Reduce", channelAxis);
     }
 
     void generate_inputs(const std::vector<ngraph::Shape>& targetInputStaticShapes) override {

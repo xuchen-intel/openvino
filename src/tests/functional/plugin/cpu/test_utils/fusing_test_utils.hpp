@@ -15,6 +15,7 @@ struct postNodeConfig {
     std::shared_ptr<ngraph::Node> input;
     const ngraph::element::Type& type;
     ngraph::ParameterVector& params;
+    ChannelAxis channelAxis;
 };
 
 struct postNodeBuilder {
@@ -26,7 +27,8 @@ class postOpMgr {
 public:
     virtual std::shared_ptr<ngraph::Node> addPostOps(const ngraph::element::Type &ngPrc,
                                                      ngraph::ParameterVector &params,
-                                                     const std::shared_ptr<ngraph::Node> &lastNode) const = 0;
+                                                     const std::shared_ptr<ngraph::Node> &lastNode,
+                                                     ChannelAxis channelAxis) const = 0;
     virtual std::string getFusedOpsNames() const = 0;
     virtual ~postOpMgr() = default;
 };
@@ -36,7 +38,8 @@ public:
     postFunctionMgr(std::shared_ptr<ngraph::Function> function) : _pFunction(std::move(function)) {}
     std::shared_ptr<ngraph::Node> addPostOps(const ngraph::element::Type &ngPrc,
                                              ngraph::ParameterVector &params,
-                                             const std::shared_ptr<ngraph::Node> &lastNode) const override;
+                                             const std::shared_ptr<ngraph::Node> &lastNode,
+                                             ChannelAxis channelAxis) const override;
     std::string getFusedOpsNames() const override;
 
 private:
@@ -48,7 +51,8 @@ public:
     postNodesMgr(std::vector<postNodeBuilder> postNodes);
     std::shared_ptr<ngraph::Node> addPostOps(const ngraph::element::Type &ngPrc,
                                              ngraph::ParameterVector &params,
-                                             const std::shared_ptr<ngraph::Node> &lastNode) const override;
+                                             const std::shared_ptr<ngraph::Node> &lastNode,
+                                             ChannelAxis channelAxis) const override;
     std::string getFusedOpsNames() const override;
 
 private:
@@ -70,7 +74,8 @@ protected:
      */
     std::shared_ptr<ngraph::Node> modifyGraph(const ngraph::element::Type &ngPrc,
                                               ngraph::ParameterVector &params,
-                                              const std::shared_ptr<ngraph::Node> &lastNode) override;
+                                              const std::shared_ptr<ngraph::Node> &lastNode,
+                                              ChannelAxis channelAxis = CHANNEL_AXIS_ONE) override;
 
     void CheckPluginRelatedResultsImpl(const std::shared_ptr<const ov::Model>& function, const std::string& nodeType) const override;
 
@@ -83,19 +88,33 @@ protected:
     bool checkFusingPosition = true;
 };
 
-static size_t getFusingAxis(const std::shared_ptr<ngraph::Node>& node) {
-    if (std::dynamic_pointer_cast<const ngraph::opset1::MatMul>(node))
+static size_t getFusingAxis(const std::shared_ptr<ngraph::Node>& node, ChannelAxis channelAxis) {
+    if (std::dynamic_pointer_cast<const ngraph::opset1::MatMul>(node)) {
         return node->get_output_partial_shape(0).size() - 1; // last dimension
-    else
+    } else if (std::dynamic_pointer_cast<const ngraph::opset1::ReduceMax>(node) ||
+               std::dynamic_pointer_cast<const ngraph::opset1::ReduceMean>(node) ||
+               std::dynamic_pointer_cast<const ngraph::opset1::ReduceMin>(node) ||
+               std::dynamic_pointer_cast<const ngraph::opset1::ReduceProd>(node) ||
+               std::dynamic_pointer_cast<const ngraph::opset1::ReduceSum>(node) ||
+               std::dynamic_pointer_cast<const ngraph::opset1::ReduceLogicalAnd>(node) ||
+               std::dynamic_pointer_cast<const ngraph::opset1::ReduceLogicalOr>(node) ||
+               std::dynamic_pointer_cast<const ngraph::opset4::ReduceL1>(node) ||
+               std::dynamic_pointer_cast<const ngraph::opset4::ReduceL2>(node)) {
+        return channelAxis;
+    } else {
         return 1; // second dimension
+    }
 }
 
-static ngraph::Shape generatePerChannelShape(const std::shared_ptr<ngraph::Node>& node) {
+static ngraph::Shape generatePerChannelShape(const std::shared_ptr<ngraph::Node>& node,
+                                             const postNodeConfig& cfg) {
     const auto shape = node->get_output_partial_shape(0);
+    if (shape.size() == 0)
+        IE_THROW() << "If shape.size() == 0 then PerTensor fusing tests are N/A";
     if (shape.size() == 1)
         IE_THROW() << "If shape.size() == 1 then Granularity can be PerTensor only";
     ngraph::Shape perChannelShape(shape.size(), 1);
-    const auto channelAxis = getFusingAxis(node);
+    const auto channelAxis = getFusingAxis(cfg.target, cfg.channelAxis);
     perChannelShape[channelAxis] = shape[channelAxis].get_length();
 
     return perChannelShape;
@@ -146,7 +165,7 @@ const auto fusingSqrt = fusingSpecificParams{std::make_shared<postNodesMgr>(std:
 
 const auto fusingPReluPerChannel = fusingSpecificParams{std::make_shared<postNodesMgr>(std::vector<postNodeBuilder>{
             {[](postNodeConfig& cfg){
-                ngraph::Shape newShape = generatePerChannelShape(cfg.target);
+                ngraph::Shape newShape = generatePerChannelShape(cfg.target, cfg);
                 auto data = NGraphFunctions::Utils::generateVector<ngraph::element::Type_t::f32>(ngraph::shape_size(newShape));
                 return ngraph::builder::makeActivation(cfg.input, cfg.type, ngraph::helpers::LeakyRelu, newShape, data);
             }, "PRelu(PerChannel)"}}), {"PRelu"}};
@@ -188,7 +207,7 @@ const auto fusingReluAdd = fusingSpecificParams{std::make_shared<postNodesMgr>(s
                 return ngraph::builder::makeActivation(cfg.input, cfg.type, ngraph::helpers::Relu);
             }, "Relu"},
             {[](postNodeConfig& cfg){
-                ngraph::Shape newShape = generatePerChannelShape(cfg.target);
+                ngraph::Shape newShape = generatePerChannelShape(cfg.target, cfg);
                 auto constNode = ngraph::builder::makeConstant(cfg.type, newShape, std::vector<float>{}, true);
                 return std::make_shared<ngraph::opset1::Add>(cfg.input, constNode);
             }, "Add(PerChannel)"}}), {"Relu", "Add"}};
@@ -198,42 +217,42 @@ const auto fusingReluScaleShift = fusingSpecificParams{std::make_shared<postNode
                 return ngraph::builder::makeActivation(cfg.input, cfg.type, ngraph::helpers::Relu);
             }, "Relu"},
             {[](postNodeConfig& cfg){
-                ngraph::Shape newShape = generatePerChannelShape(cfg.target);
+                ngraph::Shape newShape = generatePerChannelShape(cfg.target, cfg);
                 auto constNode = ngraph::builder::makeConstant(cfg.type, newShape, std::vector<float>{}, true);
                 return std::make_shared<ngraph::opset1::Multiply>(cfg.input, constNode);
             }, "Multiply(PerChannel)"},
             {[](postNodeConfig& cfg){
-                ngraph::Shape newShape = generatePerChannelShape(cfg.target);
+                ngraph::Shape newShape = generatePerChannelShape(cfg.target, cfg);
                 auto constNode = ngraph::builder::makeConstant(cfg.type, newShape, std::vector<float>{}, true);
                 return std::make_shared<ngraph::opset1::Add>(cfg.input, constNode);
             }, "Add(PerChannel)"}}), {"Relu", "Add"}};
 
 const auto fusingScaleShift = fusingSpecificParams{ std::make_shared<postNodesMgr>(std::vector<postNodeBuilder>{
             {[](postNodeConfig& cfg) {
-                ngraph::Shape newShape = generatePerChannelShape(cfg.target);
+                ngraph::Shape newShape = generatePerChannelShape(cfg.target, cfg);
                 auto constNode = ngraph::builder::makeConstant(cfg.type, newShape, std::vector<float>{}, true);
                 return std::make_shared<ngraph::opset1::Multiply>(cfg.input, constNode);
             }, "Multiply(PerChannel)"},
             {[](postNodeConfig& cfg) {
-                ngraph::Shape newShape = generatePerChannelShape(cfg.target);
+                ngraph::Shape newShape = generatePerChannelShape(cfg.target, cfg);
                 auto constNode = ngraph::builder::makeConstant(cfg.type, newShape, std::vector<float>{}, true);
                 return std::make_shared<ngraph::opset1::Add>(cfg.input, constNode);
             }, "Add(PerChannel)"}}), {"Add"} };
 
 const auto fusingScaleShiftAndFakeQuantizePerChannel = fusingSpecificParams{ std::make_shared<postNodesMgr>(std::vector<postNodeBuilder>{
             {[](postNodeConfig& cfg) {
-                ngraph::Shape newShape = generatePerChannelShape(cfg.target);
+                ngraph::Shape newShape = generatePerChannelShape(cfg.target, cfg);
                 auto constNode = ngraph::builder::makeConstant(cfg.type, newShape, std::vector<float>{}, true);
                 return std::make_shared<ngraph::opset1::Multiply>(cfg.input, constNode);
             }, "Multiply(PerChannel)"},
             {[](postNodeConfig& cfg) {
-                ngraph::Shape newShape = generatePerChannelShape(cfg.target);
+                ngraph::Shape newShape = generatePerChannelShape(cfg.target, cfg);
                 auto constNode = ngraph::builder::makeConstant(cfg.type, newShape, std::vector<float>{}, true);
                 return std::make_shared<ngraph::opset1::Add>(cfg.input, constNode);
             }, "Add(PerChannel)"},
             {[](postNodeConfig& cfg){
                 auto localPrc = cfg.input->get_element_type();
-                ngraph::Shape newShape = generatePerChannelShape(cfg.target);
+                ngraph::Shape newShape = generatePerChannelShape(cfg.target, cfg);
                 // auto newShape = ngraph::Shape(cfg.inputNode->get_output_partial_shape(0).size(), 1);
                 return ngraph::builder::makeFakeQuantize(cfg.input, localPrc, 256, newShape);
             }, "FakeQuantize(PerChannel)"}}), {"FakeQuantize"}};
@@ -248,14 +267,14 @@ const auto fusingFakeQuantizePerTensor = fusingSpecificParams{ std::make_shared<
 const auto fusingFakeQuantizePerChannel = fusingSpecificParams{std::make_shared<postNodesMgr>(std::vector<postNodeBuilder>{
             {[](postNodeConfig& cfg){
                 auto localPrc = cfg.input->get_element_type();
-                ngraph::Shape newShape = generatePerChannelShape(cfg.target);
+                ngraph::Shape newShape = generatePerChannelShape(cfg.target, cfg);
                 return ngraph::builder::makeFakeQuantize(cfg.input, localPrc, 256, newShape);
             }, "FakeQuantize(PerChannel)"}}), {"FakeQuantize"}};
 
 const auto fusingFakeQuantizePerChannelRelu = fusingSpecificParams{std::make_shared<postNodesMgr>(std::vector<postNodeBuilder>{
             {[](postNodeConfig& cfg){
                 auto localPrc = cfg.input->get_element_type();
-                ngraph::Shape newShape = generatePerChannelShape(cfg.target);
+                ngraph::Shape newShape = generatePerChannelShape(cfg.target, cfg);
                 return ngraph::builder::makeFakeQuantize(cfg.input, localPrc, 256, newShape);
             }, "FakeQuantize(PerChannel)"},
             {[](postNodeConfig& cfg){
@@ -332,7 +351,7 @@ const auto fusingMultiplyPerTensor = fusingSpecificParams{std::make_shared<postN
 
 const auto fusingMultiplyPerChannel = fusingSpecificParams{std::make_shared<postNodesMgr>(std::vector<postNodeBuilder>{
         {[](postNodeConfig& cfg){
-            ngraph::Shape secondMultInShape = generatePerChannelShape(cfg.target);
+            ngraph::Shape secondMultInShape = generatePerChannelShape(cfg.target, cfg);
             auto secondMultInput = ngraph::builder::makeConstant(cfg.type, secondMultInShape, std::vector<float>{}, true);
             return std::make_shared<ngraph::opset1::Multiply>(cfg.input, secondMultInput);
         }, "Multiply(PerChannel)"}}), {"Multiply"}};
@@ -346,7 +365,7 @@ const auto fusingAddPerTensor = fusingSpecificParams{std::make_shared<postNodesM
 
 const auto fusingAddPerChannel = fusingSpecificParams{std::make_shared<postNodesMgr>(std::vector<postNodeBuilder>{
         {[](postNodeConfig& cfg){
-            ngraph::Shape secondMultInShape = generatePerChannelShape(cfg.target);
+            ngraph::Shape secondMultInShape = generatePerChannelShape(cfg.target, cfg);
             auto secondMultInput = ngraph::builder::makeConstant(cfg.type, secondMultInShape, std::vector<float>{}, true);
             return std::make_shared<ngraph::opset1::Add>(cfg.input, secondMultInput);
         }, "Add(PerChannel)"}}), {"Add"}};
@@ -360,7 +379,7 @@ const auto fusingSubtractPerTensor = fusingSpecificParams{std::make_shared<postN
 
 const auto fusingSubtractPerChannel = fusingSpecificParams{std::make_shared<postNodesMgr>(std::vector<postNodeBuilder>{
         {[](postNodeConfig& cfg){
-            ngraph::Shape secondMultInShape = generatePerChannelShape(cfg.target);
+            ngraph::Shape secondMultInShape = generatePerChannelShape(cfg.target, cfg);
             auto secondMultInput = ngraph::builder::makeConstant(cfg.type, secondMultInShape, std::vector<float>{}, true);
             return std::make_shared<ngraph::opset1::Subtract>(cfg.input, secondMultInput);
         }, "Subtract(PerChannel)"}}), {"Subtract"}};
@@ -374,7 +393,7 @@ const auto fusingDividePerTensor = fusingSpecificParams{std::make_shared<postNod
 
 const auto fusingDividePerChannel = fusingSpecificParams{std::make_shared<postNodesMgr>(std::vector<postNodeBuilder>{
         {[](postNodeConfig& cfg){
-            ngraph::Shape secondMultInShape = generatePerChannelShape(cfg.target);
+            ngraph::Shape secondMultInShape = generatePerChannelShape(cfg.target, cfg);
             auto secondMultInput = ngraph::builder::makeConstant(cfg.type, secondMultInShape, std::vector<float>{}, true);
             return std::make_shared<ngraph::opset1::Divide>(cfg.input, secondMultInput);
         }, "Divide(PerChannel)"}}), {"Divide"}};
@@ -395,12 +414,12 @@ const auto fusingPRelu1DScaleShift = fusingSpecificParams{std::make_shared<postN
             return ngraph::builder::makeActivation(cfg.input, cfg.type, ngraph::helpers::LeakyRelu, newShape, data);
         }, "PRelu1D"},
         {[](postNodeConfig& cfg) {
-                ngraph::Shape newShape = generatePerChannelShape(cfg.input);
+                ngraph::Shape newShape = generatePerChannelShape(cfg.input, cfg);
                 auto constNode = ngraph::builder::makeConstant(cfg.type, newShape, std::vector<float>{}, true);
                 return std::make_shared<ngraph::opset1::Multiply>(cfg.input, constNode);
         }, "Multiply(PerChannel)"},
         {[](postNodeConfig& cfg) {
-                ngraph::Shape newShape = generatePerChannelShape(cfg.input);
+                ngraph::Shape newShape = generatePerChannelShape(cfg.input, cfg);
                 auto constNode = ngraph::builder::makeConstant(cfg.type, newShape, std::vector<float>{}, true);
                 return std::make_shared<ngraph::opset1::Add>(cfg.input, constNode);
         }, "Add(PerChannel)"}}), {"Add"} };

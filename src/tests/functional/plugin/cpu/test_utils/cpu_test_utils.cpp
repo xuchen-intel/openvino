@@ -285,8 +285,8 @@ CPUTestsBase::makeCPUInfo(const std::vector<cpu_memory_format_t>& inFmts,
 
 std::shared_ptr<ngraph::Function>
 CPUTestsBase::makeNgraphFunction(const ngraph::element::Type &ngPrc, ngraph::ParameterVector &params,
-                                 const std::shared_ptr<ngraph::Node> &lastNode, std::string name, ChannelAxis channelAxis) {
-   auto newLastNode = modifyGraph(ngPrc, params, lastNode, channelAxis);
+                                 const std::shared_ptr<ngraph::Node> &lastNode, std::string name) {
+   auto newLastNode = modifyGraph(ngPrc, params, lastNode);
    ngraph::ResultVector results;
 
    for (int i = 0; i < newLastNode->get_output_size(); i++)
@@ -296,8 +296,7 @@ CPUTestsBase::makeNgraphFunction(const ngraph::element::Type &ngPrc, ngraph::Par
 }
 
 std::shared_ptr<ngraph::Node>
-CPUTestsBase::modifyGraph(const ngraph::element::Type &ngPrc, ngraph::ParameterVector &params, const std::shared_ptr<ngraph::Node> &lastNode,
-                          ChannelAxis channelAxis) {
+CPUTestsBase::modifyGraph(const ngraph::element::Type &ngPrc, ngraph::ParameterVector &params, const std::shared_ptr<ngraph::Node> &lastNode) {
     lastNode->get_rt_info() = getCPUInfo();
     return lastNode;
 }

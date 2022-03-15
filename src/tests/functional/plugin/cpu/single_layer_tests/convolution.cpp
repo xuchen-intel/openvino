@@ -114,9 +114,8 @@ protected:
 
     std::shared_ptr<ngraph::Node> modifyGraph(const ngraph::element::Type &ngPrc,
                                               ngraph::ParameterVector &params,
-                                              const std::shared_ptr<ngraph::Node> &lastNode,
-                                              ChannelAxis channelAxis = CHANNEL_AXIS_ONE) override {
-        auto retNode = CpuTestWithFusing::modifyGraph(ngPrc, params, lastNode, channelAxis);
+                                              const std::shared_ptr<ngraph::Node> &lastNode) override {
+        auto retNode = CpuTestWithFusing::modifyGraph(ngPrc, params, lastNode);
         std::shared_ptr<ngraph::Node> opToShapeInfer = nullptr;
         for (auto& targetShapes : targetStaticShapes) {
             for (size_t i = targetShapes.size(); i < params.size(); ++i) {

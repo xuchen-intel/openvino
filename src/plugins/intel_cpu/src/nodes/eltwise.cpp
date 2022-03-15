@@ -2082,32 +2082,36 @@ void MKLDNNEltwiseNode::appendPostOpsImpl(mkldnn::post_ops& ops, const VectorDim
         default: IE_THROW() << errorPrefix << "as post operation is not supported";
         }
     } else {
-        const size_t chIdx = postOpDims.size() > 1 ? channelAxis : 0;
+        size_t channelSize = 1;
+        if (channelAxis >= 0) {
+            const size_t chIdx = postOpDims.size() > 1 ? channelAxis : 0;
+            channelSize = postOpDims[chIdx];
+        }
         // since legacy depthwise post ops mechanism requires broadcasted data we need to reinitilize it in case of changed shape
-        if (depthwiseData.empty() || depthwiseDataSize != 2 * postOpDims[chIdx]) {
+        if (depthwiseData.empty() || depthwiseDataSize != 2 * channelSize) {
             depthwiseData.clear();
             depthwiseMemory.reset();
 
             depthwiseData.insert(depthwiseData.end(), scales.begin(), scales.end());
             if (scales.size() == 1) {
-                depthwiseData.resize(postOpDims[chIdx], depthwiseData.back());
-            } else if (scales.size() != postOpDims[chIdx]) {
+                depthwiseData.resize(channelSize, depthwiseData.back());
+            } else if (scales.size() != channelSize) {
                 IE_THROW() << errorPrefix << "failed due to scales data size inconsistency";
             }
             depthwiseData.insert(depthwiseData.end(), shifts.begin(), shifts.end());
             if (shifts.empty()) {
                 // in case of Prelu algorithm scales data is always empty
-                depthwiseData.resize(2 * postOpDims[chIdx], 0);
+                depthwiseData.resize(2 * channelSize, 0);
             } else if (shifts.size() == 1) {
-                depthwiseData.resize(2 * postOpDims[chIdx], depthwiseData.back());
-            } else if (shifts.size() != postOpDims[chIdx]) {
+                depthwiseData.resize(2 * channelSize, depthwiseData.back());
+            } else if (shifts.size() != channelSize) {
                 IE_THROW() << errorPrefix << "failed due to shifts data size inconsistency";
             }
-            depthwiseDataSize = 2 * postOpDims[chIdx];
+            depthwiseDataSize = 2 * channelSize;
 
             // always align for legacy scale/shift post ops
             constexpr int bufferAlignment = 16;
-            int bufferPaddingSize = rnd_up(postOpDims[chIdx], bufferAlignment) - postOpDims[chIdx];
+            int bufferPaddingSize = rnd_up(channelSize, bufferAlignment) - channelSize;
             depthwiseData.resize(depthwiseDataSize + bufferPaddingSize, 0);
         }
 
@@ -2115,7 +2119,7 @@ void MKLDNNEltwiseNode::appendPostOpsImpl(mkldnn::post_ops& ops, const VectorDim
             IE_THROW() << errorPrefix << "cannot be performed since buffers are not allocated";
 
         std::array<size_t, 2> offsets = {0};
-        offsets[1] = offsets[0] + postOpDims[chIdx];
+        offsets[1] = offsets[0] + channelSize;
 
         /* @todo legacy depthwise post ops are kept for now
          * for performance reasons

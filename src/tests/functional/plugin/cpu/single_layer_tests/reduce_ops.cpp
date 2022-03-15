@@ -205,8 +205,8 @@ namespace {
 const std::vector<ElementType> inpOutPrc = {ElementType::f32};
 
 const std::vector<std::vector<int>> axes = {
-        {0},
-//        {1},
+//        {0},
+        {1},
 //        {2},
 //        {3}
 };

@@ -139,7 +139,8 @@ size_t getChannelAxis(const ov::AxisSet &axes) {
     size_t channelAxis = 1;
     for (auto &axis : axes) {
         if (axis == 1) {
-            channelAxis = -1; // channel axis has been reduced and doesn't exist any more
+            // channel axis has been reduced and doesn't exist any more
+            channelAxis = static_cast<size_t>(-1);
             break;
         } else if (axis == 0) {
             channelAxis = 0;

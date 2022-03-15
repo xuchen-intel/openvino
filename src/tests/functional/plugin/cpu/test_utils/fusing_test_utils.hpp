@@ -115,7 +115,8 @@ static ngraph::Shape generatePerChannelShape(const std::shared_ptr<ngraph::Node>
         IE_THROW() << "If shape.size() == 1 then Granularity can be PerTensor only";
     ngraph::Shape perChannelShape(shape.size(), 1);
     const auto channelAxis = getFusingAxis(cfg.target, cfg.channelAxis);
-    perChannelShape[channelAxis] = shape[channelAxis].get_length();
+    if (static_cast<int>(channelAxis) >= 0)
+        perChannelShape[channelAxis] = shape[channelAxis].get_length();
 
     return perChannelShape;
 }

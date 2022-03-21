@@ -201,7 +201,7 @@ TEST_P(ReduceCPULayerTest, CompareWithRefs) {
     CheckPluginRelatedResults(compiledModel, "Reduce");
 }
 namespace {
-#if 1
+#if 0
 const std::vector<ElementType> inpOutPrc = {ElementType::f32};
 
 const std::vector<std::vector<int>> axes = {
@@ -261,10 +261,10 @@ const std::vector<fusingSpecificParams> fusingParamsSet {
 //        fusingSwish,
 
 //        /* FQ */
-//        fusingFakeQuantizePerChannelRelu,
+        fusingFakeQuantizePerChannelRelu,
 //        fusingFakeQuantizePerTensorRelu,
         /* another patterns */
-        fusingScaleShift
+        //fusingScaleShift
 };
 
 /* ================================ 2.2 Fusion - KeepNoDims ================================ */
@@ -273,6 +273,7 @@ const auto params_OneAxis_fusing_KeepNoDims = testing::Combine(
             testing::ValuesIn(axes),
             testing::ValuesIn(opTypes),
             testing::Values(false),
+            //testing::Values(true),
             testing::ValuesIn(reductionTypesFusing),
             testing::ValuesIn(inpOutPrc),
             testing::Values(ElementType::undefined),

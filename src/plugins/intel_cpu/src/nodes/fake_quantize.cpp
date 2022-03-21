@@ -864,12 +864,14 @@ bool MKLDNNFakeQuantizeNode::isSupportedOperation(const std::shared_ptr<const ng
 
                 /* @todo
                  * Channel axis 2 is added for 3D MatMul (most common one).
+                 * not_unit_axis should be 0 if the first or second dim is reduced
+                 * for Reduce node when keep_dims is false.
                  * FQ for non-1 channel fallbacks to reference implementation.
                  * Expected to be fused for 3D MatMul
                  * Long term idea: restore limitation for channel axis 1 and
                  * support fusing of unfolded FQ (see FakeQuantizeDecomposition transformation)
                  */
-                if (count_not_unit_axis > 1 || !one_of(not_unit_axis, 1, 2)) {
+                if (count_not_unit_axis > 1 || !one_of(not_unit_axis, 0, 1, 2)) {
                     errorMessage = "Supports only per-tensor and per-channel quantizations";
                     return false;
                 }

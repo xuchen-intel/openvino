@@ -23,6 +23,7 @@ enum ReduceLayoutType {
 struct jit_reduce_config_params {
     ReduceLayoutType layout;
     Algorithm reduce_mode;
+    bool fuse_low_precision;
     dnnl::memory::data_type src_dt;
     dnnl::memory::data_type dst_dt;
     int src_data_size;
@@ -112,8 +113,8 @@ private:
     void reduce_BLK_concern_padding(const uint8_t *in_ptr, uint8_t *out_ptr);
     inline void reduce_kernel_process(const uint8_t *in_p, uint8_t *out_p, size_t work_amount,
                                       size_t reduce_w = 2, size_t work_batch = 1, const int *tab_idx = NULL);
-    inline void reduce_kernel_post_process(uint8_t *out_ptr);
-    inline void init_dst_data(uint8_t *out_ptr, size_t dst_size);
+    inline void reduce_kernel_post_process(const uint8_t *in_ptr, uint8_t *out_ptr);
+    inline void init_dst_data(uint8_t *out_ptr, InferenceEngine::Precision data_prec, size_t dst_size, size_t data_size);
     inline void create_working_memory();
     inline void create_DH_working_memory();
     inline void calc_process_dst_dims(std::vector<int> &reduce_axes, const InferenceEngine::SizeVector &dst_dim);
@@ -140,6 +141,7 @@ private:
     bool compile_post_kernel = true;
     bool apply_post_kernel = true;
     bool apply_division = false;
+    bool fuse_low_precision = false;
     bool support_split = false;
     bool ReduceDH_opt = false;
     bool ReduceN, ReduceC, ReduceD, ReduceH, ReduceW;
@@ -149,11 +151,12 @@ private:
     size_t src_data_size, dst_data_size, prc_data_size;
     size_t reduce_stride;
     ReduceLayoutType layout;
-    InferenceEngine::Precision input_prec, output_prec;
+    InferenceEngine::Precision input_prec, output_prec, intermediate_prec;
     InferenceEngine::SizeVector src_dims;
     InferenceEngine::SizeVector process_dst_dims;
     InferenceEngine::SizeVector axes_for_reduction;
     std::vector<int> raw_axes;
+    std::vector<uint8_t> intermediate_buf;
 
     jit_reduce_config_params jcp;
 

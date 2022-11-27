@@ -194,20 +194,20 @@ bool convert_precision(ov::pass::PassBase& pass,
             bool is_output_precision_changed = false;
 
             for (auto& node : ops) {
-                // Convert node should avoid converting the output element type from boolean to u8, if it connects to a
-                // Select node. Because the input element with small floating point value (e.g. 0.01) is converted to be
-                // 1 for boolean, but 0 for u8.
-                if (auto convert = std::dynamic_pointer_cast<opset4::Convert>(node)) {
-                    if (convert->get_output_size() == 1) {
-                        auto input = convert->output(0).get_target_inputs().begin();
-                        if (auto select =
-                                std::dynamic_pointer_cast<opset4::Select>(input->get_node()->shared_from_this())) {
-                            if (convert->get_element_type() == element::boolean) {
-                                continue;
-                            }
-                        }
-                    }
-                }
+                // // Convert node should avoid converting the output element type from boolean to u8, if it connects to a
+                // // Select node. Because the input element with small floating point value (e.g. 0.01) is converted to be
+                // // 1 for boolean, but 0 for u8.
+                // if (auto convert = std::dynamic_pointer_cast<opset4::Convert>(node)) {
+                //     if (convert->get_output_size() == 1) {
+                //         auto input = convert->output(0).get_target_inputs().begin();
+                //         if (auto select =
+                //                 std::dynamic_pointer_cast<opset4::Select>(input->get_node()->shared_from_this())) {
+                //             if (convert->get_element_type() == element::boolean) {
+                //                 continue;
+                //             }
+                //         }
+                //     }
+                // }
                 is_output_precision_changed |= convert_node_output_precision(node);
             }
 

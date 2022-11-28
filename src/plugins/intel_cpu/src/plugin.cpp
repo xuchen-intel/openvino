@@ -100,7 +100,6 @@
 #include <snippets/pass/collapse_subgraph.hpp>
 #include <snippets/pass/common_optimizations.hpp>
 #include <snippets/pass/convert_constants.hpp>
-#include <snippets/op/subgraph.hpp>
 
 #include <ngraph/opsets/opset1.hpp>
 #include <ngraph/opsets/opset2.hpp>
@@ -276,45 +275,15 @@ static bool is_integer(const element::Type &type) {
            type == ngraph::element::u1;
 }
 
-// static bool fuse_type_to_convert(const std::shared_ptr<ngraph::Node>& node, ov::element::Type to, size_t idx) {
-//     if (auto convert = ov::as_type_ptr<opset4::Convert>(node)) {
-//         if (is_floating_point(convert->input(0).get_element_type()) &&
-//             convert->get_convert_element_type() == ngraph::element::boolean && is_integer(to)) {
-//             auto abs = std::make_shared<opset4::Abs>(convert->input_value(0).get_node_shared_ptr());
-//             auto ceil = std::make_shared<opset4::Ceiling>(abs);
-//             auto new_convert = std::make_shared<opset4::Convert>(ceil, to);
-//             new_convert->set_friendly_name(convert->get_friendly_name());
-//             ngraph::copy_runtime_info(convert, {abs, ceil, new_convert});
-//             ngraph::replace_node(convert, new_convert);
-//             return true;
-//         } else {
-//             convert->set_convert_element_type(to);
-//             return true;
-//         }
-//     }
-//     return false;
-// }
 static bool fuse_type_to_convert(const std::shared_ptr<ngraph::Node>& node, ov::element::Type to, size_t idx) {
     if (auto convert = ov::as_type_ptr<opset4::Convert>(node)) {
         if (is_floating_point(convert->input(0).get_element_type()) &&
             convert->get_convert_element_type() == ngraph::element::boolean && is_integer(to)) {
-            auto parameter1 = std::make_shared<ngraph::opset1::Parameter>(convert->input(0).get_element_type(), convert->input(0).get_partial_shape());
-            parameter1->set_friendly_name("parameter1");
-            auto abs = std::make_shared<opset4::Abs>(parameter1);
-            abs->set_friendly_name("abs");
+            auto abs = std::make_shared<opset4::Abs>(convert->input_value(0).get_node_shared_ptr());
             auto ceil = std::make_shared<opset4::Ceiling>(abs);
-            ceil->set_friendly_name("ceil");
-            auto result = std::make_shared<ngraph::opset1::Result>(ceil);
-            result->set_friendly_name("result");
-            auto body = std::make_shared<ngraph::Function>(ngraph::ResultVector{result}, ngraph::ParameterVector{parameter1}, "AbsCeilSubgraphBody");
-
-            auto parameter = std::make_shared<ngraph::opset1::Parameter>(convert->input(0).get_element_type(), convert->input(0).get_partial_shape());
-            auto subgraph = std::make_shared<ngraph::snippets::op::Subgraph>(ngraph::OutputVector{parameter}, body);
-            subgraph->set_friendly_name("AbsCeilSubgraph");
-
-            auto new_convert = std::make_shared<opset4::Convert>(subgraph, to);
+            auto new_convert = std::make_shared<opset4::Convert>(ceil, to);
             new_convert->set_friendly_name(convert->get_friendly_name());
-            ngraph::copy_runtime_info(convert, {subgraph, new_convert});
+            ngraph::copy_runtime_info(convert, {abs, ceil, new_convert});
             ngraph::replace_node(convert, new_convert);
             return true;
         } else {

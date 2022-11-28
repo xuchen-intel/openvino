@@ -299,10 +299,14 @@ static bool fuse_type_to_convert(const std::shared_ptr<ngraph::Node>& node, ov::
         if (is_floating_point(convert->input(0).get_element_type()) &&
             convert->get_convert_element_type() == ngraph::element::boolean && is_integer(to)) {
             auto parameter1 = std::make_shared<ngraph::opset1::Parameter>(convert->input(0).get_element_type(), convert->input(0).get_partial_shape());
-            auto abs = std::make_shared<opset4::Abs>();
+            parameter1->set_friendly_name("parameter1");
+            auto abs = std::make_shared<opset4::Abs>(parameter1);
+            abs->set_friendly_name("abs");
             auto ceil = std::make_shared<opset4::Ceiling>(abs);
+            ceil->set_friendly_name("ceil");
             auto result = std::make_shared<ngraph::opset1::Result>(ceil);
-            auto body = std::make_shared<ngraph::Function>(ngraph::ResultVector{result}, ngraph::ParameterVector{parameter1});
+            result->set_friendly_name("result");
+            auto body = std::make_shared<ngraph::Function>(ngraph::ResultVector{result}, ngraph::ParameterVector{parameter1}, "AbsCeilSubgraphBody");
 
             auto parameter = std::make_shared<ngraph::opset1::Parameter>(convert->input(0).get_element_type(), convert->input(0).get_partial_shape());
             auto subgraph = std::make_shared<ngraph::snippets::op::Subgraph>(ngraph::OutputVector{parameter}, body);

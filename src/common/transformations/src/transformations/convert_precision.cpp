@@ -194,20 +194,6 @@ bool convert_precision(ov::pass::PassBase& pass,
             bool is_output_precision_changed = false;
 
             for (auto& node : ops) {
-                // // Convert node should avoid converting the output element type from boolean to u8, if it connects to a
-                // // Select node. Because the input element with small floating point value (e.g. 0.01) is converted to be
-                // // 1 for boolean, but 0 for u8.
-                // if (auto convert = std::dynamic_pointer_cast<opset4::Convert>(node)) {
-                //     if (convert->get_output_size() == 1) {
-                //         auto input = convert->output(0).get_target_inputs().begin();
-                //         if (auto select =
-                //                 std::dynamic_pointer_cast<opset4::Select>(input->get_node()->shared_from_this())) {
-                //             if (convert->get_element_type() == element::boolean) {
-                //                 continue;
-                //             }
-                //         }
-                //     }
-                // }
                 is_output_precision_changed |= convert_node_output_precision(node);
             }
 
@@ -304,7 +290,7 @@ bool ov::pass::ConvertPrecision::run_on_model(const std::shared_ptr<ngraph::Func
         {opset8::RandomUniform::get_type_info_static(), fuse_type_to_random_uniform_v8}};
 
     auto t2f_it = m_additional_type_to_fuse_map.find(opset4::Convert::get_type_info_static());
-    if (t2f_it == m_additional_type_to_fuse_map.end()) { 
+    if (t2f_it == m_additional_type_to_fuse_map.end()) {
         type_to_fuse.insert({opset4::Convert::get_type_info_static(), fuse_type_to_convert});
     }
 
@@ -372,38 +358,6 @@ bool fuse_type_to_parameter(const std::shared_ptr<ngraph::Node>& node, ov::eleme
     return false;
 }
 
-static bool is_floating_point(const element::Type &type) {
-    return type == ngraph::element::f32 || type == ngraph::element::bf16 ||
-           type == ngraph::element::f16 || type == ngraph::element::f64;
-}
-
-static bool is_integer(const element::Type &type) {
-    return type == ngraph::element::i32 || type == ngraph::element::u32 ||
-           type == ngraph::element::i16 || type == ngraph::element::u16 ||
-           type == ngraph::element::i8 || type == ngraph::element::u8 ||
-           type == ngraph::element::i4 || type == ngraph::element::u4 ||
-           type == ngraph::element::i64 || type == ngraph::element::u64 ||
-           type == ngraph::element::u1;
-}
-
-// bool fuse_type_to_convert(const std::shared_ptr<ngraph::Node>& node, ov::element::Type to, size_t idx) {
-//     if (auto convert = ov::as_type_ptr<opset4::Convert>(node)) {
-//         if (is_floating_point(convert->input(0).get_element_type()) &&
-//             convert->get_convert_element_type() == ngraph::element::boolean && is_integer(to)) {
-//             auto abs = std::make_shared<ov::opset9::Abs>(convert->input_value(0).get_node_shared_ptr());
-//             auto ceil = std::make_shared<ov::opset9::Ceiling>(abs);
-//             auto new_convert = std::make_shared<ov::opset4::Convert>(ceil, to);
-//             new_convert->set_friendly_name(convert->get_friendly_name());
-//             ngraph::copy_runtime_info(convert, {abs, ceil, new_convert});
-//             ngraph::replace_node(convert, new_convert);
-//             return true;
-//         } else {
-//             convert->set_convert_element_type(to);
-//             return true;
-//         }
-//     }
-//     return false;
-// }
 bool fuse_type_to_convert(const std::shared_ptr<ngraph::Node>& node, ov::element::Type to, size_t idx) {
     if (auto convert = ov::as_type_ptr<opset4::Convert>(node)) {
         convert->set_convert_element_type(to);

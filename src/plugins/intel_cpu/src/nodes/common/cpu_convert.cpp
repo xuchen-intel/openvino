@@ -296,24 +296,6 @@ struct ConvertPrecision<std::tuple<src_t, dst_t>> {
         src_t lbound, ubound;
         std::tie(lbound, ubound) = ctx.range<src_t>();
 
-        // // choose bool instead of uint8_t to be the value_type of Precision::BOOL
-        // if (ctx.dstPrc == Precision::BOOL) {
-        //     parallel_for(ctx.size, [&](size_t i) {
-        //         dst[i] = static_cast<bool>(std::max(std::min(src[i], ubound), lbound));
-        //     });
-        // } else {
-        //     if (std::is_integral<src_t>::value
-        //         || ctx.interimPrc.is_float()
-        //         || std::is_integral<dst_t>::value) {
-        //         parallel_for(ctx.size, [&](size_t i) {
-        //             dst[i] = static_cast<dst_t>(std::max(std::min(src[i], ubound), lbound));
-        //         });
-        //     } else {
-        //         parallel_for(ctx.size, [&](size_t i) {
-        //             dst[i] = static_cast<dst_t>(std::trunc(std::max(std::min(src[i], ubound), lbound)));
-        //         });
-        //     }
-        // }
         if (std::is_integral<src_t>::value
             || ctx.interimPrc.is_float()
             || std::is_integral<dst_t>::value) {

@@ -261,6 +261,39 @@ Engine::~Engine() {
     executorManager()->clear("CPUCallbackExecutor");
 }
 
+static bool is_floating_point(const element::Type &type) {
+    return type == ngraph::element::f32 || type == ngraph::element::bf16 ||
+           type == ngraph::element::f16 || type == ngraph::element::f64;
+}
+
+static bool is_integer(const element::Type &type) {
+    return type == ngraph::element::i32 || type == ngraph::element::u32 ||
+           type == ngraph::element::i16 || type == ngraph::element::u16 ||
+           type == ngraph::element::i8 || type == ngraph::element::u8 ||
+           type == ngraph::element::i4 || type == ngraph::element::u4 ||
+           type == ngraph::element::i64 || type == ngraph::element::u64 ||
+           type == ngraph::element::u1;
+}
+
+static bool fuse_type_to_convert(const std::shared_ptr<ngraph::Node>& node, ov::element::Type to, size_t idx) {
+    if (auto convert = ov::as_type_ptr<opset4::Convert>(node)) {
+        if (is_floating_point(convert->input(0).get_element_type()) &&
+            convert->get_convert_element_type() == ngraph::element::boolean && is_integer(to)) {
+            auto abs = std::make_shared<opset4::Abs>(convert->input_value(0).get_node_shared_ptr());
+            auto ceil = std::make_shared<opset4::Ceiling>(abs);
+            auto new_convert = std::make_shared<opset4::Convert>(ceil, to);
+            new_convert->set_friendly_name(convert->get_friendly_name());
+            ngraph::copy_runtime_info(convert, {abs, ceil, new_convert});
+            ngraph::replace_node(convert, new_convert);
+            return true;
+        } else {
+            convert->set_convert_element_type(to);
+            return true;
+        }
+    }
+    return false;
+}
+
 static void TransformationUpToCPUSpecificOpSet(std::shared_ptr<ngraph::Function> nGraphFunc, const bool _enableLPT, const bool _enableBF16,
                                                const bool _enableSnippets, const bool isLegacyApi) {
     ngraph::pass::Manager manager;
@@ -304,6 +337,7 @@ static void TransformationUpToCPUSpecificOpSet(std::shared_ptr<ngraph::Function>
     };
 
     static const auto precisions = get_convert_precisions();
+    type_to_fuse_map type_to_fuse_map = {{opset4::Convert::get_type_info_static(), fuse_type_to_convert}};
 
     manager.register_pass<ov::pass::AUGRUCellFusion>();
     manager.register_pass<ngraph::pass::CommonOptimizations>();
@@ -330,7 +364,7 @@ static void TransformationUpToCPUSpecificOpSet(std::shared_ptr<ngraph::Function>
         manager.register_pass<ngraph::pass::low_precision::ConvertSubtractConstant>(defaultPrecisions);
     }
     manager.register_pass<ngraph::pass::Validate>();
-    manager.register_pass<ngraph::pass::ConvertPrecision>(precisions);
+    manager.register_pass<ngraph::pass::ConvertPrecision>(precisions, type_to_fuse_map);
     manager.register_pass<ngraph::pass::EliminateConvert>();
     manager.register_pass<SwapConvertTranspose>();
     manager.register_pass<ConvertToInteraction>();

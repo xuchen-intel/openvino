@@ -368,10 +368,35 @@ bool fuse_type_to_parameter(const std::shared_ptr<ngraph::Node>& node, ov::eleme
     return false;
 }
 
+static bool is_floating_point(const element::Type &type) {
+    return type == ngraph::element::f32 || type == ngraph::element::bf16 ||
+           type == ngraph::element::f16 || type == ngraph::element::f64;
+}
+
+static bool is_integer(const element::Type &type) {
+    return type == ngraph::element::i32 || type == ngraph::element::u32 ||
+           type == ngraph::element::i16 || type == ngraph::element::u16 ||
+           type == ngraph::element::i8 || type == ngraph::element::u8 ||
+           type == ngraph::element::i4 || type == ngraph::element::u4 ||
+           type == ngraph::element::i64 || type == ngraph::element::u64 ||
+           type == ngraph::element::u1;
+}
+
 bool fuse_type_to_convert(const std::shared_ptr<ngraph::Node>& node, ov::element::Type to, size_t idx) {
     if (auto convert = ov::as_type_ptr<opset4::Convert>(node)) {
-        convert->set_convert_element_type(to);
-        return true;
+        if (is_floating_point(convert->input(0).get_element_type()) &&
+            convert->get_convert_element_type() == ngraph::element::boolean && is_integer(to)) {
+            auto abs = std::make_shared<ov::opset9::Abs>(convert->input_value(0).get_node_shared_ptr());
+            auto ceil = std::make_shared<ov::opset9::Ceiling>(abs);
+            auto new_convert = std::make_shared<ov::opset4::Convert>(ceil, to);
+            new_convert->set_friendly_name(convert->get_friendly_name());
+            ngraph::copy_runtime_info(convert, {abs, ceil, new_convert});
+            ngraph::replace_node(convert, new_convert);
+            return true;
+        } else {
+            convert->set_convert_element_type(to);
+            return true;
+        }
     }
     return false;
 }

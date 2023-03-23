@@ -192,7 +192,7 @@ void Graph::Replicate(const std::shared_ptr<const ov::Model> &subgraph) {
         graphNodes.push_back(outNode);
     }
 
-    if (getConfig().enforceBF16)
+    if (getConfig().inferencePrecision == ov::element::bf16)
         EnforceBF16();
 }
 
@@ -308,7 +308,7 @@ void Graph::Replicate(const CNNNetwork &network) {
         graphNodes.push_back(outNode);
     }
 
-    if (getConfig().enforceBF16)
+    if (getConfig().inferencePrecision == ov::element::bf16)
         EnforceBF16();
 
     auto hasSubgraphConsumers = [] (const NodePtr& node) -> bool {

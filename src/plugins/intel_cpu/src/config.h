@@ -9,6 +9,7 @@
 #include <ie/ie_common.h>
 #include <openvino/util/common_util.hpp>
 #include "utils/debug_caps_config.h"
+#include <openvino/core/type/element_type.hpp>
 
 #include <bitset>
 #include <string>
@@ -51,11 +52,11 @@ struct Config {
     InferenceEngine::PerfHintsConfig  perfHintsConfig;
 #if defined(OPENVINO_ARCH_X86) || defined(OPENVINO_ARCH_X86_64)
     LPTransformsMode lpTransformsMode = LPTransformsMode::On;
-    bool enforceBF16 = true;
+    ov::element::Type inferencePrecision = ov::element::bf16;
 #else
     // Currently INT8 mode is not optimized on ARM / RISCV or other non-x86 platforms, fallback to FP32 mode.
     LPTransformsMode lpTransformsMode = LPTransformsMode::Off;
-    bool enforceBF16 = false;
+    ov::element::Type inferencePrecision = ov::element::f32;
 #endif
 
     DenormalsOptMode denormalsOptMode = DenormalsOptMode::DO_Keep;

@@ -46,8 +46,16 @@ Config::Config() {
         }
     #endif
 
-    if (!dnnl::impl::cpu::x64::mayiuse(dnnl::impl::cpu::x64::avx512_core_bf16))
-        enforceBF16 = false;
+
+    if (dnnl::impl::cpu::x64::mayiuse(dnnl::impl::cpu::x64::avx512_core_bf16)) {
+        inferencePrecision = ov::element::bf16;
+    } else if (dnnl::impl::cpu::x64::mayiuse(dnnl::impl::cpu::x64::avx512_core_amx_fp16)) {
+        inferencePrecision = ov::element::f16;
+    } else if (dnnl::impl::cpu::x64::mayiuse(dnnl::impl::cpu::x64::avx512_core_fp16)) {
+        inferencePrecision = ov::element::f16;
+    } else {
+        inferencePrecision = ov::element::f32;
+    }
 
     CPU_DEBUG_CAP_ENABLE(applyDebugCapsProperties());
 
@@ -138,12 +146,12 @@ void Config::readProperties(const std::map<std::string, std::string> &prop) {
         } else if (key == PluginConfigParams::KEY_ENFORCE_BF16) {
             if (val == PluginConfigParams::YES) {
                 if (dnnl::impl::cpu::x64::mayiuse(dnnl::impl::cpu::x64::avx512_core)) {
-                    enforceBF16 = true;
+                    inferencePrecision = ov::element::bf16;
                 } else {
                     IE_THROW() << "Platform doesn't support BF16 format";
                 }
             } else if (val == PluginConfigParams::NO) {
-                enforceBF16 = false;
+                inferencePrecision = ov::element::f32;
             } else {
                 IE_THROW() << "Wrong value for property key " << PluginConfigParams::KEY_ENFORCE_BF16
                     << ". Expected only YES/NO";
@@ -156,15 +164,22 @@ void Config::readProperties(const std::map<std::string, std::string> &prop) {
         } else if (key == ov::inference_precision.name()) {
             if (val == "bf16") {
                 if (dnnl::impl::cpu::x64::mayiuse(dnnl::impl::cpu::x64::avx512_core)) {
-                    enforceBF16 = true;
+                    inferencePrecision = ov::element::bf16;
                 } else {
                     IE_THROW() << "Platform doesn't support BF16 format";
                 }
+            } else if (val == "f16") {
+                if (dnnl::impl::cpu::x64::mayiuse(dnnl::impl::cpu::x64::avx512_core_fp16)
+                    || dnnl::impl::cpu::x64::mayiuse(dnnl::impl::cpu::x64::avx512_core_amx_fp16)) {
+                    inferencePrecision = ov::element::f16;
+                } else {
+                    IE_THROW() << "Platform doesn't support FP16 format";
+                }
             } else if (val == "f32") {
-                enforceBF16 = false;
+                inferencePrecision = ov::element::f32;
             } else {
                 IE_THROW() << "Wrong value for property key " << ov::inference_precision.name()
-                    << ". Supported values: bf16, f32";
+                    << ". Supported values: bf16, f16, f32";
             }
         } else if (PluginConfigInternalParams::KEY_CPU_RUNTIME_CACHE_CAPACITY == key) {
             int val_i = -1;
@@ -254,7 +269,7 @@ void Config::updateProperties() {
     IE_SUPPRESS_DEPRECATED_START
         _config.insert({ PluginConfigParams::KEY_DUMP_EXEC_GRAPH_AS_DOT, dumpToDot });
     IE_SUPPRESS_DEPRECATED_END;
-    if (enforceBF16) {
+    if (inferencePrecision == ov::element::bf16) {
         _config.insert({ PluginConfigParams::KEY_ENFORCE_BF16, PluginConfigParams::YES });
     } else {
         _config.insert({ PluginConfigParams::KEY_ENFORCE_BF16, PluginConfigParams::NO });

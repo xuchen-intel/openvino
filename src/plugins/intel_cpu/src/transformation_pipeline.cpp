@@ -544,7 +544,7 @@ void Transformations::PostLpt() {
             // Vector madd BF16 instruction on SPR has reduced performance on HW level, which results in overall perf degradation
             size_t bf16Factor = 2;
             if (dnnl::impl::cpu::x64::mayiuse(dnnl::impl::cpu::x64::avx512_core_amx) &&
-                (n->get_input_element_type(0) == element::bf16 || (n->get_input_element_type(0) == element::f32 && enableBF16)) &&
+                (n->get_input_element_type(0) == element::bf16 || (n->get_input_element_type(0) == element::f32 && inferencePrecision == ov::element::bf16)) &&
                 (n->get_input_shape(0)[3] % bf16Factor != 0 || n->get_input_shape(1)[1] % bf16Factor != 0 || n->get_input_shape(3)[3] % bf16Factor != 0)) {
                 return true;
             }
@@ -553,7 +553,7 @@ void Transformations::PostLpt() {
         });
 
     // Float MHA is supported by snippets now
-    if (!enableBF16) {
+    if (inferencePrecision == ov::element::f32) {
         postLPTPassManager.get_pass_config()->disable<MHAFloatFusion>();
         postLPTPassManager.get_pass_config()->disable<MHAFloatFusion2>();
     }
@@ -571,11 +571,11 @@ void Transformations::MainSnippets(void) {
     ngraph::pass::Manager snippetsManager;
     snippetsManager.set_per_pass_validation(false);
     if (snippetsMode != Config::SnippetsMode::IgnoreCallback)
-        snippetsManager.register_pass<SnippetsMarkSkipped>(enableBF16);
+        snippetsManager.register_pass<SnippetsMarkSkipped>(inferencePrecision != ov::element::f32);
     snippetsManager.register_pass<ngraph::snippets::pass::SnippetsTokenization>();
 
     const bool isMHASupported =
-            !enableBF16 &&  // TODO: Need to add BF16 support for MHA in Snippets
+            (inferencePrecision == ov::element::f32) &&  // TODO: Need to add non-FP32 support for MHA in Snippets
             dnnl::impl::cpu::x64::mayiuse(dnnl::impl::cpu::x64::avx512_core);  // MHA has BRGEMM that is supported only on AVX512 platforms
     if (!isMHASupported) {
         snippetsManager.get_pass_config()->disable<ngraph::snippets::pass::TokenizeMHASnippets>();

@@ -502,11 +502,16 @@ void Convolution::getSupportedDescriptors() {
     memory::format_tag nCsp16c = ndims == 3 ? memory::format_tag::nCw16c : (ndims == 4 ? memory::format_tag::nChw16c : memory::format_tag::nCdhw16c);
 
     if (canBeExecutedInInt8()) {
-        DEBUG_LOG(getName(), "Creating I8 descriptor");
+        DEBUG_LOG(getName(), " Creating I8 descriptor");
         // initTryBrgconvFlag depends on outputDataType, should be after outputDataType computed
         if (!enforceBrgconv)
             initTryBrgconvFlag();
         SetPostOpsAndZeroPoints(attrs);
+
+        // so far oneDNN only support f32,s32,bf16 output types
+        if (outputDataType == memory::data_type::f16) {
+            outputDataType = memory::data_type::f32;
+        }
 
         in_candidate = std::make_shared<DnnlBlockedMemoryDesc>(getInputShapeAtPort(0), inputDataType, nspc);
         out_candidate = std::make_shared<DnnlBlockedMemoryDesc>(getOutputShapeAtPort(0), outputDataType, nspc);
@@ -902,8 +907,21 @@ void Convolution::createDescriptor(const std::vector<MemoryDescPtr>& inputDesc,
             const auto desc = createDescriptorInternal(getEngine(),
                                                        inDnnlDesc, weightDnnlDesc, biasDnnlDesc, outDnnlDesc, withBiases,
                                                        stride, dilation, paddingL, paddingR, alg, attr);
-            if (desc.get(true))
+            if (desc.get(true)) {
                 descs.emplace_back(desc);
+            } else {
+                DEBUG_LOG("createDescriptorInternal() failed for node `", getName(), "` ");
+                DEBUG_LOG(" src   :", inDnnlDesc);
+                DEBUG_LOG(" wei   :", weightDnnlDesc);
+                DEBUG_LOG(" bias  :", biasDnnlDesc);
+                DEBUG_LOG(" dst   :", outDnnlDesc);
+                DEBUG_LOG(" stride  :", printable(stride));
+                DEBUG_LOG(" dilation:", printable(dilation));
+                DEBUG_LOG(" paddingL:", printable(paddingL));
+                DEBUG_LOG(" paddingR:", printable(paddingR));
+                DEBUG_LOG(" alg  :", alg);
+                DEBUG_LOG(" attr :", attr);
+            }
         }
     }
 }

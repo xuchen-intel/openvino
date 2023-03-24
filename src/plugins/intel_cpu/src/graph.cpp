@@ -1574,6 +1574,8 @@ void Graph::EnforceInferencePrecision() {
         if (node->getType() != Type::Input && node->getType() != Type::Output) {
             if (node->getType() == Type::Subgraph && inferPrec == InferenceEngine::Precision::FP16)
                 continue;
+            if (node->getType() == Type::Reduce && inferPrec == InferenceEngine::Precision::FP16)
+                continue;
 
             DEBUG_LOG("#", node->getExecIndex(),
                       " ", node->getName(),

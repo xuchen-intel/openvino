@@ -311,8 +311,8 @@ void MatMul::getSupportedDescriptors() {
         firstInPortPrec = secondInPortPrec = getMaxPrecision(getOriginalInputPrecisions());
 
     // fallback to fp32 for any precision that cannot be handled natively
-    if ((!one_of(firstInPortPrec , Precision::U8, Precision::I8, Precision::BF16, Precision::FP32) ||
-         !one_of(secondInPortPrec , Precision::I8, Precision::BF16, Precision::FP32))) {
+    if ((!one_of(firstInPortPrec , Precision::U8, Precision::I8, Precision::BF16, Precision::FP16, Precision::FP32) ||
+         !one_of(secondInPortPrec , Precision::I8, Precision::BF16, Precision::FP16, Precision::FP32))) {
         outPortPrec = firstInPortPrec = secondInPortPrec = Precision::FP32;
     }
 

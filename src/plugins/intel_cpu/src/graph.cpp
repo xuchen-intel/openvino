@@ -1543,9 +1543,10 @@ void Graph::EnforceInferencePrecision() {
                 * because of performance gains */
                 if (one_of(parent->getType(),
                         Type::Convolution,    // conv nets
+                        Type::Deconvolution,  // deconv
                         Type::FullyConnected, // conv / bert nets
                         Type::MatMul,         // bert nets
-                        Type::ROIPooling))    // super resolution nets
+                        Type::Pooling))
                     continue;   // stop at significant nodes
             }
 
@@ -1572,9 +1573,14 @@ void Graph::EnforceInferencePrecision() {
             continue;
 
         if (node->getType() != Type::Input && node->getType() != Type::Output) {
-            if (node->getType() == Type::Subgraph && inferPrec == InferenceEngine::Precision::FP16)
-                continue;
-            if (node->getType() == Type::Reduce && inferPrec == InferenceEngine::Precision::FP16)
+            // FP16 is only implemented on limited types of node.
+            if (inferPrec == InferenceEngine::Precision::FP16 && !one_of(node->getType(),
+                                                                         Type::Reorder,
+                                                                         Type::Convolution,
+                                                                         Type::Deconvolution,
+                                                                         Type::FullyConnected,
+                                                                         Type::MatMul,
+                                                                         Type::Pooling))
                 continue;
 
             DEBUG_LOG("#", node->getExecIndex(),

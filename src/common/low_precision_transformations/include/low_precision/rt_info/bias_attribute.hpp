@@ -16,6 +16,6 @@ LP_TRANSFORMATIONS_API bool marked_as_bias(const std::shared_ptr<const Node>& no
 class LP_TRANSFORMATIONS_API BiasAttribute : public ov::RuntimeAttribute {
 public:
     OPENVINO_RTTI("LowPrecision::Bias", "", ov::RuntimeAttribute);
-    bool is_copyable() const override { return false; }
+    bool is_copyable(const std::shared_ptr<Node>& to) const override;
 };
 } // namespace ov

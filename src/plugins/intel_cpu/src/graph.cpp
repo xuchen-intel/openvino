@@ -1574,13 +1574,19 @@ void Graph::EnforceInferencePrecision() {
 
         if (node->getType() != Type::Input && node->getType() != Type::Output) {
             // FP16 is only implemented on limited types of node.
+            // TODO:
+            //     Eltwise : fused is supported, need to support standalone
+            //     Subgraph(snippets) needs to support load+cvt fp16 (jit_load_emitter/jit_store_emitter)
             if (inferPrec == InferenceEngine::Precision::FP16 && !one_of(node->getType(),
                                                                          Type::Reorder,
                                                                          Type::Convolution,
                                                                          Type::Deconvolution,
                                                                          Type::FullyConnected,
                                                                          Type::MatMul,
-                                                                         Type::Pooling))
+                                                                         Type::Pooling,
+                                                                         Type::Pad,
+                                                                         Type::Transpose,
+                                                                         Type::Eltwise))
                 continue;
 
             DEBUG_LOG("#", node->getExecIndex(),

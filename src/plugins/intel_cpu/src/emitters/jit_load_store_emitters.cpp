@@ -592,7 +592,8 @@ size_t jit_store_emitter::aux_vecs_count() const {
     // to avoid src vmm pollution after data type conversion
     if ((src_prc_.is_float() && !dst_prc_.is_float()) ||
         (!src_prc_.is_float() && dst_prc_.is_float()) ||
-        (src_prc_ == Precision::FP32 && dst_prc_ == Precision::BF16))
+        (src_prc_ == Precision::FP32 && dst_prc_ == Precision::BF16) ||
+        (src_prc_ == Precision::FP32 && dst_prc_ == Precision::FP16))
         count++;
 
     // for data swapping to avoid using Xmm(0) as I/O xmm for jit_uni_vcvtneps2bf16
@@ -645,7 +646,7 @@ void jit_store_emitter::emit_isa(const int in_vec_idx, const Xbyak::Reg64 &reg_d
     if (src_prc_ != dst_prc_) {
         switch (src_prc_) {
             case Precision::FP32:
-                if ((dst_prc_ != Precision::FP32) && (dst_prc_ != Precision::BF16)) {
+                if ((dst_prc_ != Precision::FP32) && (dst_prc_ != Precision::BF16) && (dst_prc_ != Precision::FP16)) {
                     if (is_saturation()) {
                         h->uni_vcvtps2dq(Vmm(aux_vec_idxs.back()), Vmm(data_idx));
                     } else {
@@ -655,7 +656,7 @@ void jit_store_emitter::emit_isa(const int in_vec_idx, const Xbyak::Reg64 &reg_d
                 }
                 break;
             case Precision::I32:
-                if ((dst_prc_ == Precision::FP32) || (dst_prc_ == Precision::BF16)) {
+                if ((dst_prc_ == Precision::FP32) || (dst_prc_ == Precision::BF16) || (dst_prc_ == Precision::FP16)) {
                     h->uni_vcvtdq2ps(Vmm(aux_vec_idxs.back()), Vmm(data_idx));
                     data_idx = aux_vec_idxs.back();
                 }
@@ -680,13 +681,10 @@ void jit_store_emitter::emit_isa(const int in_vec_idx, const Xbyak::Reg64 &reg_d
                 store_dword_to_byte_extension<Vmm>(Vmm(data_idx), reg_dst, offset, false, store_num_);
                 break;
             case Precision::I16:
-                store_dword_to_word_extension<Vmm>(Vmm(data_idx), reg_dst, offset, false, true, store_num_);
-                break;
             case Precision::U16:
-                store_dword_to_word_extension<Vmm>(Vmm(data_idx), reg_dst, offset, false, false, store_num_);
-                break;
             case Precision::BF16:
-                store_dword_to_word_extension<Vmm>(Vmm(data_idx), reg_dst, offset, true, false, store_num_);
+            case Precision::FP16:
+                store_dword_to_word_extension<Vmm>(Vmm(data_idx), reg_dst, offset, dst_prc_, store_num_);
                 break;
             default:
                 IE_THROW() << "Store emitter in " << name_ << " has unsupported dst precision to store.";
@@ -1005,7 +1003,12 @@ void jit_store_emitter::store_dword_to_byte_extension(const Vmm &vmm, const Xbya
 */
 template <typename Vmm>
 void jit_store_emitter::store_dword_to_word_extension(const Vmm &vmm, const Xbyak::Reg64 &reg,
-    int offset, bool is_bf16, bool is_signed, int store_num) const {
+    int offset, InferenceEngine::Precision precision, int store_num) const {
+
+    const bool is_bf16 = (precision == Precision::BF16);
+    const bool is_f16 = (precision == Precision::FP16);
+    const bool is_signed = (precision == Precision::I16);
+
     constexpr bool is_xmm = std::is_same<Vmm, Xbyak::Xmm>::value;
     constexpr bool is_ymm = std::is_same<Vmm, Xbyak::Ymm>::value;
     constexpr bool is_zmm = std::is_same<Vmm, Xbyak::Zmm>::value;
@@ -1095,6 +1098,24 @@ void jit_store_emitter::store_dword_to_word_extension(const Vmm &vmm, const Xbya
             }
 
             store_bytes(xmm, reg, offset, store_num * 2);
+        }
+    } else if (is_f16) {
+        if (!mayiuse(cpu::x64::avx512_core_fp16))
+            IE_THROW() << "Store emitter in " << name_ << " only support fp16 on platform with avx512_core_fp16.";
+        if (src_prc_ != Precision::FP32)
+            IE_THROW() << "Store emitter in " << name_ << " only support fp16 output from FP32.";
+
+        // to avoid src vmm pollution
+        if (src_prc_ == Precision::FP32) {
+            // since avx512, zmm(fp32) => ymm(fp16)
+            ymm = Ymm(aux_vec_idxs[0]);
+        } // in I32 case, zmm&ymm is already in aux reg
+
+        h->vcvtps2ph(ymm, zmm, 0x4);
+        if (store_num == 16) {
+            h->vmovdqu16(ptr[reg + offset], ymm);
+        } else {
+            store_bytes(ymm, reg, offset, store_num * 2);
         }
     } else {
         switch (store_num) {

@@ -145,7 +145,7 @@ private:
     void store_dword_to_byte_extension(const Vmm &vmm, const Xbyak::Reg64 &reg, int offset, bool is_signed, int store_size) const;
 
     template <typename Vmm>
-    void store_dword_to_word_extension(const Vmm &vmm, const Xbyak::Reg64 &reg, int offset, bool is_bf16, bool is_signed, int store_size) const;
+    void store_dword_to_word_extension(const Vmm &vmm, const Xbyak::Reg64 &reg, int offset, InferenceEngine::Precision precision, int store_size) const;
 
     void register_table_entries() override;
 

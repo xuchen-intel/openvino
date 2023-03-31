@@ -1496,6 +1496,9 @@ bool Graph::InsertNode(NodePtr parent, NodePtr child, NodePtr node, int parentPo
 
 // Set all non const data paths precision to BF16
 void Graph::EnforceInferencePrecision() {
+    CPU_DEBUG_CAP_ENABLE(static std::string F16SET = std::getenv("F16SET") ? std::getenv("F16SET") : "");
+    CPU_DEBUG_CAP_ENABLE(static int F16CNT = atoi(std::getenv("F16CNT") ? std::getenv("F16CNT") : "9999999"));
+    CPU_DEBUG_CAP_ENABLE(static int f16cnt = 0);
     auto inferPrec = InferenceEngine::Precision::FP32;
     switch (getConfig().inferencePrecision) {
     case ov::element::bf16:
@@ -1538,7 +1541,8 @@ void Graph::EnforceInferencePrecision() {
                         Type::Deconvolution,  // deconv
                         Type::FullyConnected, // conv / bert nets
                         Type::MatMul,         // bert nets
-                        Type::Pooling))
+                        Type::Pooling,
+                        Type::MVN))
                     continue;   // stop at significant nodes
             }
 
@@ -1568,6 +1572,17 @@ void Graph::EnforceInferencePrecision() {
             // FP16 is only implemented on limited types of node.
             // TODO:
             //     Eltwise : fused is supported, need to support standalone
+#ifdef CPU_DEBUG_CAPS
+            if (inferPrec == InferenceEngine::Precision::FP16 &&
+                F16SET.find(NameFromType(node->getType()) + ",") != std::string::npos) {
+                if (f16cnt < F16CNT) {
+                    std::cout << " f16cnt [" << f16cnt << "] : " << NameFromType(node->getType()) << " " << node->getName() << std::endl;
+                    f16cnt++;
+                } else {
+                    continue;
+                }
+            }
+#endif
             if (inferPrec == InferenceEngine::Precision::FP16 && !one_of(node->getType(),
                                                                          Type::Reorder,
                                                                          Type::Convolution,

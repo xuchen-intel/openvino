@@ -1579,7 +1579,8 @@ void Graph::EnforceInferencePrecision() {
                                                                          Type::Pad,
                                                                          Type::Transpose,
                                                                          Type::Eltwise,
-                                                                         Type::Subgraph))
+                                                                         Type::Subgraph,
+                                                                         Type::MVN))
                 continue;
 
             DEBUG_LOG("#", node->getExecIndex(),

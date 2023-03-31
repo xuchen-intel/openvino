@@ -119,13 +119,10 @@ void jit_load_emitter::emit_isa(const Xbyak::Reg64 &reg_src, const int out_vec_i
                 load_bytes_to_dword_extension<Vmm>(Vmm(out_vec_idx), reg_src, offset, false, load_size_);
                 break;
             case Precision::I16:
-                load_words_to_dword_extension<Vmm>(Vmm(out_vec_idx), reg_src, offset, false, true, load_size_);
-                break;
             case Precision::U16:
-                load_words_to_dword_extension<Vmm>(Vmm(out_vec_idx), reg_src, offset, false, false, load_size_);
-                break;
             case Precision::BF16:
-                load_words_to_dword_extension<Vmm>(Vmm(out_vec_idx), reg_src, offset, true, false, load_size_);
+            case Precision::FP16:
+                load_words_to_dword_extension<Vmm>(Vmm(out_vec_idx), reg_src, offset, src_prc_, load_size_);
                 break;
             default:
                 IE_THROW() << "Load emitter in " << name_ << " has unsupported src precision to load.";
@@ -136,11 +133,11 @@ void jit_load_emitter::emit_isa(const Xbyak::Reg64 &reg_src, const int out_vec_i
     if (src_prc_ != dst_prc_) {
         switch (dst_prc_) {
             case Precision::FP32:
-                if ((src_prc_ != Precision::FP32) && (src_prc_ != Precision::BF16))
+                if ((src_prc_ != Precision::FP32) && (src_prc_ != Precision::BF16) && (src_prc_ != Precision::FP16))
                     h->uni_vcvtdq2ps(Vmm(out_vec_idx), Vmm(out_vec_idx));
                 break;
             case Precision::I32:
-                if ((src_prc_ == Precision::FP32) || (src_prc_ == Precision::BF16)) {
+                if ((src_prc_ == Precision::FP32) || (src_prc_ == Precision::BF16) || (src_prc_ == Precision::FP16)) {
                     h->uni_vcvtps2dq(Vmm(out_vec_idx), Vmm(out_vec_idx));
                 }
                 break;
@@ -428,7 +425,7 @@ void jit_load_emitter::load_bytes_to_dword_extension(const Vmm &vmm, const Xbyak
 * [0.. 32] for ZMM version of the function. i.e. 16 words -> 16 * 32 bit == 512 bit
 */
 template <typename Vmm>
-void jit_load_emitter::load_words_to_dword_extension(const Vmm &vmm, const Xbyak::Reg64 &reg, int offset, bool is_bf16, bool is_signed, int load_size) const {
+void jit_load_emitter::load_words_to_dword_extension(const Vmm &vmm, const Xbyak::Reg64 &reg, int offset, InferenceEngine::Precision prc, int load_size) const {
     constexpr bool is_xmm = std::is_same<Vmm, Xbyak::Xmm>::value;
     constexpr bool is_ymm = std::is_same<Vmm, Xbyak::Ymm>::value;
     constexpr bool is_zmm = std::is_same<Vmm, Xbyak::Zmm>::value;
@@ -436,6 +433,13 @@ void jit_load_emitter::load_words_to_dword_extension(const Vmm &vmm, const Xbyak
     MAYBE_UNUSED(is_xmm);
     MAYBE_UNUSED(is_ymm);
     MAYBE_UNUSED(is_zmm);
+
+    bool is_bf16 = (prc == Precision::BF16);
+    bool is_f16 = (prc == Precision::FP16);
+    bool is_signed = (prc == Precision::I16);
+
+    if (is_f16 && !mayiuse(cpu::x64::avx512_core_fp16))
+        IE_THROW() << "Load emitter in " << name_ << " only support fp16 on platform with avx512_core_fp16.";
 
     // Ensure extended double words fit inside Zmm (32/2(num) * 32 <= 512)
     // For Ymm register, load capacity is halved (16/2(num) * 32 <= 128)
@@ -458,6 +462,8 @@ void jit_load_emitter::load_words_to_dword_extension(const Vmm &vmm, const Xbyak
             if (is_bf16) {
                 h->uni_vpmovzxwd(zmm, ptr[reg + offset]);
                 h->uni_vpslld(zmm, zmm, 16);
+            } else if (is_f16) {
+                h->vcvtph2ps(zmm, ptr[reg + offset]);
             } else {
                 if (is_signed)
                     h->uni_vpmovsxwd(zmm, ptr[reg + offset]);
@@ -470,6 +476,8 @@ void jit_load_emitter::load_words_to_dword_extension(const Vmm &vmm, const Xbyak
             if (is_bf16) {
                 h->uni_vpmovzxwd(ymm, ptr[reg + offset]);
                 h->uni_vpslld(ymm, ymm, 16);
+            } else if (is_f16) {
+                h->vcvtph2ps(ymm, ptr[reg + offset]);
             } else {
                 if (is_signed)
                     h->uni_vpmovsxwd(ymm, ptr[reg + offset]);
@@ -482,6 +490,8 @@ void jit_load_emitter::load_words_to_dword_extension(const Vmm &vmm, const Xbyak
             if (is_bf16) {
                 h->uni_vpmovzxwd(xmm, ptr[reg + offset]);
                 h->uni_vpslld(xmm, xmm, 16);
+            } else if (is_f16) {
+                h->vcvtph2ps(xmm, ptr[reg + offset]);
             } else {
                 if (is_signed)
                     h->uni_vpmovsxwd(xmm, ptr[reg + offset]);
@@ -499,6 +509,8 @@ void jit_load_emitter::load_words_to_dword_extension(const Vmm &vmm, const Xbyak
                 if (is_bf16) {
                     h->uni_vpmovzxwd(vmm | k_mask | T_z, ptr[reg + offset]);
                     h->uni_vpslld(vmm, vmm, 16);
+                } else if (is_f16) {
+                    h->vcvtph2ps(vmm | k_mask | T_z, ptr[reg + offset]);
                 } else {
                     if (is_signed)
                         h->uni_vpmovsxwd(vmm | k_mask | T_z, ptr[reg + offset]);
@@ -511,6 +523,8 @@ void jit_load_emitter::load_words_to_dword_extension(const Vmm &vmm, const Xbyak
                 if (is_bf16) {
                     h->uni_vpmovzxwd(vmm, xmm);
                     h->uni_vpslld(vmm, vmm, 16);
+                } else if (is_f16) {
+                    h->vcvtph2ps(vmm, xmm);
                 } else {
                     if (is_signed)
                         h->uni_vpmovsxwd(vmm, xmm);
@@ -1102,9 +1116,6 @@ void jit_store_emitter::store_dword_to_word_extension(const Vmm &vmm, const Xbya
     } else if (is_f16) {
         if (!mayiuse(cpu::x64::avx512_core_fp16))
             IE_THROW() << "Store emitter in " << name_ << " only support fp16 on platform with avx512_core_fp16.";
-        if (src_prc_ != Precision::FP32)
-            IE_THROW() << "Store emitter in " << name_ << " only support fp16 output from FP32.";
-
         // to avoid src vmm pollution
         if (src_prc_ == Precision::FP32) {
             // since avx512, zmm(fp32) => ymm(fp16)

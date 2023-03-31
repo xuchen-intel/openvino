@@ -61,6 +61,9 @@ namespace intel_cpu {
 GraphOptimizer::GraphOptimizer() {}
 
 void GraphOptimizer::ApplyCommonGraphOptimizations(Graph &graph) {
+    FuseConvMatmulFCDeconvAndDQScales(graph);
+    graph.RemoveDroppedNodes();
+
     OV_ITT_SCOPE_CHAIN(FIRST_INFERENCE, taskChain, itt::domains::intel_cpu_LT, "ApplyCommonGraphOptimizations", "FuseConvolutionAndBias");
     FuseConvolutionMatMulDeconvAndBias(graph);
     graph.RemoveDroppedNodes();
@@ -175,6 +178,85 @@ void GraphOptimizer::ApplyImplSpecificGraphOptimizations(Graph &graph) {
     graph.RemoveDroppedNodes();
 
     graph.RemoveDroppedEdges();
+}
+
+void GraphOptimizer::FuseConvMatmulFCDeconvAndDQScales(Graph &graph) {
+    auto& graphNodes = graph.GetNodes();
+
+    auto isSuitableMultiply = [](NodePtr node) {
+        if (node->getType() != Type::Eltwise || node->getAlgorithm() != Algorithm::EltwiseMultiply) {
+            return false;
+        }
+        auto parentNode = node->getParentEdgesAtPort(0)[0]->getParent();
+        auto scaleNode = node->getParentEdgesAtPort(1)[0]->getParent();
+        if (parentNode->getOriginalInputPrecisionAtPort(0) != Precision::U8 && parentNode->getOriginalInputPrecisionAtPort(0) != Precision::I8)
+            return false;
+        return ((parentNode->getType() == Type::Convolution
+                        || parentNode->getType() == Type::MatMul
+                        || parentNode->getType() == Type::Deconvolution
+                        || parentNode->getType() == Type::FullyConnected)
+                        && scaleNode->isConstant());
+    };
+
+    auto initializeDeQuantizedScales = [](NodePtr mul, NodePtr node, NodePtr scales) {
+        auto nodeType = node->getType();
+        if (nodeType != Type::Convolution
+                    && nodeType != Type::MatMul
+                    && nodeType != Type::Deconvolution
+                    && nodeType != Type::FullyConnected)
+            IE_THROW() << "Unexpected DQ scale init from node" << node->getName() << " , type: "<< NameFromType(nodeType);
+
+        const auto channelAxis = node->getFusingAxis();
+        auto OC = node->getOutputShapeAtPort(0).getDims()[channelAxis];
+        if (Shape::UNDEFINED_DIM == OC)
+            return false;
+        if (!node->getFusedWith().empty() || !scales->getFusedWith().empty())
+            return false;
+        if (node->getParentEdges().size() != 2)
+            return false;
+
+        auto scalesDims = scales->getOutputShapeAtPort(0).getDims();
+        if (scalesDims.size() > 1) {
+            if (scalesDims[0] != 1 || !dimsEqualStrong(scalesDims[1], OC))
+                return false;
+
+            for (size_t i = 2; i < scalesDims.size(); i++) {
+                if (scalesDims[i] != 1)
+                    return false;
+            }
+        }
+
+        auto scalesConstant = dynamic_cast<node::Input*>(scales.get());
+        if (scalesConstant == nullptr)
+            IE_THROW() << "Cannot cast to Input node";
+
+        auto scalesBlob = scalesConstant->getMemoryPtr();
+        if (scalesBlob == nullptr)
+            IE_THROW() << "Cannot cast to TBlob internal scales blob";
+
+        auto scalesData = static_cast<const float*>(scalesBlob->GetPtr());
+        if (scalesData == nullptr)
+            IE_THROW() << "scalesBlob has not allocated buffer";
+
+        auto scaleSize = std::accumulate(scalesDims.begin(), scalesDims.end(), 1, std::multiplies<size_t>());
+        node->initializeDQScales(scalesData, scaleSize);
+        return true;
+    };
+
+    for (size_t i = 0; i < graphNodes.size(); i++) {
+        auto mul = graphNodes[i];
+        if (!isSuitableMultiply(mul)) continue;
+
+        CPU_GRAPH_OPTIMIZER_SCOPE(FuseConvMatmulFCDeconvAndDQScales);
+
+        auto node = mul->getParentEdgesAtPort(0)[0]->getParent();
+        auto scales = mul->getParentEdgesAtPort(1)[0]->getParent();
+        if (initializeDeQuantizedScales(mul, node, scales)) {
+            auto p_edge = mul->getParentEdgesAtPort(1)[0];
+            graph.RemoveEdge(p_edge);
+            graph.DropNode(mul);
+        }
+    }
 }
 
 void GraphOptimizer::FuseConvolutionMatMulDeconvAndBias(Graph &graph) {

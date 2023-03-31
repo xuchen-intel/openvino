@@ -79,11 +79,13 @@
 
 // LPT transformations
 #include "transformations/low_precision/mark_dequantization_subgraph.hpp"
+#include "low_precision/add.hpp"
 #include "low_precision/convolution_backprop_data.hpp"
 #include "low_precision/convert_subtract_constant.hpp"
 #include "low_precision/network_helper.hpp"
 #include "low_precision/multiply_to_group_convolution.hpp"
 #include "low_precision/group_convolution.hpp"
+#include "low_precision/rt_info/bias_attribute.hpp"
 
 // CPU specific transformations
 #include "ngraph_transformations/convert_to_cpu_specific_opset.hpp"
@@ -358,23 +360,14 @@ void Transformations::PreLpt(const std::vector<ov::element::Type>& defaultPrecis
                 return node->input_value(0).get_partial_shape().rank().get_length() <= 5;
             });
 
-    if (!isLegacyApi) {
-        auto nmsCallback = [](const_node_ptr &node) -> bool {
-            for (size_t i = 0; i < node->get_output_size(); i++) {
-                const auto outputs = node->get_output_target_inputs(i);
-                for (const auto &out : outputs) {
-                    if (!ov::op::util::is_output(out.get_node())) {
-                        return false;
-                    }
-                }
-            }
-            return true;
-        };
-
-        pass_config->set_callback<ov::pass::ConvertNMS9ToNMSIEInternal>(nmsCallback);
-        pass_config->set_callback<ov::pass::ConvertMulticlassNmsToMulticlassNmsIE>(nmsCallback);
-        pass_config->set_callback<ov::pass::ConvertMatrixNmsToMatrixNmsIE>(nmsCallback);
-    }
+    // NMS-alike nodes are always transformed to NMSIEInternal node in case of legacy api, for compatibility.
+    // And on the other hand in case of api 2.0, keep them internal dynamic for better performance and functionality.
+    auto nmsCallback = [isLegacyApi](const_node_ptr &node) -> bool {
+        return isLegacyApi ?  false : true;
+    };
+    pass_config->set_callback<ov::pass::ConvertNMS9ToNMSIEInternal>(nmsCallback);
+    pass_config->set_callback<ov::pass::ConvertMulticlassNmsToMulticlassNmsIE>(nmsCallback);
+    pass_config->set_callback<ov::pass::ConvertMatrixNmsToMatrixNmsIE>(nmsCallback);
 
     // List of enabled/disabled transformations
 
@@ -501,6 +494,10 @@ void Transformations::Lpt(const bool hasINT16orINT32Levels, const std::vector<ov
         [&defaultPrecisions](const_node_ptr& node) -> bool {
             return LayerTransformation::isAsymmetricQuantization(node, defaultPrecisions) ||
                 WeightableLayerTransformation::isAsymmetricOnWeights(node, defaultPrecisions);
+        });
+    lptManager.get_pass_config()->set_callback<ngraph::pass::low_precision::AddTransformation>(
+        [](const_node_ptr& node) -> bool {
+            return ov::marked_as_bias(node);
         });
 
     lptManager.get_pass_config()->disable<ngraph::pass::low_precision::MultiplyToGroupConvolutionTransformation>();

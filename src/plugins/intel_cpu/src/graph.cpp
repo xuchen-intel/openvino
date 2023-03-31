@@ -434,7 +434,6 @@ void Graph::InitDescriptors() {
             if (inputNode)
                 inputNode->withMeanImage();
         }
-
         OV_ITT_SCOPE_NEXT(FIRST_INFERENCE, taskChain, node->profiling.getSupportedDescriptors);
         DEBUG_LOG("Get supported primitive descriptors for node: ", node->getName());
         node->getSupportedDescriptors();
@@ -881,13 +880,6 @@ void Graph::CreatePrimitives() {
         OV_ITT_SCOPE(FIRST_INFERENCE, itt::domains::intel_cpu_LT, node->profiling.createPrimitive);
         DEBUG_LOG(*node);
         node->createPrimitive();
-#ifdef CPU_DEBUG_CAPS
-        if (node->prim) {
-            auto pd_c = node->prim.get_primitive_desc();
-            auto* pd = reinterpret_cast<const dnnl_primitive_desc*>(pd_c);
-            DEBUG_LOG("verbose##", node->getName(), "##", pd->info(), "\n");
-        }
-#endif
     }
 }
 

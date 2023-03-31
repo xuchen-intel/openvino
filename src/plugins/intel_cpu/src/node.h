@@ -104,6 +104,11 @@ public:
     Node & operator = (const Node &) = delete;
 
     using AttrPtr = std::shared_ptr<dnnl::primitive_attr>;
+    enum class scalesType {
+        None,
+        PerTensor,
+        PerChannel
+    };
 
 public:
     template<typename T, int N>
@@ -334,7 +339,7 @@ public:
 
     void resolveInPlaceEdges();
 
-    virtual void execute(dnnl::stream strm);
+    virtual void execute(dnnl::stream strm) = 0;
     void updateShapes();
     void updateDynamicParams();
     void executeDynamic(dnnl::stream strm);
@@ -513,6 +518,14 @@ public:
     */
     std::pair<std::vector<float>, std::vector<float>> getScalesAndShifts(const Node *parentNode) const;
 
+    void initializeDQScales(const float* scaleData, const size_t scaleSize);
+    const std::vector<float>& getDQScales() const {
+        return DQScales;
+    }
+    const scalesType& getDQScaleType() const {
+        return DQScalesType;
+    }
+
     /**
      * @brief Appends new item into ops list with the information on how the node should be executed as post operation.
      * Seed node should call this routine and pass its post operations list as parameter.
@@ -578,7 +591,6 @@ protected:
     std::vector<NodeDesc> supportedPrimitiveDescriptors;
     std::unordered_map<int, dnnl::memory> primArgs;
     std::unordered_map<int, MemoryPtr> postOpsArgs;
-    dnnl::primitive prim;
     std::vector<dnnl::primitive_desc> descs;
 
     const GraphContext::CPtr context;
@@ -649,9 +661,10 @@ protected:
         IE_THROW(NotImplemented) << "[DS] prapareParams not implemented for node with type " << NameFromType(getType());
     }
 
-    MemoryPtr getScratchPadMem(const const_dnnl_primitive_desc_t& pd) {
-        auto scratchpadMemoryDesc = DnnlExtensionUtils::query_md(pd, dnnl::query::scratchpad_md);
-        scratchpadMem = context->getScratchPad()->createScratchPadMem(scratchpadMemoryDesc);
+    MemoryPtr getScratchPadMem(const DnnlMemoryDescPtr& desc) {
+        if (!scratchpadMem || !scratchpadMem->getDesc().isCompatible(*desc)) {
+            scratchpadMem = context->getScratchPad()->createScratchPadMem(desc);
+        }
         return scratchpadMem;
     }
 
@@ -686,6 +699,9 @@ private:
 
     enum LOOK { LOOK_UP = 1, LOOK_DOWN = 2 };
     ConstantType checkConstant(LOOK look, std::vector<NodePtr>& checkNodes);
+    // Hold output scales
+    std::vector<float> DQScales;
+    scalesType DQScalesType = scalesType::None;
 
 #ifdef CPU_DEBUG_CAPS
     friend class Verbose;

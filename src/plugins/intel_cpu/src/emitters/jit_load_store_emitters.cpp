@@ -524,7 +524,7 @@ void jit_load_emitter::load_words_to_dword_extension(const Vmm &vmm, const Xbyak
                     h->uni_vpmovzxwd(vmm, xmm);
                     h->uni_vpslld(vmm, vmm, 16);
                 } else if (is_f16) {
-                    h->vcvtph2ps(vmm, xmm);
+                    h->vcvtph2ps(ymm, xmm);
                 } else {
                     if (is_signed)
                         h->uni_vpmovsxwd(vmm, xmm);

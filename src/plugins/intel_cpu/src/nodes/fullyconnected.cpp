@@ -256,6 +256,10 @@ void FullyConnected::getSupportedDescriptors() {
             // weight has to be s8 for INT8 mode, otherwise fallback to
             // f32 mode
             inputDataType = outputDataType = memory::data_type::f32;
+        } else if (one_of(outputDataType, memory::data_type::f16)) {
+            // INT8 inner-product only supports u8/s8/s32/f32/bf16,
+            // other precision needs fallback to f32
+            outputDataType = memory::data_type::f32;
         }
     } else {
         // s32/u32/... unsupported input data types, fallback to f32

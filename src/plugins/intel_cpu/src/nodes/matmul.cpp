@@ -328,6 +328,10 @@ void MatMul::getSupportedDescriptors() {
     if (canBeExecutedInInt8(firstInPortPrec, secondInPortPrec)) {
         // INT8 mode support wide range of output precisions
         outPortPrec = postOpsPrec;
+        // INT8 matmul do not support fp16 output
+        if (outPortPrec == Precision::FP16) {
+            outPortPrec = Precision::FP32;
+        }
     } else if (postOpsPrec == Precision::FP32) {
         // all non-INT8 modes support fp32 output precision
         outPortPrec = postOpsPrec;

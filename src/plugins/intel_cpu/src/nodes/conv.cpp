@@ -512,7 +512,7 @@ void Convolution::getSupportedDescriptors() {
             initTryBrgconvFlag();
         SetPostOpsAndZeroPoints(attrs);
 
-        // so far oneDNN only support f32,s32,bf16 output types
+        // so far oneDNN INT8 convolution only support s8,u8,s32,f32,bf16 output types
         if (outputDataType == memory::data_type::f16) {
             outputDataType = memory::data_type::f32;
         }

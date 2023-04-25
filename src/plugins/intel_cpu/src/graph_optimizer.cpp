@@ -12,6 +12,7 @@
 #include "nodes/reorder.h"
 #include "nodes/conv.h"
 #include "nodes/deconv.h"
+#include "nodes/fullyconnected.h"
 #include "nodes/bin_conv.h"
 #include "nodes/fake_quantize.h"
 #include "nodes/mvn.h"
@@ -27,6 +28,7 @@
 #include <blob_factory.hpp>
 #include "utils/general_utils.h"
 #include "utils/cpu_utils.hpp"
+#include "utils/debug_capabilities.h"
 
 #include <ngraph/opsets/opset1.hpp>
 #include <ie_ngraph_utils.hpp>
@@ -183,53 +185,67 @@ void GraphOptimizer::ApplyImplSpecificGraphOptimizations(Graph &graph) {
 void GraphOptimizer::FuseConvMatmulFCDeconvAndDQScales(Graph &graph) {
     auto& graphNodes = graph.GetNodes();
 
-    auto isSuitableMultiply = [](NodePtr node) {
+    auto isDQScaleGraphPattern = [](NodePtr node) {
         if (node->getType() != Type::Eltwise || node->getAlgorithm() != Algorithm::EltwiseMultiply) {
             return false;
         }
         auto parentNode = node->getParentEdgesAtPort(0)[0]->getParent();
         auto scaleNode = node->getParentEdgesAtPort(1)[0]->getParent();
+        if (!(parentNode->getType() == Type::Convolution
+                        || parentNode->getType() == Type::MatMul
+                        || parentNode->getType() == Type::Deconvolution
+                        || parentNode->getType() == Type::FullyConnected))
+            return false;
+        if (!scaleNode->isConstant())
+            return false;
+        //Only Fusing scales for INT8 precision.
         if (parentNode->getOriginalInputPrecisionAtPort(0) != Precision::U8 && parentNode->getOriginalInputPrecisionAtPort(0) != Precision::I8)
             return false;
+        if (parentNode->getOriginalInputPrecisionAtPort(1) != Precision::I8)
+            return false;
+
         //Deconv has some heuristic limitation to use INT8 besides input precision.
         auto deconv = std::dynamic_pointer_cast<Deconvolution>(parentNode);
         if (deconv && !deconv->canBeExecutedInInt8())
             return false;
-        return ((parentNode->getType() == Type::Convolution
-                        || parentNode->getType() == Type::MatMul
-                        || parentNode->getType() == Type::Deconvolution
-                        || parentNode->getType() == Type::FullyConnected)
-                        && scaleNode->isConstant());
+        // FC bias has been fused into FC in transformation phase.
+        // todo: Move the FC fusing bias into graph optimizer.
+        const auto parentNodeInputEdges = parentNode->getParentEdges().size();
+
+        if (parentNodeInputEdges != 2) {
+            auto fcNode = std::dynamic_pointer_cast<FullyConnected>(parentNode);
+            if (!(parentNodeInputEdges == 3 && fcNode && fcNode->withBiasFused()))
+                return false;
+        }
+        return true;
     };
 
-    auto initializeDeQuantizedScales = [](NodePtr mul, NodePtr node, NodePtr scales) {
-        auto nodeType = node->getType();
-        if (nodeType != Type::Convolution
-                    && nodeType != Type::MatMul
-                    && nodeType != Type::Deconvolution
-                    && nodeType != Type::FullyConnected)
-            IE_THROW() << "Unexpected DQ scale init from node" << node->getName() << " , type: "<< NameFromType(nodeType);
-
+    auto scaleDimsCheck = [](NodePtr node, NodePtr scales) {
+        const auto nodeOutDims = node->getOutputShapeAtPort(0).getDims();
         const auto channelAxis = node->getFusingAxis();
-        auto OC = node->getOutputShapeAtPort(0).getDims()[channelAxis];
+        auto OC = nodeOutDims[channelAxis];
+
         if (Shape::UNDEFINED_DIM == OC)
             return false;
         if (!node->getFusedWith().empty() || !scales->getFusedWith().empty())
             return false;
-        if (node->getParentEdges().size() != 2)
+
+        const auto scalesDims = getNormalizedDimsBySize(scales->getOutputShapeAtPort(0).getDims(),
+                                                nodeOutDims.size());
+        if (nodeOutDims.size() != scalesDims.size() || scalesDims.size() < 2)
             return false;
 
-        auto scalesDims = scales->getOutputShapeAtPort(0).getDims();
-        if (scalesDims.size() > 1) {
-            if (scalesDims[0] != 1 || !dimsEqualStrong(scalesDims[1], OC))
+        if (!dimsEqualStrong(scalesDims[channelAxis], nodeOutDims[channelAxis]) && scalesDims[channelAxis] != 1)
+            return false;
+
+        for (size_t i = 0; i < scalesDims.size(); i++) {
+            if (scalesDims[i] != 1 && static_cast<int>(i) != channelAxis)
                 return false;
-
-            for (size_t i = 2; i < scalesDims.size(); i++) {
-                if (scalesDims[i] != 1)
-                    return false;
-            }
         }
+        return true;
+    };
 
+    auto initializeDeQuantizedScales = [](NodePtr node, NodePtr scales) {
         auto scalesConstant = dynamic_cast<node::Input*>(scales.get());
         if (scalesConstant == nullptr)
             IE_THROW() << "Cannot cast to Input node";
@@ -241,7 +257,8 @@ void GraphOptimizer::FuseConvMatmulFCDeconvAndDQScales(Graph &graph) {
         auto scalesData = static_cast<const float*>(scalesBlob->GetPtr());
         if (scalesData == nullptr)
             IE_THROW() << "scalesBlob has not allocated buffer";
-
+        auto scalesDims = getNormalizedDimsBySize(scales->getOutputShapeAtPort(0).getDims(),
+                                                node->getOutputShapeAtPort(0).getDims().size());
         auto scaleSize = std::accumulate(scalesDims.begin(), scalesDims.end(), 1, std::multiplies<size_t>());
         node->initializeDQScales(scalesData, scaleSize);
         return true;
@@ -249,13 +266,30 @@ void GraphOptimizer::FuseConvMatmulFCDeconvAndDQScales(Graph &graph) {
 
     for (size_t i = 0; i < graphNodes.size(); i++) {
         auto mul = graphNodes[i];
-        if (!isSuitableMultiply(mul)) continue;
+        if (!isDQScaleGraphPattern(mul)) continue;
 
         CPU_GRAPH_OPTIMIZER_SCOPE(FuseConvMatmulFCDeconvAndDQScales);
 
         auto node = mul->getParentEdgesAtPort(0)[0]->getParent();
         auto scales = mul->getParentEdgesAtPort(1)[0]->getParent();
-        if (initializeDeQuantizedScales(mul, node, scales)) {
+        if (!scaleDimsCheck(node, scales)) {
+            auto fcNode = std::dynamic_pointer_cast<FullyConnected>(node);
+            if (fcNode && fcNode->withBiasFused()) {
+                // For int8 FC, BIAS has been fused into FC during ngraph transformation. DQ fusing check fails here.
+                // Sliently exit here would cause accuracy issue, because this multiply would be append after BIAS.
+                // It is a bug. Assert to give more debugging information.
+                // todo: Remove this by moving the fullyconnect_bias fusing into graph optimizer from ngraph transformation.
+                DEBUG_LOG("BUG in  scaleDimsCheck##", scales->getName(), " into FullyConnect ##", node->getName(),
+                            "Fusing axis: ", node->getFusingAxis());
+                DEBUG_LOG(*node);
+                DEBUG_LOG(*scales);
+                IE_THROW() << "BUG: IN8 FC bias fused, DQ scale can not fused in " << node->getName() << std::endl;
+            }
+            continue;
+        }
+
+        if (initializeDeQuantizedScales(node, scales)) {
+            node->addOriginalLayer(mul->getOriginalLayers());
             auto p_edge = mul->getParentEdgesAtPort(1)[0];
             graph.RemoveEdge(p_edge);
             graph.DropNode(mul);
@@ -1074,21 +1108,7 @@ void GraphOptimizer::FuseConvolutionAndSimpleOperationThroughMaxPool(Graph &grap
             continue;
         }
 
-        if (!one_of(fuseCandidate->getAlgorithm(), Algorithm::EltwiseRelu,
-                                                   Algorithm::EltwiseGelu,
-                                                   Algorithm::EltwiseElu,
-                                                   Algorithm::EltwiseSigmoid,
-                                                   Algorithm::EltwiseClamp,
-                                                   Algorithm::EltwiseTanh,
-                                                   Algorithm::EltwiseSwish,
-                                                   Algorithm::EltwiseHswish,
-                                                   Algorithm::EltwiseMish,
-                                                   Algorithm::EltwiseHsigmoid,
-                                                   Algorithm::EltwiseRoundHalfToEven,
-                                                   Algorithm::EltwiseRoundHalfAwayFromZero,
-                                                   Algorithm::EltwiseAbs,
-                                                   Algorithm::EltwiseSqrt,
-                                                   Algorithm::EltwiseSoftRelu)) {
+        if (!DnnlExtensionUtils::isUnarySupportedAsPostOp(fuseCandidate->getAlgorithm())) {
             parent++;
             continue;
         }
@@ -1261,17 +1281,7 @@ void GraphOptimizer::FuseConvolutionSumAndConvolutionSumActivation(Graph &graph)
 
     auto isFusingSupported = [&](NodePtr conv, NodePtr child) {
         return child->getType() == Type::Eltwise &&
-                one_of(child->getAlgorithm(), Algorithm::EltwiseRelu,
-                                              Algorithm::EltwiseElu,
-                                              Algorithm::EltwiseSigmoid,
-                                              Algorithm::EltwiseClamp,
-                                              Algorithm::EltwiseSwish,
-                                              Algorithm::EltwiseHswish,
-                                              Algorithm::EltwiseMish,
-                                              Algorithm::EltwiseHsigmoid,
-                                              Algorithm::EltwiseRoundHalfToEven,
-                                              Algorithm::EltwiseRoundHalfAwayFromZero,
-                                              Algorithm::EltwiseSoftRelu);
+            DnnlExtensionUtils::isUnarySupportedAsPostOp(child->getAlgorithm());
     };
 
     for (auto &graphNode : graphNodes) {

@@ -73,8 +73,6 @@ public:
 
     bool isWinograd() const { return isWino; }
 
-    void setDynamicBatchLim(int lim) override;
-
 protected:
     InferenceEngine::Precision fusedEltwisePrecision(const NodePtr& fusingNode) const;
     void redefineOutputMemory(const std::vector<VectorDims> &newOutputShapes) override;
@@ -87,11 +85,6 @@ private:
         PerTensor,
         PerChannel
     };
-    // enum class scalesType {
-    //     None,
-    //     PerTensor,
-    //     PerChannel
-    // };
     class FusedSubgraph;
     using FusedSubgraphPtr = std::shared_ptr<FusedSubgraph>;
     using executorPtr = std::shared_ptr<DnnlExecutor>;
@@ -106,7 +99,6 @@ private:
                                 const dnnl::engine& engine,
                                 bool constWeight);
     };
-    bool pendingConstWeightReorder = false;
 
     void prepareParams() override;
     void execute(dnnl::stream strm) override;
@@ -183,6 +175,13 @@ private:
     MemoryPtr outScaleMemPtr;
     dnnl::memory::data_type outputDataType;
     InferenceEngine::Precision sumPrc = InferenceEngine::Precision::UNSPECIFIED;
+
+    // TODO: migrate on convolution_auto algorithm for x64
+#if defined(OPENVINO_ARCH_X86_64)
+    const dnnl::algorithm baseConvAlgorithm = dnnl::algorithm::convolution_direct;
+#else
+    const dnnl::algorithm baseConvAlgorithm = dnnl::algorithm::convolution_auto;
+#endif
 };
 
 }   // namespace node

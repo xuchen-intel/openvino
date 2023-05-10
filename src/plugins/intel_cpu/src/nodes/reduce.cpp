@@ -1803,9 +1803,9 @@ void Reduce::initSupportedPrimitiveDescriptors() {
     jit_mode = canApplyJIT(input_prec, output_prec);
 
     if (jit_mode) {
-        // Since in jit mode we use the output memory as an intermediate accumulator for certain reduce modes, we can't use BF16 output precision due to
+        // Since in jit mode we use the output memory as an intermediate accumulator for certain reduce modes, we can't use BF16/FP16 output precision due to
         // the possible accuracy loss. Therefore, for such mods, we will change the output precision to FP32.
-        if (Precision::BF16 == output_prec) {
+        if (Precision::BF16 == output_prec || Precision::FP16 == output_prec) {
             if (!mayiuse(avx512_core)) {
                     output_prec = Precision::FP32;
             } else if (algorithm != Algorithm::ReduceAnd && algorithm != Algorithm::ReduceOr &&
@@ -2964,6 +2964,7 @@ std::vector<int> Reduce::update_src_dims() {
 bool Reduce::canApplyJIT(const Precision &input_prec, const Precision &output_prec) const {
     static const Precision supportedPrecisions[] = {
             Precision::FP32,
+            Precision::FP16,
             Precision::BF16,
             Precision::I32,
             Precision::I8,

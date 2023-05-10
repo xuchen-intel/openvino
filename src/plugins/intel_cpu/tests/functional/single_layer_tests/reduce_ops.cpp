@@ -215,6 +215,7 @@ const std::vector<ElementType> inpOutPrc = {ElementType::f32};
 std::vector<std::map<std::string, ov::element::Type>> additionalConfig = {
     {{ov::hint::inference_precision.name(), ov::element::f32}},
     {{ov::hint::inference_precision.name(), ov::element::bf16}},
+    {{ov::hint::inference_precision.name(), ov::element::f16}},
 };
 
 const std::vector<bool> keepDims = {

@@ -185,6 +185,11 @@ protected:
                     for (size_t i = 0; i < tensor.get_size(); ++i) {
                         rawBlobDataPtr[i] /= 10.f;
                     }
+                } else if (netPrecision == ElementType::f16) {
+                    auto *rawBlobDataPtr = static_cast<ngraph::float16 *>(tensor.data());
+                    for (size_t i = 0; i < tensor.get_size(); ++i) {
+                        rawBlobDataPtr[i] /= 10.f;
+                    }
                 }
             } else {
                 tensor = ov::test::utils::create_and_fill_tensor(funcInput.get_element_type(), targetInputStaticShapes[i]);

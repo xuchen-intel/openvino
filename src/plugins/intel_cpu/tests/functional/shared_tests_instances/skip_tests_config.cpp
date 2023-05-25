@@ -74,7 +74,7 @@ std::vector<std::string> disabledTestPatterns() {
         R"(.*OVCompiledModelBaseTest.*(CanGetInputsInfoAndCheck|canSetConfigToCompiledModel).*)",
         R"(.*Behavior.*CorrectConfigCheck.*(canSetConfigAndCheckGetConfig|canSetConfigTwiceAndCheckGetConfig).*CPU_BIND_THREAD=YES.*)",
         // Issue: 72021 Unreasonable abs_threshold for comparing bf16 results
-        R"(.*smoke_Reduce.*type=(Prod|Min).*netPRC=(BF|bf)16.*)",
+        R"(.*smoke_Reduce.*type=(Prod|Min).*INFERENCE_PRECISION_HINT=bf16.*)",
         // TODO: 56520 Accuracy mismatch
         R"(.*ReduceOpsLayerTest.*type=Mean_.*netPRC=(I64|I32).*)",
         R"(.*ReduceOpsLayerTest.*type=Mean_.*netPRC=U64.*)",

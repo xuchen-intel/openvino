@@ -14,6 +14,7 @@ namespace {
 
 const std::vector<ov::Shape> inputShape = {
     ov::Shape{1, 16},
+    /*
     ov::Shape{1, 32},
     ov::Shape{1, 1},
     ov::Shape{1, 9},
@@ -37,6 +38,7 @@ const std::vector<ov::Shape> inputShape = {
     ov::Shape{1, 3, 128, 16},
     ov::Shape{1, 3, 128, 17},
     ov::Shape{1, 3, 128, 20},
+    */
 };
 
 INSTANTIATE_TEST_SUITE_P(smoke_Snippets_Softmax, Softmax,

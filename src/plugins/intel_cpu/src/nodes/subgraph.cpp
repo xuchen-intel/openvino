@@ -32,6 +32,12 @@
 #include "transformations/cpu_opset/common/pass/convert_to_swish_cpu.hpp"
 #include "transformations/defs.hpp"
 
+#if 1
+#include <cstdint>
+#include <sys/time.h>
+#include <fstream>
+#endif
+
 using namespace InferenceEngine;
 using namespace dnnl::impl::utils;
 using namespace dnnl::impl::cpu;
@@ -42,6 +48,16 @@ namespace ov {
 namespace intel_cpu {
 namespace node {
 namespace {
+
+#if 1
+static uint64_t get_ts() {
+    uint64_t tc = 0;
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    tc = tv.tv_sec * (uint64_t)1000000 + tv.tv_usec;
+    return tc;
+}
+#endif
 
 /* This class implementation is a temporal WA
    TODO: revise the implementation to remove the node reference*/
@@ -602,6 +618,8 @@ void Snippet::execute(dnnl::stream strm) {
 void Snippet::schedule_6d() {
     const auto& dom = exec_domain;
     // < N, C, H, W > < 1, 1, N, C*H*W>
+#if 1
+    long t1 = get_ts();
     parallel_for5d(dom[0], dom[1], dom[2], dom[3], dom[4],
         [&](int64_t d0, int64_t d1, int64_t d2, int64_t d3, int64_t d4) {
             int64_t indexes[] = {d0, d1, d2, d3, d4};
@@ -610,6 +628,18 @@ void Snippet::schedule_6d() {
 
             schedule.get_callable<kernel>()(indexes, &call_args);
         });
+    t1 = get_ts() - t1;
+    std::cout << "############ HorizonMax time cost: " << t1 << " μs.############" << std::endl;
+#else
+    parallel_for5d(dom[0], dom[1], dom[2], dom[3], dom[4],
+        [&](int64_t d0, int64_t d1, int64_t d2, int64_t d3, int64_t d4) {
+            int64_t indexes[] = {d0, d1, d2, d3, d4};
+            jit_snippets_call_args call_args;
+            update_ptrs(call_args);
+
+            schedule.get_callable<kernel>()(indexes, &call_args);
+        });
+#endif
 }
 
 void Snippet::schedule_nt() {

@@ -11,6 +11,7 @@
 #include "snippets/lowered/port_connector.hpp"
 #include "transformations/snippets/x64/op/brgemm_copy_b.hpp"
 #include "transformations/snippets/x64/op//brgemm_cpu.hpp"
+#include "emitters/utils.hpp"
 
 using namespace InferenceEngine;
 using namespace Xbyak;
@@ -1350,8 +1351,17 @@ void HorizonMaxEmitter::emit_impl(const std::vector<size_t>& in,
     }
 }
 
+static inline void horiz_xmm(dnnl::impl::cpu::x64::jit_generator* h, Xbyak::Xmm xmm_dst, Xbyak::Xmm xmm_aux) {
+    h->uni_vmovshdup(xmm_aux, xmm_dst);
+    h->uni_vmaxps(xmm_dst, xmm_dst, xmm_aux);
+    h->uni_vmovhlps(xmm_aux, xmm_aux, xmm_dst);
+    h->uni_vmaxps(xmm_dst, xmm_dst, xmm_aux);
+}
+
 template <dnnl::impl::cpu::x64::cpu_isa_t isa>
 void HorizonMaxEmitter::emit_isa(const std::vector<size_t> &in, const std::vector<size_t> &out) const {
+    size_t N = 1000000;
+#if 0 // original impl
     using Vmm = typename dnnl::impl::utils::conditional3<isa == dnnl::impl::cpu::x64::sse41,
             Xmm, isa == dnnl::impl::cpu::x64::avx2, Ymm, Zmm>::type;
 
@@ -1363,17 +1373,105 @@ void HorizonMaxEmitter::emit_isa(const std::vector<size_t> &in, const std::vecto
 
     const size_t vlen = dnnl::impl::cpu::x64::cpu_isa_traits<isa>::vlen;
     const size_t vec_size = vlen / sizeof(float);
-    h->sub(h->rsp, vlen);
-    h->uni_vmovups(h->ptr[h->rsp], src_vmm);
-    // Let the first value be the max
-    h->mov(aux_reg, h->ptr[h->rsp]);
-    h->vmovq(dst_xmm, aux_reg);
-    for (size_t i = 1; i < vec_size; i++) {
-        h->mov(aux_reg, h->ptr[h->rsp + i * sizeof(float)]);
-        h->vmovq(aux_xmm, aux_reg);
-        h->uni_vmaxps(dst_xmm, dst_xmm, aux_xmm);
+
+    RegPrinter::print<float>(*h, src_vmm);
+    for (size_t n = 0; n < N; n++) {
+        h->sub(h->rsp, vlen);
+        h->uni_vmovups(h->ptr[h->rsp], src_vmm);
+        // Let the first value be the max
+        h->mov(aux_reg, h->ptr[h->rsp]);
+        h->vmovq(dst_xmm, aux_reg);
+        for (size_t i = 1; i < vec_size; i++) {
+            h->mov(aux_reg, h->ptr[h->rsp + i * sizeof(float)]);
+            h->vmovq(aux_xmm, aux_reg);
+            h->uni_vmaxps(dst_xmm, dst_xmm, aux_xmm);
+        }
+        h->add(h->rsp, vlen);
     }
-    h->add(h->rsp, vlen);
+    RegPrinter::print<float>(*h, dst_xmm);
+#endif
+
+#if 1 // oneDNN impl
+using Vmm = typename dnnl::impl::utils::conditional3<isa == dnnl::impl::cpu::x64::sse41,
+        Xmm, isa == dnnl::impl::cpu::x64::avx2, Ymm, Zmm>::type;
+using Yzm = typename dnnl::impl::utils::conditional<isa == dnnl::impl::cpu::x64::avx2,
+        Ymm, Zmm>::type;
+
+    Vmm src_vmm = Vmm(in[0]);
+    Vmm dst_vmm = Vmm(out[0]);
+    Vmm aux_vmm = Vmm(aux_vec_idxs[0]);
+    Yzm dst_yzm = Yzm(out[0]);
+    Yzm aux_yzm = Yzm(aux_vec_idxs[0]);
+
+    RegPrinter::print<float>(*h, src_vmm);
+    for (size_t n = 0; n < N; n++) {
+        if (in[0] != out[0])
+            h->uni_vmovups(dst_vmm, src_vmm);
+        if (isa == dnnl::impl::cpu::x64::avx512_core) {
+            h->vshuff32x4(aux_yzm, dst_yzm, dst_yzm, 0x4E);
+            h->uni_vmaxps(dst_yzm, dst_yzm, aux_yzm);
+            h->vshuff32x4(aux_yzm, dst_yzm, dst_yzm, 0xB1);
+            h->uni_vmaxps(dst_yzm, dst_yzm, aux_yzm);
+        } else if (isa == dnnl::impl::cpu::x64::avx2) {
+            h->vperm2i128(aux_yzm, dst_yzm, dst_yzm, 0x01);
+            h->uni_vmaxps(dst_yzm, dst_yzm, aux_yzm);
+        }
+        h->vshufps(aux_vmm, dst_vmm, dst_vmm, 0x4E);
+        h->uni_vmaxps(dst_vmm, dst_vmm, aux_vmm);
+        h->vshufps(aux_vmm, dst_vmm, dst_vmm, 0xB1);
+        h->uni_vmaxps(dst_vmm, dst_vmm, aux_vmm);
+    }
+    RegPrinter::print<float>(*h, dst_vmm);
+#endif
+
+#if 0 //plugin impl
+    if (isa == dnnl::impl::cpu::x64::sse41) {
+        Xmm src_xmm = Xmm(in[0]);
+        Xmm dst_xmm = Xmm(out[0]);
+        Xmm aux_xmm = Xmm(aux_vec_idxs[0]);
+        RegPrinter::print<float>(*h, src_xmm);
+        for (size_t n = 0; n < N; n++) {
+            if (in[0] != out[0])
+                h->uni_vmovups(dst_xmm, src_xmm);
+            horiz_xmm(h, dst_xmm, aux_xmm);
+        }
+        RegPrinter::print<float>(*h, dst_xmm);
+    } else if (isa == dnnl::impl::cpu::x64::avx2) {
+        Ymm src_ymm = Ymm(in[0]);
+        Ymm dst_ymm = Ymm(out[0]);
+        Xmm dst_xmm = Xmm(out[0]);
+        Xmm aux_xmm = Xmm(aux_vec_idxs[0]);
+        RegPrinter::print<float>(*h, src_ymm);
+        for (size_t n = 0; n < N; n++) {
+            if (in[0] != out[0])
+                h->uni_vmovups(dst_ymm, src_ymm);
+            h->vextractf128(aux_xmm, dst_ymm, 1);
+            h->uni_vmaxps(dst_xmm, dst_xmm, aux_xmm);
+            horiz_xmm(h, dst_xmm, aux_xmm);
+        }
+        RegPrinter::print<float>(*h, dst_ymm);
+    } else if (dnnl::impl::cpu::x64::avx512_core) {
+        Zmm src_zmm = Zmm(in[0]);
+        Zmm dst_zmm = Zmm(out[0]);
+        Xmm dst_xmm = Xmm(out[0]);
+        Xmm aux_xmm = Xmm(aux_vec_idxs[0]);
+        Xmm aux2_xmm = Xmm(aux_vec_idxs[1]);
+        Xmm aux3_xmm = Xmm(aux_vec_idxs[2]);
+        RegPrinter::print<float>(*h, src_zmm);
+        for (size_t n = 0; n < N; n++) {
+            if (in[0] != out[0])
+                h->uni_vmovups(dst_zmm, src_zmm);
+            h->vextractf32x4(aux_xmm, dst_zmm, 1);
+            h->vextractf32x4(aux2_xmm, dst_zmm, 2);
+            h->vextractf32x4(aux3_xmm, dst_zmm, 3);
+            h->uni_vmaxps(dst_xmm, dst_xmm, aux_xmm);
+            h->uni_vmaxps(dst_xmm, dst_xmm, aux2_xmm);
+            h->uni_vmaxps(dst_xmm, dst_xmm, aux3_xmm);
+            horiz_xmm(h, dst_xmm, aux_xmm);
+        }
+        RegPrinter::print<float>(*h, dst_zmm);
+    }
+#endif
 }
 
 HorizonSumEmitter::HorizonSumEmitter(dnnl::impl::cpu::x64::jit_generator* h, dnnl::impl::cpu::x64::cpu_isa_t isa, const std::shared_ptr<ov::Node>& n) :

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "snippets/lowered/pass/loop_unrolling.hpp"
+#include "snippets/lowered/pass/unroll_loops.hpp"
 
 #include "snippets/lowered/linear_ir.hpp"
 #include "snippets/snippets_isa.hpp"
@@ -13,8 +13,8 @@ namespace snippets {
 namespace lowered {
 namespace pass {
 
-bool LoopUnrolling::run(LinearIR& linear_ir) {
-    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "Snippets::LoopUnrolling")
+bool UnrollLoops::run(LinearIR& linear_ir) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "Snippets::UnrollLoops")
     bool modified = false;
 
     auto is_supported_eltwise_node = [](const std::shared_ptr<ov::Node>& node) {

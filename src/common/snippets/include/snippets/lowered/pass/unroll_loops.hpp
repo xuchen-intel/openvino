@@ -12,13 +12,13 @@ namespace lowered {
 namespace pass {
 
 /**
- * @interface LoopUnrolling
+ * @interface UnrollLoops
  * @brief Unroll loops containing Eltwise nodes.
  * @ingroup snippets
  */
-class LoopUnrolling : public Pass {
+class UnrollLoops : public Pass {
 public:
-    OPENVINO_RTTI("LoopUnrolling", "Pass")
+    OPENVINO_RTTI("Unroll_loops", "Pass")
     bool run(LinearIR& linear_ir) override;
 };
 

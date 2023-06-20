@@ -7,6 +7,7 @@
 #include "snippets/lowered/linear_ir.hpp"
 #include "snippets/lowered/pass/assign_registers.hpp"
 #include "snippets/lowered/pass/insert_tail_loop.hpp"
+#include "snippets/lowered/pass/loop_unrolling.hpp"
 
 #include "snippets/op/kernel.hpp"
 
@@ -27,6 +28,7 @@ Generator::LoweringResult Generator::generate(lowered::LinearIR& linear_ir, cons
     lowered::pass::PassPipeline lowered_pipeline;
     lowered_pipeline.register_pass<lowered::pass::AssignRegisters>(reg_type_mapper);
     lowered_pipeline.register_pass<lowered::pass::InsertTailLoop>();
+    lowered_pipeline.register_pass<lowered::pass::LoopUnrolling>();
     lowered_pipeline.run(linear_ir);
 
     linear_ir.init_emitters(target);

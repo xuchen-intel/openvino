@@ -1,0 +1,126 @@
+// Copyright (C) 2023 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+//
+
+#include "snippets/lowered/pass/unroll_loops.hpp"
+
+#include "snippets/lowered/linear_ir.hpp"
+#include "snippets/snippets_isa.hpp"
+#include "snippets/itt.hpp"
+
+namespace ov {
+namespace snippets {
+namespace lowered {
+namespace pass {
+
+bool UnrollLoops::run(LinearIR& linear_ir) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "Snippets::UnrollLoops")
+    bool modified = false;
+    // This is a default unrolling factor, given that currently register information is
+    // unavailable in the stage of snippets common transformation
+    constexpr size_t default_unroll_factor = 3;
+
+    auto is_supported_eltwise_node = [](const std::shared_ptr<ov::Node>& node) {
+        if (ov::is_type<const ov::op::v1::Maximum>(node) ||
+            ov::is_type<const ov::op::v1::Subtract>(node) ||
+            ov::is_type<const ov::op::v0::Exp>(node) ||
+            ov::is_type<const ov::op::v1::Add>(node) ||
+            ov::is_type<const ov::op::v1::Multiply>(node)) {
+            return true;
+        }
+        return false;
+    };
+
+    // Reset offset for MemoryAccess nodes
+    auto set_memory_access_offset = [](const std::shared_ptr<ov::Node>& node, const size_t& offset){
+        if (const auto memory_access = std::dynamic_pointer_cast<ov::snippets::op::MemoryAccess>(node)) {
+            for (const auto in : memory_access->get_memory_access_input_ports()) {
+                const auto port = in.first;
+                memory_access->set_input_offset(memory_access->get_input_offset(port) + offset, port);
+            }
+            for (const auto out : memory_access->get_memory_access_output_ports()) {
+                const auto port = out.first;
+                memory_access->set_output_offset(memory_access->get_output_offset(port) + offset, port);
+            }
+        }
+    };
+
+    for (auto expr_it = linear_ir.begin(); expr_it != linear_ir.end();) {
+        const auto& loop_begin = ov::as_type_ptr<ov::snippets::op::LoopBegin>((*expr_it)->get_node());
+        if (!loop_begin) {
+            expr_it++;
+            continue;
+        }
+        const auto& loop_end = loop_begin->get_loop_end();
+        const auto& work_amount = loop_end->get_work_amount();
+        const auto& increment = loop_end->get_increment();
+        // Ignore outer loops and tail loops
+        if (increment < work_amount) {
+            bool is_supported = true;
+            expr_it++;
+            // The expr after LoopBegin
+            auto expr_copy_begin_it = expr_it;
+            while ((*expr_it)->get_node() != loop_end) {
+                const auto& node = (*expr_it)->get_node();
+                if (ov::is_type<const snippets::op::MemoryAccess>(node)) {
+                    expr_it++;
+                    continue;
+                }
+                if (!is_supported_eltwise_node(node)) {
+                    is_supported = false;
+                    break;
+                }
+                expr_it++;
+            }
+            // LoopEnd expr
+            auto expr_copy_end_it = expr_it;
+
+            if (is_supported) {
+                modified = true;
+                const size_t total_iters = work_amount / increment;
+                const size_t unroll_factor = std::min(default_unroll_factor, total_iters);
+                const size_t unroll_increment = unroll_factor * increment;
+                auto loop_deep_copy = LinearIR::deep_copy_range(expr_copy_begin_it, expr_copy_end_it);
+                auto to_erase = std::remove_if(loop_deep_copy.begin(), loop_deep_copy.end(),
+                                [](const ExpressionPtr& expr) { return is_type<ov::op::v0::Parameter>(expr->get_node()) ||
+                                                                       is_type<ov::op::v0::Result>(expr->get_node());});
+                loop_deep_copy.erase(to_erase, loop_deep_copy.end());
+                // Insert loop remainder, including a copy of LoopBegin and LoopEnd
+                bool has_loop_remainder = total_iters % unroll_factor;
+                auto loop_remainder_insert = has_loop_remainder ?
+                                             LinearIR::deep_copy_range(--expr_copy_begin_it, ++expr_copy_end_it) : LinearIR::container();
+                // Repeat loop body, excluding LoopBegin and LoopEnd
+                for (size_t i = 1; i < unroll_factor; i++) {
+                    auto loop_insert = LinearIR::deep_copy_range(loop_deep_copy.begin(), loop_deep_copy.end());
+                    for (auto expr_insert_it = loop_insert.begin(); expr_insert_it != loop_insert.end(); expr_insert_it++) {
+                        set_memory_access_offset((*expr_insert_it)->get_node(), i * increment);
+                    }
+                    linear_ir.insert(expr_it, loop_insert.begin(), loop_insert.end());
+                }
+                loop_end->set_increment(unroll_increment);
+                if (has_loop_remainder) {
+                    // Finalization offset will only be applied in the final loop, which is in the loop remainder
+                    loop_end->set_finalization_offsets(std::vector<int64_t>(loop_end->get_finalization_offsets().size(), 0));
+                    // The expr after LoopEnd
+                    expr_it++;
+                    const size_t offset = work_amount / unroll_increment * unroll_increment;
+                    auto remainder_loop_begin = linear_ir.insert(expr_it, loop_remainder_insert.begin(), loop_remainder_insert.end());
+                    auto remainder_loop_end = ov::as_type_ptr<op::LoopBegin>((*remainder_loop_begin)->get_node())->get_loop_end();
+                    remainder_loop_end->set_work_amount(work_amount - offset);
+                    remainder_loop_end->set_increment(increment);
+                } else {
+                    expr_it++;
+                }
+            }
+        } else {
+            expr_it++;
+        }
+    }
+
+    return modified;
+}
+
+} // namespace pass
+} // namespace lowered
+} // namespace snippets
+} // namespace ov

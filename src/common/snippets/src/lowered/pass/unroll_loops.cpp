@@ -43,12 +43,15 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
             bool is_supported = true;
             while ((*loop_expr_it)->get_node() != loop_end) {
                 const auto& node = (*loop_expr_it)->get_node();
-                if (ov::is_type<const snippets::op::MemoryAccess>(node))
+                if (ov::is_type<const snippets::op::MemoryAccess>(node)) {
+                    loop_expr_it++;
                     continue;
+                }
                 if (!is_supported_eltwise_node(node)) {
                     is_supported = false;
                     break;
                 }
+                loop_expr_it++;
             }
 
             if (is_supported) {

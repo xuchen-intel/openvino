@@ -1341,7 +1341,7 @@ HorizonEmitter::HorizonEmitter(dnnl::impl::cpu::x64::jit_generator* h, dnnl::imp
     } else if (ov::is_type<const snippets::op::HorizonSum>(n)) {
         m_op_type = OpType::sum;
     } else {
-        OPENVINO_THROW("HorizonEmitter exprects HorizonMax or HorizonSum ops");
+        OPENVINO_THROW("HorizonEmitter supports HorizonMax or HorizonSum ops");
     }
 }
 

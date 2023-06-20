@@ -148,6 +148,10 @@ void LoopEnd::set_evaluate_once(bool once) {
     evaluate_once = once;
 }
 
+void LoopEnd::set_unroll_loop(bool unroll) {
+    unroll_loop = unroll;
+}
+
 void LoopEnd::validate_and_infer_types() {
     NODE_VALIDATION_CHECK(this, get_input_size() == 1, "LoopEnd must have one input");
     const auto loop_begin = ov::as_type_ptr<LoopBegin>(get_input_node_shared_ptr(0));
@@ -171,6 +175,7 @@ bool LoopEnd::visit_attributes(AttributeVisitor &visitor) {
     visitor.on_attribute("increment", work_amount_increment);
     visitor.on_attribute("ptr_incr", ptr_increments);
     visitor.on_attribute("fin_offset", finalization_offsets);
+    visitor.on_attribute("unroll_loop", unroll_loop);
     return true;
 }
 
@@ -180,6 +185,10 @@ size_t LoopEnd::get_work_amount() const {
 
 bool LoopEnd::get_evaluate_once() const {
     return evaluate_once;
+}
+
+bool LoopEnd::get_unroll_loop() const {
+    return unroll_loop;
 }
 
 size_t LoopEnd::get_increment() const {

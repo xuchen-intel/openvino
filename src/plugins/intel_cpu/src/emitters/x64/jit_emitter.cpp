@@ -46,6 +46,10 @@ size_t jit_emitter::aux_vecs_count() const {
     return 0;
 }
 
+std::pair<size_t, size_t> jit_emitter::aux_regs_count() const {
+    return std::make_pair(aux_gprs_count(), aux_vecs_count());
+}
+
 emitter_in_out_map jit_emitter::get_in_out_type() const {
     return in_out_type_;
 }

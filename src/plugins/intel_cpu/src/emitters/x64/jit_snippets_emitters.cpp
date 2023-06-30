@@ -204,6 +204,11 @@ KernelEmitter::KernelEmitter(dnnl::impl::cpu::x64::jit_generator* h, dnnl::impl:
         }
         size_t aux_gprs_cnt, aux_vecs_cnt;
         std::tie(aux_gprs_cnt, aux_vecs_cnt) = required_regs_cnt;
+
+        // The four reserved gprs are reg_indexes_idx, reg_const_params_idx, rsp and rbp
+        constexpr size_t reserve_gprs_cnt = 4;
+        const size_t exclusive_gprs_cnt = data_ptr_regs_idx.size();
+        const size_t unroll_factor_gpr = (16 - reserve_gprs_cnt - aux_gprs_cnt) / exclusive_gprs_cnt;
     }
 }
 

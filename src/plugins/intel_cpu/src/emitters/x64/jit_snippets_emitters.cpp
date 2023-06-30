@@ -184,6 +184,27 @@ KernelEmitter::KernelEmitter(dnnl::impl::cpu::x64::jit_generator* h, dnnl::impl:
     gpr_map_pool.second.push_back(reg_indexes_idx);
     gpr_map_pool.second.push_back(reg_const_params_idx);
     map_abstract_registers(gpr_map_pool, vec_map_pool, general_exprs);
+
+    auto get_required_aux_regs_count = [](const std::pair<size_t, size_t>& regs_cnt,
+                                          std::pair<size_t, size_t>& required_regs_cnt) {
+        if (regs_cnt.first > required_regs_cnt.first)
+            required_regs_cnt.first = regs_cnt.first;
+        if (regs_cnt.second > required_regs_cnt.second)
+            required_regs_cnt.second = regs_cnt.second;
+    };
+
+    // unroll loop
+    if (body.get_unroll_loop()) {
+        std::pair<size_t, size_t> required_regs_cnt(0, 0);
+        for (const auto& expr : body) {
+            const auto& emitter = expr->get_emitter();
+            if (const auto &jit_emitter = std::dynamic_pointer_cast<const ov::intel_cpu::jit_emitter>(emitter)) {
+                get_required_aux_regs_count(jit_emitter->aux_regs_count(), required_regs_cnt);
+            }
+        }
+        size_t aux_gprs_cnt, aux_vecs_cnt;
+        std::tie(aux_gprs_cnt, aux_vecs_cnt) = required_regs_cnt;
+    }
 }
 
 void KernelEmitter::emit_code(const std::vector<size_t> &in,

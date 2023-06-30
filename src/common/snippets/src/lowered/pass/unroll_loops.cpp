@@ -63,6 +63,10 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
         }
     }
 
+    if (modified) {
+        linear_ir.set_unroll_loop(true);
+    }
+
     return modified;
 }
 

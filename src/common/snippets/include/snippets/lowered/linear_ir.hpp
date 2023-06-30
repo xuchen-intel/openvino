@@ -55,6 +55,9 @@ public:
     */
     void move(constExprIt from, constExprIt to);
 
+    void set_unroll_loop(bool unroll);
+    bool get_unroll_loop() const;
+
     bool empty() const noexcept {return m_expressions.empty(); }
     void debug_print(bool tds_as_pointers = false) const;
 
@@ -105,6 +108,9 @@ private:
     io_container m_io_expressions;
     Config m_config{};
     LoopManagerPtr m_loop_manager = nullptr;
+
+    //True if this Linear IR contains any loop that will be unrolled
+    bool unroll_loop = false;
 };
 
 } // namespace lowered

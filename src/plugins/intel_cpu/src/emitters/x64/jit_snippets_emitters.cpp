@@ -12,6 +12,53 @@
 #include "transformations/snippets/x64/op/brgemm_copy_b.hpp"
 #include "transformations/snippets/x64/op//brgemm_cpu.hpp"
 
+//todo remove duplication start
+#include "snippets/generator.hpp"
+#include "transformations/snippets/x64/op/fused_mul_add.hpp"
+#include "transformations/cpu_opset/common/op/swish_cpu.hpp"
+static ov::snippets::Generator::opRegType get_specific_op_reg_type(const std::shared_ptr<ov::Node>& op) {
+    if (std::dynamic_pointer_cast<ov::intel_cpu::BrgemmCPU>(op) ||
+        std::dynamic_pointer_cast<ov::intel_cpu::BrgemmCopyB>(op))
+        return ov::snippets::Generator::gpr2gpr;
+    else if (
+        std::dynamic_pointer_cast<ov::intel_cpu::FusedMulAdd>(op) ||
+        std::dynamic_pointer_cast<ov::intel_cpu::SwishNode>(op))
+        return ov::snippets::Generator::vec2vec;
+    else
+        OPENVINO_THROW("Register type of the operation " + std::string(op->get_type_name()) + " isn't determined!");
+}
+static ov::snippets::Generator::opRegType get_op_reg_type(const std::shared_ptr<ov::Node>& op) {
+    if (std::dynamic_pointer_cast<ov::op::v0::Parameter>(op) ||
+        std::dynamic_pointer_cast<ov::op::v0::Result>(op) ||
+        std::dynamic_pointer_cast<ov::snippets::op::LoopBegin>(op) ||
+        std::dynamic_pointer_cast<ov::snippets::op::LoopEnd>(op) ||
+        std::dynamic_pointer_cast<ov::snippets::op::Brgemm>(op) ||
+        std::dynamic_pointer_cast<ov::snippets::op::Buffer>(op))
+        return ov::snippets::Generator::gpr2gpr;
+    else if (std::dynamic_pointer_cast<ov::snippets::op::Load>(op) ||
+             std::dynamic_pointer_cast<ov::snippets::op::BroadcastLoad>(op))
+        return ov::snippets::Generator::gpr2vec;
+    else if (std::dynamic_pointer_cast<ov::snippets::op::Store>(op))
+        return ov::snippets::Generator::vec2gpr;
+    else if (ov::op::util::is_unary_elementwise_arithmetic(op) ||
+             ov::op::util::is_binary_elementwise_arithmetic(op) ||
+             ov::op::util::is_binary_elementwise_comparison(op) ||
+             ov::op::util::is_binary_elementwise_logical(op) ||
+             std::dynamic_pointer_cast<ov::op::v1::LogicalNot>(op) ||
+             std::dynamic_pointer_cast<ov::op::v0::PRelu>(op) ||
+             std::dynamic_pointer_cast<ov::op::v0::Convert>(op) ||
+             std::dynamic_pointer_cast<ov::op::v1::Select>(op) ||
+             std::dynamic_pointer_cast<ov::snippets::op::VectorBuffer>(op) ||
+             std::dynamic_pointer_cast<ov::snippets::op::BroadcastMove>(op) ||
+             std::dynamic_pointer_cast<ov::snippets::op::Scalar>(op) ||
+             std::dynamic_pointer_cast<ov::snippets::op::HorizonMax>(op) ||
+             std::dynamic_pointer_cast<ov::snippets::op::HorizonSum>(op))
+        return ov::snippets::Generator::vec2vec;
+    else
+        return get_specific_op_reg_type(op);
+}
+//todo remove duplication end
+
 using namespace InferenceEngine;
 using namespace Xbyak;
 using namespace dnnl::impl;
@@ -196,8 +243,28 @@ KernelEmitter::KernelEmitter(dnnl::impl::cpu::x64::jit_generator* h, dnnl::impl:
     // Unroll loop
     if (body.get_unroll_loop()) {
         std::pair<size_t, size_t> required_regs_cnt(0, 0);
-        std::set<size_t> shared_vecs;
+        std::set<size_t> io_vecs, shared_vecs;
         for (const auto& expr : body) {
+            auto op = expr->get_node();
+            auto reg_type = get_op_reg_type(op);
+            const auto& io_regs = expr->get_reg_info();
+            switch (reg_type) {
+                case ov::snippets::Generator::opRegType::vec2gpr:
+                    for (const auto& i_reg : io_regs.first)
+                        io_vecs.insert(i_reg);
+                    break;
+                case ov::snippets::Generator::opRegType::gpr2vec:
+                    for (const auto& o_reg : io_regs.second)
+                        io_vecs.insert(o_reg);
+                    break;
+                case ov::snippets::Generator::opRegType::vec2vec:
+                    for (const auto& i_reg : io_regs.first)
+                        io_vecs.insert(i_reg);
+                    for (const auto& o_reg : io_regs.second)
+                        io_vecs.insert(o_reg);
+                    break;
+            }
+
             const auto& emitter = expr->get_emitter();
             if (const auto& jit_emitter = std::dynamic_pointer_cast<const ov::intel_cpu::jit_emitter>(emitter)) {
                 get_required_aux_regs_count(jit_emitter->aux_regs_count(), required_regs_cnt);

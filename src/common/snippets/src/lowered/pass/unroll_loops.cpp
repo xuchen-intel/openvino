@@ -54,17 +54,27 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
                 loop_expr_it++;
             }
 
-            if (is_supported) {
-                loop_end->set_unroll_loop(true);
+            if (!is_supported) {
+                continue;
             }
 
+            loop_end->set_unroll_loop(true);
             modified = true;
+
+            // // Calculate max number of used aux regs
+            // for (const auto& expression : linear_ir) {
+            //     const auto& emitter = expression->get_emitter();
+            // }
         } else {
             expr_it++;
         }
     }
 
-    return modified;
+    if (!modified) {
+        return false;
+    }
+
+    return true;
 }
 
 } // namespace pass

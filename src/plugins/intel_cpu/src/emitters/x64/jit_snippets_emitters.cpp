@@ -196,7 +196,7 @@ KernelEmitter::KernelEmitter(dnnl::impl::cpu::x64::jit_generator* h, dnnl::impl:
     // Unroll loop
     if (body.get_unroll_loop()) {
         std::pair<size_t, size_t> required_regs_cnt(0, 0);
-        std::set<size_t> io_vecs, shared_vecs;
+        std::set<size_t> shared_vecs;
         for (const auto& expr : body) {
             const auto& emitter = expr->get_emitter();
             if (const auto& jit_emitter = std::dynamic_pointer_cast<const ov::intel_cpu::jit_emitter>(emitter)) {
@@ -210,23 +210,30 @@ KernelEmitter::KernelEmitter(dnnl::impl::cpu::x64::jit_generator* h, dnnl::impl:
                 }
             }
         }
-        size_t aux_gprs_cnt, aux_vecs_cnt;
-        std::tie(aux_gprs_cnt, aux_vecs_cnt) = required_regs_cnt;
 
-        // Reserved gprs are rsp and rbp
-        constexpr size_t reserve_gprs_cnt = 2;
-        // Parameter gprs are reg_indexes_idx, reg_const_params_idx
-        constexpr size_t param_gprs_cnt = 2;
-        const size_t exclusive_gprs_cnt = gpr_map_pool.first.size() - param_gprs_cnt;
-        const size_t unroll_factor_gpr = exclusive_gprs_cnt == 0 ? 1 :
-                                         (16 - reserve_gprs_cnt - param_gprs_cnt - aux_gprs_cnt) / exclusive_gprs_cnt;
-
-        const size_t shared_vecs_cnt = shared_vecs.size();
-        const size_t exclusive_vecs_cnt = vec_map_pool.first.size() - shared_vecs_cnt;
-        const size_t unroll_factor_vec = (exclusive_vecs_cnt + aux_vecs_cnt == 0) ? 1 :
-                                         (16 - shared_vecs_cnt) / (exclusive_vecs_cnt + aux_vecs_cnt);
-        const size_t unroll_factor = std::min(unroll_factor_gpr, unroll_factor_vec);
+        calculate_unroll_factor(gpr_map_pool, vec_map_pool, shared_vecs, required_regs_cnt);
     }
+}
+
+void KernelEmitter::calculate_unroll_factor(const mapping_info& gpr_map_pool, const mapping_info& vec_map_pool,
+       const std::set<size_t>& shared_vecs, const std::pair<size_t, size_t>& required_regs_cnt) {
+    size_t aux_gprs_cnt, aux_vecs_cnt;
+    std::tie(aux_gprs_cnt, aux_vecs_cnt) = required_regs_cnt;
+
+    // Reserved gprs are rsp and rbp
+    constexpr size_t reserve_gprs_cnt = 2;
+    // Parameter gprs are reg_indexes_idx, reg_const_params_idx
+    constexpr size_t param_gprs_cnt = 2;
+    const size_t exclusive_gprs_cnt = gpr_map_pool.first.size() - param_gprs_cnt;
+    const size_t unroll_factor_gpr = exclusive_gprs_cnt == 0 ? 1 :
+                                     (16 - reserve_gprs_cnt - param_gprs_cnt - aux_gprs_cnt) / exclusive_gprs_cnt;
+
+    const size_t shared_vecs_cnt = shared_vecs.size();
+    const size_t exclusive_vecs_cnt = vec_map_pool.first.size() - shared_vecs_cnt;
+    const size_t unroll_factor_vec = (exclusive_vecs_cnt + aux_vecs_cnt == 0) ? 1 :
+                                     (16 - shared_vecs_cnt) / (exclusive_vecs_cnt + aux_vecs_cnt);
+
+    unroll_factor = std::min(unroll_factor_gpr, unroll_factor_vec);
 }
 
 void KernelEmitter::emit_code(const std::vector<size_t> &in,

@@ -212,42 +212,8 @@ KernelEmitter::KernelEmitter(dnnl::impl::cpu::x64::jit_generator* h, dnnl::impl:
         }
 
         calculate_unroll_factor(gpr_map_pool, vec_map_pool, shared_vecs, required_regs_cnt);
-
         if (unroll_factor > 1) {
-            std::vector<size_t> used_gpr_regs;
-            for (const auto& abstract_to_physical : gpr_map_pool.first)
-                used_gpr_regs.push_back(abstract_to_physical.second);
-
-            gpr_regs_unroll.assign(unroll_factor, used_gpr_regs);
-            for (size_t i = 1; i < unroll_factor; i++) {
-                std::vector<size_t>& gprs_unroll = gpr_regs_unroll[i];
-                for (auto& gpr_unroll : gprs_unroll) {
-                    // Each unrolled loop body will use exclusive data pointer registers
-                    if (std::find(data_ptr_regs_idx.begin(), data_ptr_regs_idx.end(), gpr_unroll) != data_ptr_regs_idx.end()) {
-                        gpr_unroll = gp_regs_pool.back();
-                        gp_regs_pool.pop_back();
-                    }
-                }
-            }
-
-            std::vector<size_t> used_vec_regs;
-            for (const auto& abstract_to_physical : vec_map_pool.first)
-                used_vec_regs.push_back(abstract_to_physical.second);
-            std::map<size_t, size_t> vecs_unroll_init;
-            std::transform(std::begin(used_vec_regs), std::end(used_vec_regs),
-                           std::inserter(vecs_unroll_init, vecs_unroll_init.end()), [] (size_t reg) {return std::make_pair(reg, reg);} );
-            vec_regs_unroll.assign(unroll_factor, vecs_unroll_init);
-            for (size_t i = 1; i < unroll_factor; i++) {
-                std::map<size_t, size_t>& vecs_unroll = vec_regs_unroll[i];
-                // For each exclusive vector registers in ith unrolled loop body, the register map
-                // (from 0th to ith unrolled loop body) is stored.
-                for (auto& vec_unroll : vecs_unroll) {
-                    if (std::find(shared_vecs.begin(), shared_vecs.end(), vec_unroll.first) == shared_vecs.end()) {
-                        vec_unroll.second = vec_regs_pool.back();
-                        vec_regs_pool.pop_back();
-                    }
-                }
-            }
+            assign_unroll_registers(gpr_map_pool, vec_map_pool, shared_vecs);
         } else {
             body.set_unroll_loop(false);
         }
@@ -273,6 +239,44 @@ void KernelEmitter::calculate_unroll_factor(const mapping_info& gpr_map_pool, co
                                      (16 - shared_vecs_cnt) / (exclusive_vecs_cnt + aux_vecs_cnt);
 
     unroll_factor = std::min(unroll_factor_gpr, unroll_factor_vec);
+}
+
+void KernelEmitter::assign_unroll_registers(const mapping_info& gpr_map_pool, const mapping_info& vec_map_pool,
+       const std::set<size_t>& shared_vecs) {
+    std::vector<size_t> used_gpr_regs;
+    for (const auto& abstract_to_physical : gpr_map_pool.first)
+        used_gpr_regs.push_back(abstract_to_physical.second);
+
+    gpr_regs_unroll.assign(unroll_factor, used_gpr_regs);
+    for (size_t i = 1; i < unroll_factor; i++) {
+        std::vector<size_t>& gprs_unroll = gpr_regs_unroll[i];
+        for (auto& gpr_unroll : gprs_unroll) {
+            // Each unrolled loop body will use exclusive data pointer registers
+            if (std::find(data_ptr_regs_idx.begin(), data_ptr_regs_idx.end(), gpr_unroll) != data_ptr_regs_idx.end()) {
+                gpr_unroll = gp_regs_pool.back();
+                gp_regs_pool.pop_back();
+            }
+        }
+    }
+
+    std::vector<size_t> used_vec_regs;
+    for (const auto& abstract_to_physical : vec_map_pool.first)
+        used_vec_regs.push_back(abstract_to_physical.second);
+    std::map<size_t, size_t> vecs_unroll_init;
+    std::transform(std::begin(used_vec_regs), std::end(used_vec_regs),
+                    std::inserter(vecs_unroll_init, vecs_unroll_init.end()), [] (size_t reg) {return std::make_pair(reg, reg);} );
+    vec_regs_unroll.assign(unroll_factor, vecs_unroll_init);
+    for (size_t i = 1; i < unroll_factor; i++) {
+        std::map<size_t, size_t>& vecs_unroll = vec_regs_unroll[i];
+        // For each exclusive vector registers in ith unrolled loop body, the register map
+        // (from 0th to ith unrolled loop body) is stored.
+        for (auto& vec_unroll : vecs_unroll) {
+            if (std::find(shared_vecs.begin(), shared_vecs.end(), vec_unroll.first) == shared_vecs.end()) {
+                vec_unroll.second = vec_regs_pool.back();
+                vec_regs_pool.pop_back();
+            }
+        }
+    }
 }
 
 void KernelEmitter::emit_code(const std::vector<size_t> &in,

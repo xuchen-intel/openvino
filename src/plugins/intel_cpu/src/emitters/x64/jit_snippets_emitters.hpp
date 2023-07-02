@@ -89,7 +89,9 @@ private:
                    const std::vector<size_t>& out) const override;
     void init_data_pointers(const Xbyak::Reg64&, const Xbyak::Reg64&, const std::vector<Xbyak::Reg64>&) const;
     void calculate_unroll_factor(const mapping_info& gpr_map_pool, const mapping_info& vec_map_pool,
-                                 const std::set<size_t>& shared_vecs, const std::pair<size_t, size_t>& required_regs_cnt);
+                   const std::set<size_t>& shared_vecs, const std::pair<size_t, size_t>& required_regs_cnt);
+    void assign_unroll_registers(const mapping_info& gpr_map_pool, const mapping_info& vec_map_pool,
+                   const std::set<size_t>& shared_vecs);
 
     jit_snippets_compile_args jcp;
     std::vector<size_t> gp_regs_pool;

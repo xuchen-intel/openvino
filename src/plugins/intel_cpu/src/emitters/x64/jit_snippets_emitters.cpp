@@ -213,20 +213,24 @@ KernelEmitter::KernelEmitter(dnnl::impl::cpu::x64::jit_generator* h, dnnl::impl:
 
         calculate_unroll_factor(gpr_map_pool, vec_map_pool, shared_vecs, required_regs_cnt);
 
-        std::vector<size_t> used_gpr_regs;
-        for (const auto& abstract_to_physical : gpr_map_pool.first)
-            used_gpr_regs.push_back(abstract_to_physical.second);
+        if (unroll_factor > 1) {
+            std::vector<size_t> used_gpr_regs;
+            for (const auto& abstract_to_physical : gpr_map_pool.first)
+                used_gpr_regs.push_back(abstract_to_physical.second);
 
-        gpr_regs_unroll.assign(unroll_factor, used_gpr_regs);
-        for (size_t i = 1; i < unroll_factor; i++) {
-            std::vector<size_t>& gprs_unroll = gpr_regs_unroll[i];
-            for (auto& gpr_unroll : gprs_unroll) {
-                // Each unrolled loop body will use exclusive data pointer registers
-                if (std::find(data_ptr_regs_idx.begin(), data_ptr_regs_idx.end(), gpr_unroll) != data_ptr_regs_idx.end()) {
-                    gpr_unroll = gp_regs_pool.back();
-                    gp_regs_pool.pop_back();
+            gpr_regs_unroll.assign(unroll_factor, used_gpr_regs);
+            for (size_t i = 1; i < unroll_factor; i++) {
+                std::vector<size_t>& gprs_unroll = gpr_regs_unroll[i];
+                for (auto& gpr_unroll : gprs_unroll) {
+                    // Each unrolled loop body will use exclusive data pointer registers
+                    if (std::find(data_ptr_regs_idx.begin(), data_ptr_regs_idx.end(), gpr_unroll) != data_ptr_regs_idx.end()) {
+                        gpr_unroll = gp_regs_pool.back();
+                        gp_regs_pool.pop_back();
+                    }
                 }
             }
+        } else {
+            body.set_unroll_loop(false);
         }
     }
 }

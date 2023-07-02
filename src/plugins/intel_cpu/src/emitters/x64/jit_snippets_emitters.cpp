@@ -229,6 +229,25 @@ KernelEmitter::KernelEmitter(dnnl::impl::cpu::x64::jit_generator* h, dnnl::impl:
                     }
                 }
             }
+
+            std::vector<size_t> used_vec_regs;
+            for (const auto& abstract_to_physical : vec_map_pool.first)
+                used_vec_regs.push_back(abstract_to_physical.second);
+            std::map<size_t, size_t> vecs_unroll_init;
+            std::transform(std::begin(used_vec_regs), std::end(used_vec_regs),
+                           std::inserter(vecs_unroll_init, vecs_unroll_init.end()), [] (size_t reg) {return std::make_pair(reg, reg);} );
+            vec_regs_unroll.assign(unroll_factor, vecs_unroll_init);
+            for (size_t i = 1; i < unroll_factor; i++) {
+                std::map<size_t, size_t>& vecs_unroll = vec_regs_unroll[i];
+                // For each exclusive vector registers in ith unrolled loop body, the register map
+                // (from 0th to ith unrolled loop body) is stored.
+                for (auto& vec_unroll : vecs_unroll) {
+                    if (std::find(shared_vecs.begin(), shared_vecs.end(), vec_unroll.first) == shared_vecs.end()) {
+                        vec_unroll.second = vec_regs_pool.back();
+                        vec_regs_pool.pop_back();
+                    }
+                }
+            }
         } else {
             body.set_unroll_loop(false);
         }

@@ -243,19 +243,13 @@ void KernelEmitter::calculate_unroll_factor(const mapping_info& gpr_map_pool, co
 
 void KernelEmitter::assign_unroll_registers(const mapping_info& gpr_map_pool, const mapping_info& vec_map_pool,
        const std::set<size_t>& shared_vecs) {
-    std::vector<size_t> used_gpr_regs;
-    for (const auto& abstract_to_physical : gpr_map_pool.first)
-        used_gpr_regs.push_back(abstract_to_physical.second);
-
-    gpr_regs_unroll.assign(unroll_factor, used_gpr_regs);
+    gpr_regs_unroll.assign(unroll_factor, data_ptr_regs_idx);
     for (size_t i = 1; i < unroll_factor; i++) {
         std::vector<size_t>& gprs_unroll = gpr_regs_unroll[i];
         for (auto& gpr_unroll : gprs_unroll) {
             // Each unrolled loop body will use exclusive data pointer registers
-            if (std::find(data_ptr_regs_idx.begin(), data_ptr_regs_idx.end(), gpr_unroll) != data_ptr_regs_idx.end()) {
-                gpr_unroll = gp_regs_pool.back();
-                gp_regs_pool.pop_back();
-            }
+            gpr_unroll = gp_regs_pool.back();
+            gp_regs_pool.pop_back();
         }
     }
 

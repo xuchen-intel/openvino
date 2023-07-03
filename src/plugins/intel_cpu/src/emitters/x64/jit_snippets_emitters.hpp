@@ -115,7 +115,7 @@ private:
     size_t unroll_factor;
 
     // store physical gprs and vector registers to be used in unrolled loop bodies
-    std::vector<std::vector<size_t>> gpr_regs_unroll;
+    std::vector<std::map<size_t, size_t>> gpr_regs_unroll;
     std::vector<std::map<size_t, size_t>> vec_regs_unroll;
 };
 

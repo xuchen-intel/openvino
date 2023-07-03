@@ -243,12 +243,16 @@ void KernelEmitter::calculate_unroll_factor(const mapping_info& gpr_map_pool, co
 
 void KernelEmitter::assign_unroll_registers(const mapping_info& gpr_map_pool, const mapping_info& vec_map_pool,
        const std::set<size_t>& shared_vecs) {
-    gpr_regs_unroll.assign(unroll_factor, data_ptr_regs_idx);
+    std::map<size_t, size_t> gprs_unroll_init;
+    std::transform(std::begin(data_ptr_regs_idx), std::end(data_ptr_regs_idx),
+                   std::inserter(gprs_unroll_init, gprs_unroll_init.end()), [](size_t reg){return std::make_pair(reg, reg);});
+    gpr_regs_unroll.assign(unroll_factor, gprs_unroll_init);
     for (size_t i = 1; i < unroll_factor; i++) {
-        std::vector<size_t>& gprs_unroll = gpr_regs_unroll[i];
+        std::map<size_t, size_t>& gprs_unroll = gpr_regs_unroll[i];
+        // For each exclusive data pointer gpr in ith unrolled loop body, the register map
+        // (from 0th to ith unrolled loop body) is stored.
         for (auto& gpr_unroll : gprs_unroll) {
-            // Each unrolled loop body will use exclusive data pointer registers
-            gpr_unroll = gp_regs_pool.back();
+            gpr_unroll.second = gp_regs_pool.back();
             gp_regs_pool.pop_back();
         }
     }
@@ -258,7 +262,7 @@ void KernelEmitter::assign_unroll_registers(const mapping_info& gpr_map_pool, co
         used_vec_regs.push_back(abstract_to_physical.second);
     std::map<size_t, size_t> vecs_unroll_init;
     std::transform(std::begin(used_vec_regs), std::end(used_vec_regs),
-                    std::inserter(vecs_unroll_init, vecs_unroll_init.end()), [] (size_t reg) {return std::make_pair(reg, reg);} );
+                   std::inserter(vecs_unroll_init, vecs_unroll_init.end()), [](size_t reg){return std::make_pair(reg, reg);});
     vec_regs_unroll.assign(unroll_factor, vecs_unroll_init);
     for (size_t i = 1; i < unroll_factor; i++) {
         std::map<size_t, size_t>& vecs_unroll = vec_regs_unroll[i];

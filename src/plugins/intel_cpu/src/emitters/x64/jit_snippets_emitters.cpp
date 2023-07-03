@@ -390,16 +390,28 @@ void KernelEmitter::emit_impl(const std::vector<size_t>& in,
 
     Reg64 reg_indexes = Reg64(static_cast<int>(reg_indexes_idx));
     Reg64 reg_const_params = Reg64(static_cast<int>(reg_const_params_idx));
-    std::vector<Reg64> data_ptr_regs;
-    transform_idxs_to_regs(data_ptr_regs_idx, data_ptr_regs);
-
-    init_data_pointers(reg_indexes, reg_const_params, data_ptr_regs);
-    for (const auto& expression : body) {
-        const auto& emitter = expression->get_emitter();
-        std::vector<size_t> in_regs, out_regs;
-        std::tie(in_regs, out_regs) = expression->get_reg_info();
-        emitter->emit_code(in_regs, out_regs, vec_regs_pool, gp_regs_pool);
+    if (body.get_unroll_loop()) {
+        for (size_t i = 0; i < unroll_factor; i++) {
+            const std::map<size_t, size_t>& gprs_unroll = gpr_regs_unroll[i];
+            std::vector<size_t> data_ptr_regs_index;
+            std::transform(std::begin(data_ptr_regs_idx), std::end(data_ptr_regs_idx),
+                           std::inserter(data_ptr_regs_index, data_ptr_regs_index.end()), [&gprs_unroll](size_t reg){return gprs_unroll.at(reg);});
+            std::vector<Reg64> data_ptr_regs;
+            transform_idxs_to_regs(data_ptr_regs_index, data_ptr_regs);
+            init_data_pointers(reg_indexes, reg_const_params, data_ptr_regs);
+        }
+    } else {
+        std::vector<Reg64> data_ptr_regs;
+        transform_idxs_to_regs(data_ptr_regs_idx, data_ptr_regs);
+        init_data_pointers(reg_indexes, reg_const_params, data_ptr_regs);
+        for (const auto& expression : body) {
+            const auto& emitter = expression->get_emitter();
+            std::vector<size_t> in_regs, out_regs;
+            std::tie(in_regs, out_regs) = expression->get_reg_info();
+            emitter->emit_code(in_regs, out_regs, vec_regs_pool, gp_regs_pool);
+        }
     }
+
     h->postamble();
 }
 

@@ -56,7 +56,9 @@ public:
     void move(constExprIt from, constExprIt to);
 
     void set_unroll_loop(bool unroll);
+    void set_unroll_work_step(size_t step);
     bool get_unroll_loop() const;
+    size_t get_unroll_work_step() const;
 
     bool empty() const noexcept {return m_expressions.empty(); }
     void debug_print(bool tds_as_pointers = false) const;
@@ -111,6 +113,8 @@ private:
 
     //True if this Linear IR contains any loop that will be unrolled
     bool unroll_loop = false;
+    //Work amount increment for each unrolled loop body
+    size_t unroll_work_step;
 };
 
 } // namespace lowered

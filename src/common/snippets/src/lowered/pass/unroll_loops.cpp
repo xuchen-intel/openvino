@@ -28,6 +28,7 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
         return false;
     };
 
+    std::set<size_t> unroll_work_step;
     for (auto expr_it = linear_ir.begin(); expr_it != linear_ir.end();) {
         const auto& loop_begin = ov::as_type_ptr<ov::snippets::op::LoopBegin>((*expr_it)->get_node());
         if (!loop_begin) {
@@ -56,6 +57,7 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
 
             if (is_supported) {
                 loop_end->set_unroll_loop(true);
+                unroll_work_step.insert(loop_end->get_increment());
                 modified = true;
             }
         } else {
@@ -63,11 +65,14 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
         }
     }
 
-    if (modified) {
+    if (modified && unroll_work_step.size() == 1) {
         linear_ir.set_unroll_loop(true);
+        linear_ir.set_unroll_work_step(*unroll_work_step.begin());
+        return true;
     }
 
-    return modified;
+    linear_ir.set_unroll_loop(false);
+    return false;
 }
 
 } // namespace pass

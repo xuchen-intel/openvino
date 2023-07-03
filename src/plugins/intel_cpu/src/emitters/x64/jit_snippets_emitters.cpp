@@ -393,12 +393,12 @@ void KernelEmitter::emit_impl(const std::vector<size_t>& in,
     if (body.get_unroll_loop()) {
         for (size_t i = 0; i < unroll_factor; i++) {
             const std::map<size_t, size_t>& gprs_unroll = gpr_regs_unroll[i];
-            std::vector<size_t> data_ptr_regs_index;
+            std::vector<size_t> data_ptr_gprs_idx;
             std::transform(std::begin(data_ptr_regs_idx), std::end(data_ptr_regs_idx),
-                           std::inserter(data_ptr_regs_index, data_ptr_regs_index.end()), [&gprs_unroll](size_t reg){return gprs_unroll.at(reg);});
-            std::vector<Reg64> data_ptr_regs;
-            transform_idxs_to_regs(data_ptr_regs_index, data_ptr_regs);
-            init_data_pointers(reg_indexes, reg_const_params, data_ptr_regs);
+                           std::inserter(data_ptr_gprs_idx, data_ptr_gprs_idx.end()), [&gprs_unroll](size_t reg){return gprs_unroll.at(reg);});
+            std::vector<Reg64> data_ptr_gprs;
+            transform_idxs_to_regs(data_ptr_gprs_idx, data_ptr_gprs);
+            init_data_pointers(reg_indexes, reg_const_params, data_ptr_gprs);
         }
     } else {
         std::vector<Reg64> data_ptr_regs;

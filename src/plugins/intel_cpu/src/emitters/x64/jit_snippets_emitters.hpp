@@ -87,7 +87,7 @@ private:
                             const std::vector<size_t> &out) const override;
     void emit_impl(const std::vector<size_t>& in,
                    const std::vector<size_t>& out) const override;
-    void init_data_pointers(const Xbyak::Reg64&, const Xbyak::Reg64&, const std::vector<Xbyak::Reg64>&) const;
+    void init_data_pointers(const Xbyak::Reg64&, const Xbyak::Reg64&, const std::vector<Xbyak::Reg64>&, const size_t&) const;
     void calculate_unroll_factor(const mapping_info& gpr_map_pool, const mapping_info& vec_map_pool,
                    const std::set<size_t>& shared_vecs, const std::pair<size_t, size_t>& required_regs_cnt);
     void assign_unroll_registers(const mapping_info& gpr_map_pool, const mapping_info& vec_map_pool,
@@ -98,6 +98,7 @@ private:
     size_t num_inputs;
     size_t num_outputs;
     size_t num_unique_buffers;
+    std::vector<size_t> buffer_data_sizes {};
     // Vector of indices (lenght = input tensor rank) per every input and output that describes in which order
     // corresponding tensor dimensions are accessed (default: consecutive dense, e.g. 0,1,2,3 for 4D tensor).
     // Needed to calc i/o offsets.

@@ -167,6 +167,7 @@ KernelEmitter::KernelEmitter(dnnl::impl::cpu::x64::jit_generator* h, dnnl::impl:
             if (unique_buffers.count(buffer_id) == 0) {
                 mem_access_exprs.push_back(expr);
                 unique_buffers.insert(buffer_id);
+                buffer_data_sizes.push_back(buffer->get_element_type().size());
             }
         } else {
             general_exprs.emplace_back(expr);
@@ -297,7 +298,7 @@ void KernelEmitter::validate_arguments(const std::vector<size_t> &in,
 }
 
 void KernelEmitter::init_data_pointers(const Xbyak::Reg64& reg_indexes, const Xbyak::Reg64& reg_const_params,
-                                       const std::vector<Xbyak::Reg64>& data_ptr_regs) const {
+                                       const std::vector<Xbyak::Reg64>& data_ptr_regs, const size_t& unroll_idx = 0) const {
     const auto num_params = num_inputs + num_outputs;
     // Note that we don't need offset for the last dim, since it's handled directly by Tile emitter
     const size_t offset_rank = jcp.master_shape.size() - 1;
@@ -383,6 +384,16 @@ void KernelEmitter::init_data_pointers(const Xbyak::Reg64& reg_indexes, const Xb
         // can corrupt reg_const_params, since we won't use it anymore
         init_ptr_with_offset(data_ptr_regs[i], data_offsets[i], reg_tmp);
     }
+    // Calculate data_ptr_regs for unrolled loop bodies
+    if (body.get_unroll_loop()) {
+        const size_t& step = body.get_unroll_work_step();
+        for (size_t i = 0; i < num_params; i++) {
+            h->add(data_ptr_regs[i], unroll_idx * step * io_data_sizes[i]);
+        }
+        for (size_t i = 0; i < num_unique_buffers; i++) {
+            h->add(data_ptr_regs[num_params + i], unroll_idx * step * buffer_data_sizes[i]);
+        }
+    }
 }
 void KernelEmitter::emit_impl(const std::vector<size_t>& in,
                               const std::vector<size_t>& out) const {
@@ -398,7 +409,7 @@ void KernelEmitter::emit_impl(const std::vector<size_t>& in,
                            std::inserter(data_ptr_gprs_idx, data_ptr_gprs_idx.end()), [&gprs_unroll](size_t reg){return gprs_unroll.at(reg);});
             std::vector<Reg64> data_ptr_gprs;
             transform_idxs_to_regs(data_ptr_gprs_idx, data_ptr_gprs);
-            init_data_pointers(reg_indexes, reg_const_params, data_ptr_gprs);
+            init_data_pointers(reg_indexes, reg_const_params, data_ptr_gprs, i);
         }
     } else {
         std::vector<Reg64> data_ptr_regs;

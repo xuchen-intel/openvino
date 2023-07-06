@@ -40,30 +40,42 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
         const auto& loop_end = loop_begin->get_loop_end();
         const auto& work_amount = loop_end->get_work_amount();
         const auto& work_amount_increment = loop_end->get_increment();
-
         // Ignore outer loops and tail loops
         if (work_amount_increment < work_amount) {
-            auto& loop_expr_it = expr_it;
-            loop_expr_it++;
             bool is_supported = true;
-            while ((*loop_expr_it)->get_node() != loop_end) {
-                const auto& node = (*loop_expr_it)->get_node();
+            // loop begin expr
+            auto expr_copy_begin_it = expr_it;
+            expr_it++;
+            while ((*expr_it)->get_node() != loop_end) {
+                const auto& node = (*expr_it)->get_node();
                 if (ov::is_type<const snippets::op::MemoryAccess>(node)) {
-                    loop_expr_it++;
+                    expr_it++;
                     continue;
                 }
                 if (!is_supported_eltwise_node(node)) {
                     is_supported = false;
                     break;
                 }
-                loop_expr_it++;
+                expr_it++;
             }
+            expr_it++;
+            // the expr after loop end
+            auto expr_copy_end_it = expr_it;
 
             if (is_supported) {
+                modified = true;
                 loop_end->set_unroll_loop(true);
                 const size_t unroll_factor = std::min(default_unroll_factor, work_amount / work_amount_increment);
                 loop_end->set_unroll_factor(unroll_factor);
-                modified = true;
+                auto loop_deep_copy = LinearIR::deep_copy_range(expr_copy_begin_it, expr_copy_end_it);
+                auto to_erase = std::remove_if(loop_deep_copy.begin(), loop_deep_copy.end(),
+                                [](const ExpressionPtr& expr) { return is_type<ov::op::v0::Parameter>(expr->get_node()) ||
+                                                                        is_type<ov::op::v0::Result>(expr->get_node());});
+                loop_deep_copy.erase(to_erase, loop_deep_copy.end());
+                for (size_t i = 1; i < unroll_factor; i++) {
+                    auto loop_insert = LinearIR::deep_copy_range(loop_deep_copy.begin(), loop_deep_copy.end());
+                    linear_ir.insert(expr_it, loop_insert.begin(), loop_insert.end());
+                }
             }
         } else {
             expr_it++;

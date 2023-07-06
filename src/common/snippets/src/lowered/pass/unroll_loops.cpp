@@ -39,9 +39,9 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
         }
         const auto& loop_end = loop_begin->get_loop_end();
         const auto& work_amount = loop_end->get_work_amount();
-        const auto& work_amount_increment = loop_end->get_increment();
+        const auto& increment = loop_end->get_increment();
         // Ignore outer loops and tail loops
-        if (work_amount_increment < work_amount) {
+        if (increment < work_amount) {
             bool is_supported = true;
             // loop begin expr
             auto expr_copy_begin_it = expr_it;
@@ -65,15 +65,36 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
             if (is_supported) {
                 modified = true;
                 loop_end->set_unroll_loop(true);
-                const size_t unroll_factor = std::min(default_unroll_factor, work_amount / work_amount_increment);
+                const size_t unroll_factor = std::min(default_unroll_factor, work_amount / increment);
                 loop_end->set_unroll_factor(unroll_factor);
+                loop_end->set_increment(unroll_factor * increment);
                 auto loop_deep_copy = LinearIR::deep_copy_range(expr_copy_begin_it, expr_copy_end_it);
                 auto to_erase = std::remove_if(loop_deep_copy.begin(), loop_deep_copy.end(),
                                 [](const ExpressionPtr& expr) { return is_type<ov::op::v0::Parameter>(expr->get_node()) ||
-                                                                        is_type<ov::op::v0::Result>(expr->get_node());});
+                                                                       is_type<ov::op::v0::Result>(expr->get_node());});
                 loop_deep_copy.erase(to_erase, loop_deep_copy.end());
                 for (size_t i = 1; i < unroll_factor; i++) {
                     auto loop_insert = LinearIR::deep_copy_range(loop_deep_copy.begin(), loop_deep_copy.end());
+                    for (auto expr_insert_it = loop_insert.begin(); expr_insert_it != loop_insert.end(); expr_insert_it++) {
+                        // Reset offset for MemoryAccess nodes
+                        if (const auto memory_access = std::dynamic_pointer_cast<ov::snippets::op::MemoryAccess>((*expr_insert_it)->get_node())) {
+                            for (const auto in : memory_access->get_memory_access_input_ports()) {
+                                const auto port = in.first;
+                                memory_access->set_input_offset(memory_access->get_input_offset(port) + increment, port);
+                            }
+                            for (const auto out : memory_access->get_memory_access_output_ports()) {
+                                const auto port = out.first;
+                                memory_access->set_output_offset(memory_access->get_output_offset(port) + increment, port);
+                            }
+                        // Reset work_amount_increment and finalization_offsets for LoopEnd
+                        } else if (const auto& loop_end_insert = ov::as_type_ptr<ov::snippets::op::LoopEnd>((*expr_insert_it)->get_node())) {
+                            loop_end_insert->set_increment(unroll_factor * increment);
+                            std::vector<int64_t> offsets = loop_end_insert->get_finalization_offsets();
+                            std::transform(offsets.begin(), offsets.end(), offsets.begin(), [&increment](size_t offset) {return offset + increment;});
+                            loop_end_insert->set_finalization_offsets(offsets);
+                            loop_end_insert->has_outer_loop = loop_end->has_outer_loop;
+                        }
+                    }
                     linear_ir.insert(expr_it, loop_insert.begin(), loop_insert.end());
                 }
             }

@@ -16,6 +16,9 @@ namespace pass {
 bool UnrollLoops::run(LinearIR& linear_ir) {
     OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "Snippets::UnrollLoops")
     bool modified = false;
+    // This is a default unrolling factor, given that currently register information is
+    // unavailable in the stage of snippets common transformation
+    constexpr size_t default_unroll_factor = 3;
 
     auto is_supported_eltwise_node = [](const std::shared_ptr<ov::Node>& node) {
         if (ov::is_type<const ov::op::v1::Maximum>(node) ||
@@ -35,9 +38,11 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
             continue;
         }
         const auto& loop_end = loop_begin->get_loop_end();
+        const auto& work_amount = loop_end->get_work_amount();
+        const auto& work_amount_increment = loop_end->get_increment();
 
         // Ignore outer loops and tail loops
-        if (loop_end->get_increment() < loop_end->get_work_amount()) {
+        if (work_amount_increment < work_amount) {
             auto& loop_expr_it = expr_it;
             loop_expr_it++;
             bool is_supported = true;
@@ -56,6 +61,8 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
 
             if (is_supported) {
                 loop_end->set_unroll_loop(true);
+                const size_t unroll_factor = std::min(default_unroll_factor, work_amount / work_amount_increment);
+                loop_end->set_unroll_factor(unroll_factor);
                 modified = true;
             }
         } else {

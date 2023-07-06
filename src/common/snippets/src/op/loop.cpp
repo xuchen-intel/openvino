@@ -152,6 +152,10 @@ void LoopEnd::set_unroll_loop(bool unroll) {
     unroll_loop = unroll;
 }
 
+void LoopEnd::set_unroll_factor(size_t factor) {
+    unroll_factor = factor;
+}
+
 void LoopEnd::validate_and_infer_types() {
     NODE_VALIDATION_CHECK(this, get_input_size() == 1, "LoopEnd must have one input");
     const auto loop_begin = ov::as_type_ptr<LoopBegin>(get_input_node_shared_ptr(0));
@@ -189,6 +193,10 @@ bool LoopEnd::get_evaluate_once() const {
 
 bool LoopEnd::get_unroll_loop() const {
     return unroll_loop;
+}
+
+size_t LoopEnd::get_unroll_factor() const {
+    return unroll_factor;
 }
 
 size_t LoopEnd::get_increment() const {

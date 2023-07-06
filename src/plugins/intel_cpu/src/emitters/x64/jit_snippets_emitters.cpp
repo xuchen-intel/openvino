@@ -167,7 +167,6 @@ KernelEmitter::KernelEmitter(dnnl::impl::cpu::x64::jit_generator* h, dnnl::impl:
             if (unique_buffers.count(buffer_id) == 0) {
                 mem_access_exprs.push_back(expr);
                 unique_buffers.insert(buffer_id);
-                buffer_data_sizes.push_back(buffer->get_element_type().size());
             }
         } else {
             general_exprs.emplace_back(expr);
@@ -185,97 +184,6 @@ KernelEmitter::KernelEmitter(dnnl::impl::cpu::x64::jit_generator* h, dnnl::impl:
     gpr_map_pool.second.push_back(reg_indexes_idx);
     gpr_map_pool.second.push_back(reg_const_params_idx);
     map_abstract_registers(gpr_map_pool, vec_map_pool, general_exprs);
-
-    auto get_required_aux_regs_count = [](const std::pair<size_t, size_t>& regs_cnt,
-                                          std::pair<size_t, size_t>& required_regs_cnt) {
-        if (regs_cnt.first > required_regs_cnt.first)
-            required_regs_cnt.first = regs_cnt.first;
-        if (regs_cnt.second > required_regs_cnt.second)
-            required_regs_cnt.second = regs_cnt.second;
-    };
-
-    // Unroll loop
-    if (body.get_unroll_loop()) {
-        std::pair<size_t, size_t> required_regs_cnt(0, 0);
-        std::set<size_t> shared_vecs;
-        for (const auto& expr : body) {
-            const auto& emitter = expr->get_emitter();
-            if (const auto& jit_emitter = std::dynamic_pointer_cast<const ov::intel_cpu::jit_emitter>(emitter)) {
-                get_required_aux_regs_count(jit_emitter->aux_regs_count(), required_regs_cnt);
-            }
-            // The output vector registers of HorizonEmitters can be shared between unrolled loop bodies
-            if (const auto& horizon_emitter = std::dynamic_pointer_cast<const ov::intel_cpu::HorizonEmitter>(emitter)) {
-                std::vector<size_t> out_regs = expr->get_reg_info().second;
-                if (out_regs.size() == 1) {
-                    shared_vecs.insert(out_regs[0]);
-                }
-            }
-        }
-
-        calculate_unroll_factor(gpr_map_pool, vec_map_pool, shared_vecs, required_regs_cnt);
-        if (unroll_factor > 1) {
-            assign_unroll_registers(gpr_map_pool, vec_map_pool, shared_vecs);
-        } else {
-            body.set_unroll_loop(false);
-        }
-    }
-}
-
-void KernelEmitter::calculate_unroll_factor(const mapping_info& gpr_map_pool, const mapping_info& vec_map_pool,
-       const std::set<size_t>& shared_vecs, const std::pair<size_t, size_t>& required_regs_cnt) {
-    size_t aux_gprs_cnt, aux_vecs_cnt;
-    std::tie(aux_gprs_cnt, aux_vecs_cnt) = required_regs_cnt;
-
-    // Reserved gprs are rsp and rbp
-    constexpr size_t reserve_gprs_cnt = 2;
-    // Parameter gprs are reg_indexes_idx, reg_const_params_idx
-    constexpr size_t param_gprs_cnt = 2;
-    const size_t exclusive_gprs_cnt = gpr_map_pool.first.size() - param_gprs_cnt;
-    const size_t unroll_factor_gpr = exclusive_gprs_cnt == 0 ? 1 :
-                                     (16 - reserve_gprs_cnt - param_gprs_cnt - aux_gprs_cnt) / exclusive_gprs_cnt;
-
-    const size_t shared_vecs_cnt = shared_vecs.size();
-    const size_t exclusive_vecs_cnt = vec_map_pool.first.size() - shared_vecs_cnt;
-    const size_t unroll_factor_vec = (exclusive_vecs_cnt + aux_vecs_cnt == 0) ? 1 :
-                                     (16 - shared_vecs_cnt) / (exclusive_vecs_cnt + aux_vecs_cnt);
-
-    unroll_factor = std::min(unroll_factor_gpr, unroll_factor_vec);
-}
-
-void KernelEmitter::assign_unroll_registers(const mapping_info& gpr_map_pool, const mapping_info& vec_map_pool,
-       const std::set<size_t>& shared_vecs) {
-    std::map<size_t, size_t> gprs_unroll_init;
-    std::transform(std::begin(data_ptr_regs_idx), std::end(data_ptr_regs_idx),
-                   std::inserter(gprs_unroll_init, gprs_unroll_init.end()), [](size_t reg){return std::make_pair(reg, reg);});
-    gpr_regs_unroll.assign(unroll_factor, gprs_unroll_init);
-    for (size_t i = 1; i < unroll_factor; i++) {
-        std::map<size_t, size_t>& gprs_unroll = gpr_regs_unroll[i];
-        // For each exclusive data pointer gpr in ith unrolled loop body, the register map
-        // (from 0th to ith unrolled loop body) is stored.
-        for (auto& gpr_unroll : gprs_unroll) {
-            gpr_unroll.second = gp_regs_pool.back();
-            gp_regs_pool.pop_back();
-        }
-    }
-
-    std::vector<size_t> used_vec_regs;
-    for (const auto& abstract_to_physical : vec_map_pool.first)
-        used_vec_regs.push_back(abstract_to_physical.second);
-    std::map<size_t, size_t> vecs_unroll_init;
-    std::transform(std::begin(used_vec_regs), std::end(used_vec_regs),
-                   std::inserter(vecs_unroll_init, vecs_unroll_init.end()), [](size_t reg){return std::make_pair(reg, reg);});
-    vec_regs_unroll.assign(unroll_factor, vecs_unroll_init);
-    for (size_t i = 1; i < unroll_factor; i++) {
-        std::map<size_t, size_t>& vecs_unroll = vec_regs_unroll[i];
-        // For each exclusive vector registers in ith unrolled loop body, the register map
-        // (from 0th to ith unrolled loop body) is stored.
-        for (auto& vec_unroll : vecs_unroll) {
-            if (std::find(shared_vecs.begin(), shared_vecs.end(), vec_unroll.first) == shared_vecs.end()) {
-                vec_unroll.second = vec_regs_pool.back();
-                vec_regs_pool.pop_back();
-            }
-        }
-    }
 }
 
 void KernelEmitter::emit_code(const std::vector<size_t> &in,
@@ -298,7 +206,7 @@ void KernelEmitter::validate_arguments(const std::vector<size_t> &in,
 }
 
 void KernelEmitter::init_data_pointers(const Xbyak::Reg64& reg_indexes, const Xbyak::Reg64& reg_const_params,
-                                       const std::vector<Xbyak::Reg64>& data_ptr_regs, const size_t& unroll_idx = 0) const {
+                                       const std::vector<Xbyak::Reg64>& data_ptr_regs) const {
     const auto num_params = num_inputs + num_outputs;
     // Note that we don't need offset for the last dim, since it's handled directly by Tile emitter
     const size_t offset_rank = jcp.master_shape.size() - 1;
@@ -384,16 +292,6 @@ void KernelEmitter::init_data_pointers(const Xbyak::Reg64& reg_indexes, const Xb
         // can corrupt reg_const_params, since we won't use it anymore
         init_ptr_with_offset(data_ptr_regs[i], data_offsets[i], reg_tmp);
     }
-    // Calculate data_ptr_regs for unrolled loop bodies
-    if (body.get_unroll_loop()) {
-        const size_t& step = body.get_unroll_work_step();
-        for (size_t i = 0; i < num_params; i++) {
-            h->add(data_ptr_regs[i], unroll_idx * step * io_data_sizes[i]);
-        }
-        for (size_t i = 0; i < num_unique_buffers; i++) {
-            h->add(data_ptr_regs[num_params + i], unroll_idx * step * buffer_data_sizes[i]);
-        }
-    }
 }
 void KernelEmitter::emit_impl(const std::vector<size_t>& in,
                               const std::vector<size_t>& out) const {
@@ -401,28 +299,16 @@ void KernelEmitter::emit_impl(const std::vector<size_t>& in,
 
     Reg64 reg_indexes = Reg64(static_cast<int>(reg_indexes_idx));
     Reg64 reg_const_params = Reg64(static_cast<int>(reg_const_params_idx));
-    if (body.get_unroll_loop()) {
-        for (size_t i = 0; i < unroll_factor; i++) {
-            const std::map<size_t, size_t>& gprs_unroll = gpr_regs_unroll[i];
-            std::vector<size_t> data_ptr_gprs_idx;
-            std::transform(std::begin(data_ptr_regs_idx), std::end(data_ptr_regs_idx),
-                           std::inserter(data_ptr_gprs_idx, data_ptr_gprs_idx.end()), [&gprs_unroll](size_t reg){return gprs_unroll.at(reg);});
-            std::vector<Reg64> data_ptr_gprs;
-            transform_idxs_to_regs(data_ptr_gprs_idx, data_ptr_gprs);
-            init_data_pointers(reg_indexes, reg_const_params, data_ptr_gprs, i);
-        }
-    } else {
-        std::vector<Reg64> data_ptr_regs;
-        transform_idxs_to_regs(data_ptr_regs_idx, data_ptr_regs);
-        init_data_pointers(reg_indexes, reg_const_params, data_ptr_regs);
-        for (const auto& expression : body) {
-            const auto& emitter = expression->get_emitter();
-            std::vector<size_t> in_regs, out_regs;
-            std::tie(in_regs, out_regs) = expression->get_reg_info();
-            emitter->emit_code(in_regs, out_regs, vec_regs_pool, gp_regs_pool);
-        }
-    }
+    std::vector<Reg64> data_ptr_regs;
+    transform_idxs_to_regs(data_ptr_regs_idx, data_ptr_regs);
 
+    init_data_pointers(reg_indexes, reg_const_params, data_ptr_regs);
+    for (const auto& expression : body) {
+        const auto& emitter = expression->get_emitter();
+        std::vector<size_t> in_regs, out_regs;
+        std::tie(in_regs, out_regs) = expression->get_reg_info();
+        emitter->emit_code(in_regs, out_regs, vec_regs_pool, gp_regs_pool);
+    }
     h->postamble();
 }
 
@@ -1455,7 +1341,7 @@ HorizonEmitter::HorizonEmitter(dnnl::impl::cpu::x64::jit_generator* h, dnnl::imp
     } else if (ov::is_type<const snippets::op::HorizonSum>(n)) {
         m_op_type = OpType::sum;
     } else {
-        OPENVINO_THROW("HorizonEmitter supports HorizonMax or HorizonSum ops");
+        OPENVINO_THROW("HorizonEmitter exprects HorizonMax or HorizonSum ops");
     }
 }
 

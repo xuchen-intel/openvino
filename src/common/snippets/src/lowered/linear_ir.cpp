@@ -260,22 +260,6 @@ void LinearIR::move(LinearIR::constExprIt from, LinearIR::constExprIt to) {
     m_expressions.splice(to, m_expressions, from);
 }
 
-void LinearIR::set_unroll_loop(bool unroll) {
-    unroll_loop = unroll;
-}
-
-void LinearIR::set_unroll_work_step(size_t step) {
-    unroll_work_step = step;
-}
-
-bool LinearIR::get_unroll_loop() const {
-    return unroll_loop;
-}
-
-size_t LinearIR::get_unroll_work_step() const {
-    return unroll_work_step;
-}
-
 }// namespace lowered
 }// namespace snippets
 }// namespace ov

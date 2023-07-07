@@ -31,6 +31,20 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
         return false;
     };
 
+    // Reset offset for MemoryAccess nodes
+    auto set_memory_access_offset = [](const std::shared_ptr<ov::Node>& node, const size_t& offset){
+        if (const auto memory_access = std::dynamic_pointer_cast<ov::snippets::op::MemoryAccess>(node)) {
+            for (const auto in : memory_access->get_memory_access_input_ports()) {
+                const auto port = in.first;
+                memory_access->set_input_offset(memory_access->get_input_offset(port) + offset, port);
+            }
+            for (const auto out : memory_access->get_memory_access_output_ports()) {
+                const auto port = out.first;
+                memory_access->set_output_offset(memory_access->get_output_offset(port) + offset, port);
+            }
+        }
+    };
+
     for (auto expr_it = linear_ir.begin(); expr_it != linear_ir.end();) {
         const auto& loop_begin = ov::as_type_ptr<ov::snippets::op::LoopBegin>((*expr_it)->get_node());
         if (!loop_begin) {
@@ -43,9 +57,9 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
         // Ignore outer loops and tail loops
         if (increment < work_amount) {
             bool is_supported = true;
-            // loop begin expr
-            auto expr_copy_begin_it = expr_it;
             expr_it++;
+            // The expr after LoopBegin
+            auto expr_copy_begin_it = expr_it;
             while ((*expr_it)->get_node() != loop_end) {
                 const auto& node = (*expr_it)->get_node();
                 if (ov::is_type<const snippets::op::MemoryAccess>(node)) {
@@ -58,42 +72,42 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
                 }
                 expr_it++;
             }
-            expr_it++;
-            // the expr after loop end
+            // LoopEnd expr
             auto expr_copy_end_it = expr_it;
 
             if (is_supported) {
                 modified = true;
-                const size_t unroll_factor = std::min(default_unroll_factor, work_amount / increment);
-                loop_end->set_increment(unroll_factor * increment);
+                const size_t total_iters = work_amount / increment;
+                const size_t unroll_factor = std::min(default_unroll_factor, total_iters);
+                const size_t unroll_increment = unroll_factor * increment;
                 auto loop_deep_copy = LinearIR::deep_copy_range(expr_copy_begin_it, expr_copy_end_it);
                 auto to_erase = std::remove_if(loop_deep_copy.begin(), loop_deep_copy.end(),
                                 [](const ExpressionPtr& expr) { return is_type<ov::op::v0::Parameter>(expr->get_node()) ||
                                                                        is_type<ov::op::v0::Result>(expr->get_node());});
                 loop_deep_copy.erase(to_erase, loop_deep_copy.end());
+                // Insert loop remainder, including a copy of LoopBegin and LoopEnd
+                bool has_loop_remainder = total_iters % unroll_factor;
+                auto loop_remainder_insert = has_loop_remainder ?
+                                             LinearIR::deep_copy_range(--expr_copy_begin_it, ++expr_copy_end_it) : LinearIR::container();
+                // Repeat loop body, excluding LoopBegin and LoopEnd
                 for (size_t i = 1; i < unroll_factor; i++) {
                     auto loop_insert = LinearIR::deep_copy_range(loop_deep_copy.begin(), loop_deep_copy.end());
                     for (auto expr_insert_it = loop_insert.begin(); expr_insert_it != loop_insert.end(); expr_insert_it++) {
-                        // Reset offset for MemoryAccess nodes
-                        if (const auto memory_access = std::dynamic_pointer_cast<ov::snippets::op::MemoryAccess>((*expr_insert_it)->get_node())) {
-                            for (const auto in : memory_access->get_memory_access_input_ports()) {
-                                const auto port = in.first;
-                                memory_access->set_input_offset(memory_access->get_input_offset(port) + increment, port);
-                            }
-                            for (const auto out : memory_access->get_memory_access_output_ports()) {
-                                const auto port = out.first;
-                                memory_access->set_output_offset(memory_access->get_output_offset(port) + increment, port);
-                            }
-                        // Reset work_amount_increment and finalization_offsets for LoopEnd
-                        } else if (const auto& loop_end_insert = ov::as_type_ptr<ov::snippets::op::LoopEnd>((*expr_insert_it)->get_node())) {
-                            loop_end_insert->set_increment(unroll_factor * increment);
-                            std::vector<int64_t> offsets = loop_end_insert->get_finalization_offsets();
-                            std::transform(offsets.begin(), offsets.end(), offsets.begin(), [&increment](size_t offset) {return offset + increment;});
-                            loop_end_insert->set_finalization_offsets(offsets);
-                            loop_end_insert->has_outer_loop = loop_end->has_outer_loop;
-                        }
+                        set_memory_access_offset((*expr_insert_it)->get_node(), i * increment);
                     }
                     linear_ir.insert(expr_it, loop_insert.begin(), loop_insert.end());
+                }
+                loop_end->set_increment(unroll_increment);
+                if (has_loop_remainder) {
+                    // The expr after LoopEnd
+                    expr_it++;
+                    const size_t offset = work_amount / unroll_increment * unroll_increment;
+                    auto remainder_loop_begin = linear_ir.insert(expr_it, loop_remainder_insert.begin(), loop_remainder_insert.end());
+                    auto remainder_loop_end = ov::as_type_ptr<op::LoopBegin>((*remainder_loop_begin)->get_node())->get_loop_end();
+                    remainder_loop_end->set_work_amount(work_amount - offset);
+                    remainder_loop_end->set_increment(increment);
+                } else {
+                    expr_it++;
                 }
             }
         } else {

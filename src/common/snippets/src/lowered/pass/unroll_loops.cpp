@@ -64,9 +64,7 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
 
             if (is_supported) {
                 modified = true;
-                loop_end->set_unroll_loop(true);
                 const size_t unroll_factor = std::min(default_unroll_factor, work_amount / increment);
-                loop_end->set_unroll_factor(unroll_factor);
                 loop_end->set_increment(unroll_factor * increment);
                 auto loop_deep_copy = LinearIR::deep_copy_range(expr_copy_begin_it, expr_copy_end_it);
                 auto to_erase = std::remove_if(loop_deep_copy.begin(), loop_deep_copy.end(),

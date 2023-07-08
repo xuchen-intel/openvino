@@ -25,6 +25,7 @@ public:
     Load(const Output<Node>& x, const size_t count = 1lu, const size_t offset = 0lu);
     Load() = default;
 
+    size_t get_byte_offset() const { return get_input_offset(0) * get_element_type().size(); }
     size_t get_offset() const { return get_input_offset(0); }
     size_t get_count() const { return get_input_count(0); }
 

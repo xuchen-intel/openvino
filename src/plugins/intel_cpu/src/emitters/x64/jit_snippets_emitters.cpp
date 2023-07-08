@@ -526,7 +526,7 @@ StoreEmitter::StoreEmitter(dnnl::impl::cpu::x64::jit_generator* h, dnnl::impl::c
 
     const auto store = ov::as_type_ptr<snippets::op::Store>(n);
     count = store->get_count();
-    byte_offset = store->get_offset();
+    byte_offset = store->get_byte_offset();
     in_out_type_ = emitter_in_out_map::vec_to_gpr;
     store_emitter.reset(new jit_store_emitter(h, isa, src_prc, dst_prc, count));
 }
@@ -562,7 +562,7 @@ LoadEmitter::LoadEmitter(dnnl::impl::cpu::x64::jit_generator* h, dnnl::impl::cpu
 
     const auto load = std::dynamic_pointer_cast<snippets::op::Load>(n);
     count = load->get_count();
-    byte_offset = load->get_offset();
+    byte_offset = load->get_byte_offset();
     in_out_type_ = emitter_in_out_map::gpr_to_vec;
     load_emitter.reset(new jit_load_emitter(h, isa, src_prc, dst_prc, count));
 }
@@ -597,7 +597,7 @@ BroadcastLoadEmitter::BroadcastLoadEmitter(dnnl::impl::cpu::x64::jit_generator* 
         IE_THROW() << "BroadcastEmitters support only equal input and output types but gets: " << src_prc.name() << " and " << dst_prc.name();
 
     const auto broadcast_load = std::dynamic_pointer_cast<snippets::op::BroadcastLoad>(n);
-    byte_offset = broadcast_load->get_offset();
+    byte_offset = broadcast_load->get_byte_offset();
     in_out_type_ = emitter_in_out_map::gpr_to_vec;
 }
 
@@ -635,7 +635,7 @@ LoadConvertEmitter::LoadConvertEmitter(dnnl::impl::cpu::x64::jit_generator* h, d
     : MemoryEmitter(h, isa, n) {
     const auto load = ov::as_type_ptr<snippets::op::Load>(n);
     count = load->get_count();
-    byte_offset = load->get_offset();
+    byte_offset = load->get_byte_offset();
     in_out_type_ = emitter_in_out_map::gpr_to_vec;
     load_emitter.reset(new jit_load_emitter(h, isa, src_prc, dst_prc, count));
 }
@@ -668,7 +668,7 @@ StoreConvertEmitter::StoreConvertEmitter(dnnl::impl::cpu::x64::jit_generator* h,
                                          const std::shared_ptr<ov::Node>& n) : MemoryEmitter(h, isa, n) {
     const auto store = ov::as_type_ptr<snippets::op::Store>(n);
     count = store->get_count();
-    byte_offset = store->get_offset();
+    byte_offset = store->get_byte_offset();
     in_out_type_ = emitter_in_out_map::vec_to_gpr;
 
     if (ov::is_type<ov::intel_cpu::StoreConvertTruncation>(n)) {
@@ -892,10 +892,10 @@ void BrgemmEmitter::emit_impl(const std::vector<size_t>& in,
                     auto& brgemmCtx = m_brgCtxs0[getBrgIdx(mIdx, k, n)];
 
                     if (brgemmCtx.K != 0 && brgemmCtx.N != 0) {
-                        const size_t in0_offset = m_load_offset_a + (k * K0_step0 + mb * m_M_blk * brgemmCtx.LDA) * io_data_size[0];
-                        const size_t in1_offset = m_load_offset_b + (k * K0_step1 + n * N0_step0) * io_data_size[1];
-                        const size_t in2_offset = m_load_offset_scratch + (m_with_comp ? n * N0_step1 * sizeof(int32_t) : 0);
-                        const size_t out0_offset = m_store_offset_c + (n * N0_step1 + mb * m_M_blk * brgemmCtx.LDC) * io_data_size[2];
+                        const size_t in0_offset = (m_load_offset_a + k * K0_step0 + mb * m_M_blk * brgemmCtx.LDA) * io_data_size[0];
+                        const size_t in1_offset = (m_load_offset_b + k * K0_step1 + n * N0_step0) * io_data_size[1];
+                        const size_t in2_offset = m_load_offset_scratch* sizeof(int32_t) + (m_with_comp ? n * N0_step1 * sizeof(int32_t) : 0);
+                        const size_t out0_offset = (m_store_offset_c + n * N0_step1 + mb * m_M_blk * brgemmCtx.LDC) * io_data_size[2];
 
                         emit_brgemm_kernel_call(m_brgKernels0[getBrgIdx(mIdx, k, n)].get(),
                                                 brgemmCtx,
@@ -1187,9 +1187,9 @@ void BrgemmCopyBEmitter::emit_impl(const std::vector<size_t>& in,
 
         const size_t data_size = m_brgemm_prc_in1.size();
         for (size_t nb = 0; nb < div_up(m_N, m_N_blk); nb++) {
-            const size_t offset_in = m_in_offset + nb * m_N_blk * data_size;
-            const size_t offset_out = m_out_offset + nb * m_N_blk * m_brgemmVNNIFactor * data_size;
-            const size_t offset_comp = m_with_comp ? m_comp_offset + nb * m_N_blk * sizeof(int32_t) : 0;
+            const size_t offset_in = (m_in_offset + nb * m_N_blk) * data_size;
+            const size_t offset_out = (m_out_offset + nb * m_N_blk * m_brgemmVNNIFactor) * data_size;
+            const size_t offset_comp = m_with_comp ? (m_comp_offset + nb * m_N_blk) * sizeof(int32_t) : 0;
 
             const bool is_N_tail = (m_N - nb * m_N_blk < m_N_blk);
             const auto current_N_blk = is_N_tail ? m_N_tail : m_N_blk;

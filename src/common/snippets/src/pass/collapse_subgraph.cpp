@@ -177,7 +177,7 @@ auto is_supported_op(const std::shared_ptr<const Node> &n) -> bool {
            is_supported_binary_eltwise_op(n) ||
            is_supported_ternary_eltwise_op(n) ||
            is_supported_transpose(n) ||
-           is_supported_softmax(n) ||
+           // is_supported_softmax(n) ||
            is_supported_matmul(n) ||
            is_supported_broadcast_op(n);
 }

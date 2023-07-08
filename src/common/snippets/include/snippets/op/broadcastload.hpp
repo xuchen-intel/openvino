@@ -24,6 +24,7 @@ public:
     BroadcastLoad(const Output<Node>& x, ov::PartialShape output_shape, size_t offset = 0lu);
     BroadcastLoad() = default;
 
+    size_t get_byte_offset() const { return get_input_offset(0) * get_element_type().size(); }
     size_t get_offset() const { return get_input_offset(0); }
 
     bool visit_attributes(AttributeVisitor& visitor) override;

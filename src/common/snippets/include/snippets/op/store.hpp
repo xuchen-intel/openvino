@@ -25,6 +25,7 @@ public:
     Store(const Output<Node>& x, const size_t count = 1lu, const size_t offset = 0lu);
     Store() = default;
 
+    size_t get_byte_offset() const { return get_output_offset(0) * get_element_type().size(); }
     size_t get_offset() const { return get_output_offset(0); }
     size_t get_count() const { return get_output_count(0); }
 

@@ -597,7 +597,7 @@ private:
                 case memory::data_type::bf16:
                 case memory::data_type::f16:
                     mov(reg_tmp_64.cvt16(), table_idx);
-                    mov(ptr[rsp + i * sizeof(short)], reg_tmp_64.cvt16());
+                    mov(ptr[rsp + i * 2], reg_tmp_64.cvt16());
                     break;
                 case memory::data_type::s8:
                 case memory::data_type::u8:

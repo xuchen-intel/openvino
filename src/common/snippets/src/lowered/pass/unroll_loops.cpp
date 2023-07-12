@@ -120,6 +120,42 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
         }
     }
 
+    if (!modified) {
+        return false;
+    }
+
+    std::vector<std::pair<Generator::opRegType, ExpressionPtr>> typed_ops;
+    for (const auto& expr : linear_ir) {
+        auto op = expr->get_node();
+        auto reg_type = m_reg_type_mapper(op);
+        typed_ops.emplace_back(reg_type, expr);
+    }
+
+    std::set<size_t> assigned_vec_regs;
+    for (const auto& t_op : typed_ops) {
+        const auto& rinfo = t_op.second->get_reg_info();
+        switch (t_op.first) {
+            case Generator::opRegType::gpr2gpr:
+                break;
+            case Generator::opRegType::vec2gpr:
+                std::transform(rinfo.first.begin(), rinfo.first.end(), std::inserter(assigned_vec_regs, assigned_vec_regs.end()),
+                [](size_t reg){return reg;});
+                break;
+            case Generator::opRegType::gpr2vec:
+                std::transform(rinfo.second.begin(), rinfo.second.end(), std::inserter(assigned_vec_regs, assigned_vec_regs.end()),
+                [](size_t reg){return reg;});
+                break;
+            case Generator::opRegType::vec2vec:
+                std::transform(rinfo.first.begin(), rinfo.first.end(), std::inserter(assigned_vec_regs, assigned_vec_regs.end()),
+                [](size_t reg){return reg;});
+                std::transform(rinfo.second.begin(), rinfo.second.end(), std::inserter(assigned_vec_regs, assigned_vec_regs.end()),
+                [](size_t reg){return reg;});
+                break;
+        }
+    }
+
+    // Reassign vector registers cyclicall for unrolled loops
+
     return modified;
 }
 

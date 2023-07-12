@@ -75,8 +75,11 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
             // LoopEnd expr
             auto expr_copy_end_it = expr_it;
 
+            //Unroll loops
             if (is_supported) {
+                loop_end->set_unroll_loop(true);
                 modified = true;
+
                 const size_t total_iters = work_amount / increment;
                 const size_t unroll_factor = std::min(default_unroll_factor, total_iters);
                 const size_t unroll_increment = unroll_factor * increment;

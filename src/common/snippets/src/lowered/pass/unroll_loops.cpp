@@ -7,6 +7,7 @@
 #include "snippets/lowered/linear_ir.hpp"
 #include "snippets/snippets_isa.hpp"
 #include "snippets/itt.hpp"
+#include "snippets/utils.hpp"
 
 namespace ov {
 namespace snippets {
@@ -43,6 +44,42 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
             return true;
         }
         return false;
+    };
+
+    auto reassign_register_for_port = [&port_connector_visited](const ExpressionPort& port, const std::vector<size_t>& vec_regs_unroll,
+        const size_t& unroll_idx) {
+        // The regs that belong port connectors that have already been visited, don't need to reassign again
+        const auto& connector = port.get_port_connector_ptr();
+        if (port_connector_visited.find(connector) != port_connector_visited.end())
+            return;
+        const auto& descriptor = port.get_descriptor_ptr();
+        const auto& reg = descriptor->get_reg();
+        auto pos = static_cast<size_t>(find(vec_regs_unroll.begin(), vec_regs_unroll.end(), reg) - vec_regs_unroll.begin());
+        // Sharely used regs don't need to reassign
+        if (pos >= vec_regs_unroll.size())
+            return;
+        // Reassign vector registers cyclically based on unrolled body index
+        const auto& new_reg = vec_regs_unroll[(pos + unroll_idx) % vec_regs_unroll.size()];
+        descriptor->set_reg(new_reg);
+        port_connector_visited.insert(connector);
+    };
+
+    auto reassign_registers_for_expression = [&](const ExpressionPtr& expr,
+        const std::vector<size_t>& vec_regs_unroll, const size_t& unroll_idx){
+        const auto& rinfo = expr->get_reg_info();
+        const auto& reg_type = m_reg_type_mapper(expr->get_node());
+        if (ov::snippets::utils::one_of(reg_type, Generator::opRegType::vec2gpr, Generator::opRegType::vec2vec)) {
+            for (size_t i = 0; i < expr->get_input_count(); i++) {
+                const auto& in_port = expr->get_input_port(i);
+                reassign_register_for_port(in_port, vec_regs_unroll, unroll_idx);
+            }
+        }
+        if (ov::snippets::utils::one_of(reg_type, Generator::opRegType::gpr2vec, Generator::opRegType::vec2vec)) {
+            for (size_t i = 0; i < expr->get_output_count(); i++) {
+                const auto& out_port = expr->get_output_port(i);
+                reassign_register_for_port(out_port, vec_regs_unroll, unroll_idx);
+            }
+        }
     };
 
     // Reset offset for MemoryAccess nodes
@@ -167,30 +204,7 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
                     }
                     // Reassign vector registers cyclically for unrolled loops
                     for (auto expr_insert_it = loop_insert.begin(); expr_insert_it != loop_insert.end(); expr_insert_it++) {
-                        const auto &expr = *expr_insert_it;
-                        const auto& rinfo = expr->get_reg_info();
-                        std::vector<size_t> in_regs, out_regs;
-                        //for (const auto& reg : rinfo.first) {
-                        for (size_t i = 0; i < expr->get_input_count(); ++i) {
-                            const auto& in_port = expr->get_input_port(i);
-                            const auto& descriptor = in_port.get_descriptor_ptr();
-                            const auto& reg = descriptor->get_reg();
-                            auto pos = static_cast<size_t>(find(vec_regs_unroll.begin(), vec_regs_unroll.end(), reg) - vec_regs_unroll.begin());
-                            // Sharely used regs don't need to reassign
-                            if (pos >= vec_regs_unroll.size()) {
-                                in_regs.push_back(reg);
-                                continue;
-                            }
-                            // The regs that belong port connectors that have already been visited, don't need to reassign again
-                            const auto& connector = in_port.get_port_connector_ptr();
-                            if (port_connector_visited.find(connector) != port_connector_visited.end()) {
-                                in_regs.push_back(reg);
-                                continue;
-                            }
-                            // Reassign vector registers cyclically based on unrolled body index
-                            const auto& new_reg = vec_regs_unroll[(pos + i) % vec_regs_unroll.size()];
-                            descriptor->set_reg(new_reg);
-                        }
+                        reassign_registers_for_expression(*expr_insert_it, vec_regs_unroll, i);
                     }
 
                     linear_ir.insert(expr_it, loop_insert.begin(), loop_insert.end());

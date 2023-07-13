@@ -18,6 +18,7 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
     bool modified = false;
     bool assigned_vec_regs_initialized = false;
     std::set<size_t> assigned_vec_regs;
+    std::set<PortConnectorPtr> port_connector_visited;
     // This is a default unrolling factor, given that currently register information is
     // unavailable in the stage of snippets common transformation
     constexpr size_t default_unroll_factor = 3;
@@ -141,8 +142,8 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
                 auto loop_remainder_insert = has_loop_remainder ?
                                              LinearIR::deep_copy_range(--expr_copy_begin_it, ++expr_copy_end_it) : LinearIR::container();
                 // For each unrolled loop, vec_regs should be updated only once
-                std::set<size_t> vec_regs = assigned_vec_regs;
                 bool vec_regs_updated = false;
+                std::vector<size_t> vec_regs_unroll;
                 // Repeat loop body, excluding LoopBegin and LoopEnd
                 for (size_t i = 1; i < unroll_factor; i++) {
                     auto loop_insert = LinearIR::deep_copy_range(loop_deep_copy.begin(), loop_deep_copy.end());
@@ -150,8 +151,9 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
                     for (auto expr_insert_it = loop_insert.begin(); expr_insert_it != loop_insert.end(); expr_insert_it++) {
                         set_memory_access_offset((*expr_insert_it)->get_node(), i * increment);
                     }
-                    // Update vec_regs
+                    // Update vec_regs, to exclude sharely used regs
                     if (!vec_regs_updated) {
+                        std::set<size_t> vec_regs = assigned_vec_regs;
                         for (auto expr_insert_it = loop_insert.begin(); expr_insert_it != loop_insert.end(); expr_insert_it++) {
                             if (!is_horizon_node((*expr_insert_it)->get_node()))
                                 continue;
@@ -159,8 +161,36 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
                             for (const auto& reg : rinfo.second)
                                 vec_regs.erase(reg);
                         }
+                        vec_regs_unroll.assign(vec_regs.begin(), vec_regs.end());
 
                         vec_regs_updated = true;
+                    }
+                    // Reassign vector registers cyclically for unrolled loops
+                    for (auto expr_insert_it = loop_insert.begin(); expr_insert_it != loop_insert.end(); expr_insert_it++) {
+                        const auto &expr = *expr_insert_it;
+                        const auto& rinfo = expr->get_reg_info();
+                        std::vector<size_t> in_regs, out_regs;
+                        //for (const auto& reg : rinfo.first) {
+                        for (size_t i = 0; i < expr->get_input_count(); ++i) {
+                            const auto& in_port = expr->get_input_port(i);
+                            const auto& descriptor = in_port.get_descriptor_ptr();
+                            const auto& reg = descriptor->get_reg();
+                            auto pos = static_cast<size_t>(find(vec_regs_unroll.begin(), vec_regs_unroll.end(), reg) - vec_regs_unroll.begin());
+                            // Sharely used regs don't need to reassign
+                            if (pos >= vec_regs_unroll.size()) {
+                                in_regs.push_back(reg);
+                                continue;
+                            }
+                            // The regs that belong port connectors that have already been visited, don't need to reassign again
+                            const auto& connector = in_port.get_port_connector_ptr();
+                            if (port_connector_visited.find(connector) != port_connector_visited.end()) {
+                                in_regs.push_back(reg);
+                                continue;
+                            }
+                            // Reassign vector registers cyclically based on unrolled body index
+                            const auto& new_reg = vec_regs_unroll[(pos + i) % vec_regs_unroll.size()];
+                            descriptor->set_reg(new_reg);
+                        }
                     }
 
                     linear_ir.insert(expr_it, loop_insert.begin(), loop_insert.end());
@@ -184,8 +214,6 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
             expr_it++;
         }
     }
-
-    // Reassign vector registers cyclicall for unrolled loops
 
     return modified;
 }

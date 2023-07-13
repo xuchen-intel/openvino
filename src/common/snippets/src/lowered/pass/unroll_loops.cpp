@@ -16,16 +16,29 @@ namespace pass {
 bool UnrollLoops::run(LinearIR& linear_ir) {
     OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "Snippets::UnrollLoops")
     bool modified = false;
+    bool assigned_vec_regs_initialized = false;
+    std::set<size_t> assigned_vec_regs;
     // This is a default unrolling factor, given that currently register information is
     // unavailable in the stage of snippets common transformation
     constexpr size_t default_unroll_factor = 3;
 
+    // Supported eltwise nodes decomposed from Softmax
     auto is_supported_eltwise_node = [](const std::shared_ptr<ov::Node>& node) {
         if (ov::is_type<const ov::op::v1::Maximum>(node) ||
             ov::is_type<const ov::op::v1::Subtract>(node) ||
             ov::is_type<const ov::op::v0::Exp>(node) ||
             ov::is_type<const ov::op::v1::Add>(node) ||
             ov::is_type<const ov::op::v1::Multiply>(node)) {
+            return true;
+        }
+        return false;
+    };
+
+    // Output vector regiters should be shared between unrolled loop bodies for nodes providing horizontal computation
+    auto is_horizon_node = [&is_supported_eltwise_node](const std::shared_ptr<ov::Node>& node) {
+        if (is_supported_eltwise_node(node) && (
+            ov::is_type<const ov::op::v1::Maximum>(node) ||
+            ov::is_type<const ov::op::v1::Add>(node))) {
             return true;
         }
         return false;
@@ -80,6 +93,41 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
                 loop_end->set_unroll_loop(true);
                 modified = true;
 
+                // Initialize assigned_vec_regs only once
+                // todo: move this code block to a seperate function
+                if (!assigned_vec_regs_initialized) {
+                    std::vector<std::pair<Generator::opRegType, ExpressionPtr>> typed_ops;
+                    for (const auto& expr : linear_ir) {
+                        auto op = expr->get_node();
+                        auto reg_type = m_reg_type_mapper(op);
+                        typed_ops.emplace_back(reg_type, expr);
+                    }
+
+                    for (const auto& t_op : typed_ops) {
+                        const auto& rinfo = t_op.second->get_reg_info();
+                        switch (t_op.first) {
+                            case Generator::opRegType::gpr2gpr:
+                                break;
+                            case Generator::opRegType::vec2gpr:
+                                std::transform(rinfo.first.begin(), rinfo.first.end(), std::inserter(assigned_vec_regs, assigned_vec_regs.end()),
+                                [](size_t reg){return reg;});
+                                break;
+                            case Generator::opRegType::gpr2vec:
+                                std::transform(rinfo.second.begin(), rinfo.second.end(), std::inserter(assigned_vec_regs, assigned_vec_regs.end()),
+                                [](size_t reg){return reg;});
+                                break;
+                            case Generator::opRegType::vec2vec:
+                                std::transform(rinfo.first.begin(), rinfo.first.end(), std::inserter(assigned_vec_regs, assigned_vec_regs.end()),
+                                [](size_t reg){return reg;});
+                                std::transform(rinfo.second.begin(), rinfo.second.end(), std::inserter(assigned_vec_regs, assigned_vec_regs.end()),
+                                [](size_t reg){return reg;});
+                                break;
+                        }
+                    }
+
+                    assigned_vec_regs_initialized = true;
+                }
+
                 const size_t total_iters = work_amount / increment;
                 const size_t unroll_factor = std::min(default_unroll_factor, total_iters);
                 const size_t unroll_increment = unroll_factor * increment;
@@ -92,12 +140,29 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
                 bool has_loop_remainder = total_iters % unroll_factor;
                 auto loop_remainder_insert = has_loop_remainder ?
                                              LinearIR::deep_copy_range(--expr_copy_begin_it, ++expr_copy_end_it) : LinearIR::container();
+                // For each unrolled loop, vec_regs should be updated only once
+                std::set<size_t> vec_regs = assigned_vec_regs;
+                bool vec_regs_updated = false;
                 // Repeat loop body, excluding LoopBegin and LoopEnd
                 for (size_t i = 1; i < unroll_factor; i++) {
                     auto loop_insert = LinearIR::deep_copy_range(loop_deep_copy.begin(), loop_deep_copy.end());
+                    // Set offset for momory access nodes
                     for (auto expr_insert_it = loop_insert.begin(); expr_insert_it != loop_insert.end(); expr_insert_it++) {
                         set_memory_access_offset((*expr_insert_it)->get_node(), i * increment);
                     }
+                    // Update vec_regs
+                    if (!vec_regs_updated) {
+                        for (auto expr_insert_it = loop_insert.begin(); expr_insert_it != loop_insert.end(); expr_insert_it++) {
+                            if (!is_horizon_node((*expr_insert_it)->get_node()))
+                                continue;
+                            const auto& rinfo = (*expr_insert_it)->get_reg_info();
+                            for (const auto& reg : rinfo.second)
+                                vec_regs.erase(reg);
+                        }
+
+                        vec_regs_updated = true;
+                    }
+
                     linear_ir.insert(expr_it, loop_insert.begin(), loop_insert.end());
                 }
                 loop_end->set_increment(unroll_increment);
@@ -117,40 +182,6 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
             }
         } else {
             expr_it++;
-        }
-    }
-
-    if (!modified) {
-        return false;
-    }
-
-    std::vector<std::pair<Generator::opRegType, ExpressionPtr>> typed_ops;
-    for (const auto& expr : linear_ir) {
-        auto op = expr->get_node();
-        auto reg_type = m_reg_type_mapper(op);
-        typed_ops.emplace_back(reg_type, expr);
-    }
-
-    std::set<size_t> assigned_vec_regs;
-    for (const auto& t_op : typed_ops) {
-        const auto& rinfo = t_op.second->get_reg_info();
-        switch (t_op.first) {
-            case Generator::opRegType::gpr2gpr:
-                break;
-            case Generator::opRegType::vec2gpr:
-                std::transform(rinfo.first.begin(), rinfo.first.end(), std::inserter(assigned_vec_regs, assigned_vec_regs.end()),
-                [](size_t reg){return reg;});
-                break;
-            case Generator::opRegType::gpr2vec:
-                std::transform(rinfo.second.begin(), rinfo.second.end(), std::inserter(assigned_vec_regs, assigned_vec_regs.end()),
-                [](size_t reg){return reg;});
-                break;
-            case Generator::opRegType::vec2vec:
-                std::transform(rinfo.first.begin(), rinfo.first.end(), std::inserter(assigned_vec_regs, assigned_vec_regs.end()),
-                [](size_t reg){return reg;});
-                std::transform(rinfo.second.begin(), rinfo.second.end(), std::inserter(assigned_vec_regs, assigned_vec_regs.end()),
-                [](size_t reg){return reg;});
-                break;
         }
     }
 

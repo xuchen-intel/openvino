@@ -46,40 +46,28 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
         return false;
     };
 
-    auto reassign_register_for_port = [&port_connector_visited](const ExpressionPort& port, const std::vector<size_t>& vec_regs_unroll,
-        const size_t& unroll_idx) {
-        // The regs that belong port connectors that have already been visited, don't need to reassign again
-        const auto& connector = port.get_port_connector_ptr();
-        if (port_connector_visited.find(connector) != port_connector_visited.end())
-            return;
-        const auto& descriptor = port.get_descriptor_ptr();
-        const auto& reg = descriptor->get_reg();
+    auto reassign_register = [](const std::vector<size_t>& vec_regs_unroll, const size_t& unroll_idx, size_t& reg){
         auto pos = static_cast<size_t>(find(vec_regs_unroll.begin(), vec_regs_unroll.end(), reg) - vec_regs_unroll.begin());
-        // Sharely used regs don't need to reassign
-        if (pos >= vec_regs_unroll.size())
-            return;
-        // Reassign vector registers cyclically based on unrolled body index
-        const auto& new_reg = vec_regs_unroll[(pos + unroll_idx) % vec_regs_unroll.size()];
-        descriptor->set_reg(new_reg);
-        port_connector_visited.insert(connector);
+        // Only reassign registers that are not sharely used regs
+        if (pos < vec_regs_unroll.size()) {
+            // Reassign vector registers cyclically based on unrolled body index
+            reg = vec_regs_unroll[(pos + unroll_idx) % vec_regs_unroll.size()];
+        }
     };
 
     auto reassign_registers_for_expression = [&](const ExpressionPtr& expr,
         const std::vector<size_t>& vec_regs_unroll, const size_t& unroll_idx){
-        const auto& rinfo = expr->get_reg_info();
+        auto rinfo = expr->get_reg_info();
         const auto& reg_type = m_reg_type_mapper(expr->get_node());
         if (ov::snippets::utils::one_of(reg_type, Generator::opRegType::vec2gpr, Generator::opRegType::vec2vec)) {
-            for (size_t i = 0; i < expr->get_input_count(); i++) {
-                const auto& in_port = expr->get_input_port(i);
-                reassign_register_for_port(in_port, vec_regs_unroll, unroll_idx);
-            }
+            for (size_t& reg : rinfo.first)
+                reassign_register(vec_regs_unroll, unroll_idx, reg);
         }
         if (ov::snippets::utils::one_of(reg_type, Generator::opRegType::gpr2vec, Generator::opRegType::vec2vec)) {
-            for (size_t i = 0; i < expr->get_output_count(); i++) {
-                const auto& out_port = expr->get_output_port(i);
-                reassign_register_for_port(out_port, vec_regs_unroll, unroll_idx);
-            }
+            for (size_t& reg : rinfo.second)
+                reassign_register(vec_regs_unroll, unroll_idx, reg);
         }
+        expr->set_reg_info(rinfo);
     };
 
     // Reset offset for MemoryAccess nodes

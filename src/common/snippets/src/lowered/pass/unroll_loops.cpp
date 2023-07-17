@@ -197,7 +197,6 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
                 bool has_loop_remainder = total_iters % unroll_factor;
                 auto loop_remainder_insert = has_loop_remainder ?
                                              LinearIR::deep_copy_range(--expr_copy_begin_it, ++expr_copy_end_it) : LinearIR::container();
-                // For each unrolled loop, vec_regs should be updated only once
                 bool vec_regs_updated = false;
                 std::vector<size_t> vec_regs_unroll;
                 // Repeat loop body, excluding LoopBegin and LoopEnd
@@ -207,7 +206,7 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
                     for (auto expr_insert_it = loop_insert.begin(); expr_insert_it != loop_insert.end(); expr_insert_it++) {
                         set_memory_access_offset((*expr_insert_it)->get_node(), i * increment);
                     }
-                    // Update vec_regs, to exclude sharely used regs
+                    // Update vec_regs_unroll, to exclude sharely used regs
                     if (!vec_regs_updated) {
                         update_vec_regs(loop_insert, assigned_vec_regs, vec_regs_unroll);
                         vec_regs_updated = true;

@@ -84,6 +84,67 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
         }
     };
 
+    // Initialize assigned_vec_regs
+    auto init_assigned_vec_regs = [&]() {
+        for (const auto& expr : linear_ir) {
+            auto op = expr->get_node();
+            auto reg_type = m_reg_type_mapper(op);
+            auto rinfo = expr->get_reg_info();
+            switch (reg_type) {
+                case Generator::opRegType::gpr2gpr:
+                    break;
+                case Generator::opRegType::vec2gpr:
+                    std::transform(rinfo.first.begin(), rinfo.first.end(), std::inserter(assigned_vec_regs, assigned_vec_regs.end()),
+                    [](size_t reg){return reg;});
+                    break;
+                case Generator::opRegType::gpr2vec:
+                    std::transform(rinfo.second.begin(), rinfo.second.end(), std::inserter(assigned_vec_regs, assigned_vec_regs.end()),
+                    [](size_t reg){return reg;});
+                    break;
+                case Generator::opRegType::vec2vec:
+                    std::transform(rinfo.first.begin(), rinfo.first.end(), std::inserter(assigned_vec_regs, assigned_vec_regs.end()),
+                    [](size_t reg){return reg;});
+                    std::transform(rinfo.second.begin(), rinfo.second.end(), std::inserter(assigned_vec_regs, assigned_vec_regs.end()),
+                    [](size_t reg){return reg;});
+                    break;
+            }
+        }
+    };
+
+    // Update the vector regs that can be cyclically used for unrolling loops
+    auto update_vec_regs = [&is_horizon_node, &is_supported_eltwise_node](const LinearIR::container& loop_insert,
+                           const std::set<size_t>& assigned_vec_regs, std::vector<size_t>& vec_regs_unroll){
+        std::set<size_t> vec_regs = assigned_vec_regs;
+        for (auto expr_insert_it = loop_insert.begin(); expr_insert_it != loop_insert.end(); expr_insert_it++) {
+            const auto& expr = (*expr_insert_it);
+            const auto& node = expr->get_node();
+            if (is_horizon_node(node)) {
+                auto rinfo = expr->get_reg_info();
+                for (const auto& reg : rinfo.second)
+                    vec_regs.erase(reg);
+            }
+            // In decomposed Softmax pattern, the binary Eltwise node right after Load has a sharely used regs
+            // that should be excluded
+            if (is_supported_eltwise_node(node)) {
+                auto pre_expr_it = expr_insert_it;
+                const auto& pre_expr = (*(--pre_expr_it));
+                const auto& pre_node = pre_expr->get_node();
+                if (ov::is_type<const snippets::op::Load>(pre_node)) {
+                    auto pre_rinfo = pre_expr->get_reg_info();
+                    if (pre_rinfo.second.size() != 1)
+                        OPENVINO_THROW("snippets::op::Load must have only 1 register for output");
+                    size_t load_out_reg = pre_rinfo.second[0];
+                    std::vector<size_t> eltwise_in_regs = expr->get_reg_info().first;
+                    eltwise_in_regs.erase(std::remove(eltwise_in_regs.begin(), eltwise_in_regs.end(), load_out_reg),
+                                            eltwise_in_regs.end());
+                    for (const auto& reg : eltwise_in_regs)
+                        vec_regs.erase(reg);
+                }
+            }
+        }
+        vec_regs_unroll.assign(vec_regs.begin(), vec_regs.end());
+    };
+
     for (auto expr_it = linear_ir.begin(); expr_it != linear_ir.end();) {
         const auto& loop_begin = ov::as_type_ptr<ov::snippets::op::LoopBegin>((*expr_it)->get_node());
         if (!loop_begin) {
@@ -119,37 +180,8 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
                 modified = true;
 
                 // Initialize assigned_vec_regs only once
-                // todo: move this code block to a seperate function
                 if (!assigned_vec_regs_initialized) {
-                    std::vector<std::pair<Generator::opRegType, ExpressionPtr>> typed_ops;
-                    for (const auto& expr : linear_ir) {
-                        auto op = expr->get_node();
-                        auto reg_type = m_reg_type_mapper(op);
-                        typed_ops.emplace_back(reg_type, expr);
-                    }
-
-                    for (const auto& t_op : typed_ops) {
-                        auto rinfo = t_op.second->get_reg_info();
-                        switch (t_op.first) {
-                            case Generator::opRegType::gpr2gpr:
-                                break;
-                            case Generator::opRegType::vec2gpr:
-                                std::transform(rinfo.first.begin(), rinfo.first.end(), std::inserter(assigned_vec_regs, assigned_vec_regs.end()),
-                                [](size_t reg){return reg;});
-                                break;
-                            case Generator::opRegType::gpr2vec:
-                                std::transform(rinfo.second.begin(), rinfo.second.end(), std::inserter(assigned_vec_regs, assigned_vec_regs.end()),
-                                [](size_t reg){return reg;});
-                                break;
-                            case Generator::opRegType::vec2vec:
-                                std::transform(rinfo.first.begin(), rinfo.first.end(), std::inserter(assigned_vec_regs, assigned_vec_regs.end()),
-                                [](size_t reg){return reg;});
-                                std::transform(rinfo.second.begin(), rinfo.second.end(), std::inserter(assigned_vec_regs, assigned_vec_regs.end()),
-                                [](size_t reg){return reg;});
-                                break;
-                        }
-                    }
-
+                    init_assigned_vec_regs();
                     assigned_vec_regs_initialized = true;
                 }
 
@@ -177,36 +209,7 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
                     }
                     // Update vec_regs, to exclude sharely used regs
                     if (!vec_regs_updated) {
-                        std::set<size_t> vec_regs = assigned_vec_regs;
-                        for (auto expr_insert_it = loop_insert.begin(); expr_insert_it != loop_insert.end(); expr_insert_it++) {
-                            const auto& expr = (*expr_insert_it);
-                            const auto& node = expr->get_node();
-                            if (is_horizon_node(node)) {
-                                auto rinfo = expr->get_reg_info();
-                                for (const auto& reg : rinfo.second)
-                                    vec_regs.erase(reg);
-                            }
-                            // In decomposed Softmax pattern, the binary Eltwise node right after Load has a sharely used regs
-                            // that should be excluded
-                            if (is_supported_eltwise_node(node)) {
-                                auto pre_expr_it = expr_insert_it;
-                                const auto& pre_expr = (*(--pre_expr_it));
-                                const auto& pre_node = pre_expr->get_node();
-                                if (ov::is_type<const snippets::op::Load>(pre_node)) {
-                                    auto pre_rinfo = pre_expr->get_reg_info();
-                                    if (pre_rinfo.second.size() != 1)
-                                        OPENVINO_THROW("snippets::op::Load must have only 1 register for output");
-                                    size_t load_out_reg = pre_rinfo.second[0];
-                                    std::vector<size_t> eltwise_in_regs = expr->get_reg_info().first;
-                                    eltwise_in_regs.erase(std::remove(eltwise_in_regs.begin(), eltwise_in_regs.end(), load_out_reg),
-                                                          eltwise_in_regs.end());
-                                    for (const auto& reg : eltwise_in_regs)
-                                        vec_regs.erase(reg);
-                                }
-                            }
-                        }
-                        vec_regs_unroll.assign(vec_regs.begin(), vec_regs.end());
-
+                        update_vec_regs(loop_insert, assigned_vec_regs, vec_regs_unroll);
                         vec_regs_updated = true;
                     }
                     // Reassign vector registers cyclically for unrolled loops

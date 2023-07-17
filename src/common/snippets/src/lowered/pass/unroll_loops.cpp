@@ -194,7 +194,7 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
                                 const auto& pre_expr = (*(--pre_expr_it));
                                 const auto& pre_node = pre_expr->get_node();
                                 if (ov::is_type<const snippets::op::Load>(pre_node)) {
-                                    const auto& pre_rinfo = expr->get_reg_info();
+                                    const auto& pre_rinfo = pre_expr->get_reg_info();
                                     if (pre_rinfo.second.size() != 1)
                                         OPENVINO_THROW("snippets::op::Load must have only 1 register for output");
                                     size_t load_out_reg = pre_rinfo.second[0];

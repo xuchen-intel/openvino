@@ -130,7 +130,7 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
                     }
 
                     for (const auto& t_op : typed_ops) {
-                        const auto& rinfo = t_op.second->get_reg_info();
+                        auto rinfo = t_op.second->get_reg_info();
                         switch (t_op.first) {
                             case Generator::opRegType::gpr2gpr:
                                 break;
@@ -183,7 +183,7 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
                             const auto& expr = (*expr_insert_it);
                             const auto& node = expr->get_node();
                             if (is_horizon_node(node)) {
-                                const auto& rinfo = expr->get_reg_info();
+                                auto rinfo = expr->get_reg_info();
                                 for (const auto& reg : rinfo.second)
                                     vec_regs.erase(reg);
                             }
@@ -194,7 +194,7 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
                                 const auto& pre_expr = (*(--pre_expr_it));
                                 const auto& pre_node = pre_expr->get_node();
                                 if (ov::is_type<const snippets::op::Load>(pre_node)) {
-                                    const auto& pre_rinfo = pre_expr->get_reg_info();
+                                    auto pre_rinfo = pre_expr->get_reg_info();
                                     if (pre_rinfo.second.size() != 1)
                                         OPENVINO_THROW("snippets::op::Load must have only 1 register for output");
                                     size_t load_out_reg = pre_rinfo.second[0];

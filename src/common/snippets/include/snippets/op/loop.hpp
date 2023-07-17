@@ -90,7 +90,6 @@ public:
     void set_work_amount(size_t new_work_amount);
     void set_increment(size_t new_increment);
     void set_evaluate_once(bool once);
-    void set_unroll_loop(bool unroll);
     // Used to propagate information about Loop structure, needed to simplify some optimizations. For example,
     // to skip pointer increments when outer Loop is empty, and work_amount == vector_size (one inner vector Loop)
     // true by default, the optimizations enabled if it's false;
@@ -98,7 +97,6 @@ public:
     size_t get_work_amount() const;
     size_t get_increment() const;
     bool get_evaluate_once() const;
-    bool get_unroll_loop() const;
     bool visit_attributes(AttributeVisitor& visitor) override;
 
 private:
@@ -110,7 +108,6 @@ private:
     size_t input_num = 0;
     size_t output_num = 0;
     bool evaluate_once = false; // true if the Loop is executed only once, used to skip setting and testing the loop counter
-    bool unroll_loop = false;   // true if the Loop supports unrolling
 };
 
 } // namespace op

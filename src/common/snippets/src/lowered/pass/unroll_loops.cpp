@@ -116,7 +116,6 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
 
             //Unroll loops
             if (is_supported) {
-                loop_end->set_unroll_loop(true);
                 modified = true;
 
                 // Initialize assigned_vec_regs only once

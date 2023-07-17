@@ -180,11 +180,31 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
                     if (!vec_regs_updated) {
                         std::set<size_t> vec_regs = assigned_vec_regs;
                         for (auto expr_insert_it = loop_insert.begin(); expr_insert_it != loop_insert.end(); expr_insert_it++) {
-                            if (!is_horizon_node((*expr_insert_it)->get_node()))
-                                continue;
-                            const auto& rinfo = (*expr_insert_it)->get_reg_info();
-                            for (const auto& reg : rinfo.second)
-                                vec_regs.erase(reg);
+                            const auto& expr = (*expr_insert_it);
+                            const auto& node = expr->get_node();
+                            if (is_horizon_node(node)) {
+                                const auto& rinfo = expr->get_reg_info();
+                                for (const auto& reg : rinfo.second)
+                                    vec_regs.erase(reg);
+                            }
+                            // In decomposed Softmax pattern, the binary Eltwise node right after Load has a sharely used regs
+                            // that should be excluded
+                            if (is_supported_eltwise_node(node)) {
+                                auto pre_expr_it = expr_insert_it;
+                                const auto& pre_expr = (*(--pre_expr_it));
+                                const auto& pre_node = pre_expr->get_node();
+                                if (ov::is_type<const snippets::op::Load>(pre_node)) {
+                                    const auto& pre_rinfo = expr->get_reg_info();
+                                    if (pre_rinfo.second.size() != 1)
+                                        OPENVINO_THROW("snippets::op::Load must have only 1 register for output");
+                                    size_t load_out_reg = pre_rinfo.second[0];
+                                    std::vector<size_t> eltwise_in_regs = expr->get_reg_info().first;
+                                    eltwise_in_regs.erase(std::remove(eltwise_in_regs.begin(), eltwise_in_regs.end(), load_out_reg),
+                                                          eltwise_in_regs.end());
+                                    for (const auto& reg : eltwise_in_regs)
+                                        vec_regs.erase(reg);
+                                }
+                            }
                         }
                         vec_regs_unroll.assign(vec_regs.begin(), vec_regs.end());
 

@@ -13,6 +13,12 @@
 #include <common/primitive_hashing_utils.hpp>
 #include <utils/shape_inference/shape_inference_pass_through.hpp>
 
+#if 1
+#include <cstdint>
+#include <sys/time.h>
+#include <fstream>
+#endif
+
 using namespace dnnl;
 using namespace InferenceEngine;
 
@@ -20,6 +26,16 @@ namespace ov {
 namespace intel_cpu {
 namespace node {
 namespace {
+
+#if 1
+static uint64_t get_ts() {
+    uint64_t tc = 0;
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    tc = tv.tv_sec * (uint64_t)1000000 + tv.tv_usec;
+    return tc;
+}
+#endif
 
 struct SoftmaxKey {
     DnnlMemoryDescCPtr inp0;
@@ -226,11 +242,14 @@ void SoftMax::prepareParams() {
 }
 
 void SoftMax::execute(dnnl::stream strm) {
+    long t1 = get_ts();
     if (execPtr) {
         execPtr->exec(primArgs, strm);
     } else {
         IE_THROW() << "Softmax node with name '" << getName() << "' doesn't have an initialized executor";
     }
+    t1 = get_ts() - t1;
+    std::cout << "############ oneDNN softmax time cost: " << t1 << " μs.############" << std::endl;
 }
 
 void SoftMax::executeDynamicImpl(dnnl::stream strm) {

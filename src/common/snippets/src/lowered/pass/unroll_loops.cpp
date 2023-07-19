@@ -50,9 +50,20 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
         auto pos = static_cast<size_t>(find(vec_regs_unroll.begin(), vec_regs_unroll.end(), reg) - vec_regs_unroll.begin());
         // Only reassign registers that are not sharely used regs
         if (pos < vec_regs_unroll.size()) {
-            // Reassign vector registers cyclically based on unrolled body index
-            reg = vec_regs_unroll[(pos + unroll_idx) % vec_regs_unroll.size()];
+            // // Reassign vector registers cyclically based on unrolled body index
+            // reg = vec_regs_unroll[(pos + unroll_idx) % vec_regs_unroll.size()];
+
+            // Check#1
+            // Hard code to increase all non-sharely vector register index by 4 * unroll_idx,
+            // to check if assigning new registers can bring performance benefit
+            reg = vec_regs_unroll[pos] + 4 * unroll_idx;
         }
+        // Check#2
+        // Increase all vector register index by 4 * unroll_idx, regardless of accuracy
+        // hard code vector register #15 to be reserved for aux register of emitters
+        // if (reg + 4 * unroll_idx < 15) {
+        //     reg = reg + 4 * unroll_idx;
+        // }
     };
 
     auto reassign_registers_for_expression = [&](const ExpressionPtr& expr,

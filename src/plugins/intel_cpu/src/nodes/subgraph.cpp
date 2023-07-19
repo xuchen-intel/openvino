@@ -459,12 +459,19 @@ void Snippet::prepareParams() {
     tileRank = 1;
     bool dims_collapsed = false;
     fullWorkAmount = std::accumulate(masterShape.begin(), masterShape.end(), 1, std::multiplies<size_t>());
-    if (snippet->has_domain_sensitive_ops()) {
-        tileRank = 2;
-    } else {
-        dims_collapsed = optimizeExecDomain(normInputShapes, normOutputShapes, masterShape, tileRank);
-    }
+    // if (snippet->has_domain_sensitive_ops()) {
+    //     tileRank = 2;
+    // } else {
+    //     dims_collapsed = optimizeExecDomain(normInputShapes, normOutputShapes, masterShape, tileRank);
+    // }
     exec_domain = masterShape;
+    if (exec_domain.size() > 2) {
+        int k = static_cast<int>(exec_domain.size() - 2);
+        for (int i = k - 1; i >= 0; i--) {
+            exec_domain[k] *= exec_domain[i];
+            exec_domain[i] = 1;
+        }
+    }
 
     auto initStartMemoryOffsets = [this]() {
         const auto config = getSelectedPrimitiveDescriptor()->getConfig();

@@ -13,7 +13,8 @@ namespace snippets {
 namespace {
 
 const std::vector<ov::Shape> inputShape = {
-    ov::Shape{1, 16, 1024, 1024},
+    ov::Shape{1, 516},
+    // ov::Shape{1, 16, 1024, 1024},
     /*
     ov::Shape{1, 16},
     ov::Shape{1, 32},

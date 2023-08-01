@@ -22,7 +22,7 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
     std::set<PortConnectorPtr> port_connector_visited;
     // This is a default unrolling factor, given that currently register information is
     // unavailable in the stage of snippets common transformation
-    constexpr size_t default_unroll_factor = 4;
+    constexpr size_t default_unroll_factor = 3;
 
     // Supported eltwise nodes decomposed from Softmax
     auto is_supported_eltwise_node = [](const std::shared_ptr<ov::Node>& node) {

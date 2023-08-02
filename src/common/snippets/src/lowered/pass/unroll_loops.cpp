@@ -156,6 +156,16 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
         vec_regs_unroll.assign(vec_regs.begin(), vec_regs.end());
     };
 
+    auto update_vec_loop_expr = [](const LinearIR::container& loop_expr, std::vector<LinearIR::container>& vec_loop_expr){
+        if (loop_expr.size() != vec_loop_expr.size())
+            OPENVINO_THROW("loop_expr and vec_loop_expr should have same size!");
+        auto vec_loop_expr_iter = vec_loop_expr.begin();
+        for (auto expr_insert_it = loop_expr.begin(); expr_insert_it != loop_expr.end(); expr_insert_it++) {
+            (*vec_loop_expr_iter).insert(vec_loop_expr_iter->end(), expr_insert_it, std::next(expr_insert_it));
+            vec_loop_expr_iter++;
+        }
+    };
+
     for (auto expr_it = linear_ir.begin(); expr_it != linear_ir.end();) {
         const auto& loop_begin = ov::as_type_ptr<ov::snippets::op::LoopBegin>((*expr_it)->get_node());
         if (!loop_begin) {
@@ -204,10 +214,15 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
                                 [](const ExpressionPtr& expr) { return is_type<ov::op::v0::Parameter>(expr->get_node()) ||
                                                                        is_type<ov::op::v0::Result>(expr->get_node());});
                 loop_deep_copy.erase(to_erase, loop_deep_copy.end());
+                // Use std::vector<LinearIR::container> to maintain unrolled loops emitter by emitter during unrolling,
+                // i.e. each original emitter and its duplications will be put in the same LinearIR::container
+                std::vector<LinearIR::container> vec_loop_expr(loop_deep_copy.size());
+                update_vec_loop_expr(loop_deep_copy, vec_loop_expr);
                 // Insert loop remainder, including a copy of LoopBegin and LoopEnd
                 bool has_loop_remainder = total_iters % unroll_factor;
                 auto loop_remainder_insert = has_loop_remainder ?
-                                             LinearIR::deep_copy_range(--expr_copy_begin_it, ++expr_copy_end_it) : LinearIR::container();
+                                             LinearIR::deep_copy_range(std::next(expr_copy_begin_it, -1), std::next(expr_copy_end_it)) :
+                                             LinearIR::container();
                 bool vec_regs_updated = false;
                 std::vector<size_t> vec_regs_unroll;
                 // Repeat loop body, excluding LoopBegin and LoopEnd
@@ -227,7 +242,14 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
                         reassign_registers_for_expression(*expr_insert_it, vec_regs_unroll, i);
                     }
 
-                    linear_ir.insert(expr_it, loop_insert.begin(), loop_insert.end());
+                    update_vec_loop_expr(loop_insert, vec_loop_expr);
+                }
+                // Replace original loop with unrolled loop
+                for (auto expr_erase_it = expr_copy_begin_it; expr_erase_it != expr_copy_end_it;) {
+                    expr_erase_it = linear_ir.erase(expr_erase_it);
+                }
+                for (const auto& loop_expr : vec_loop_expr) {
+                    linear_ir.insert(expr_it, loop_expr.begin(), loop_expr.end());
                 }
                 loop_end->set_increment(unroll_increment);
                 if (has_loop_remainder) {

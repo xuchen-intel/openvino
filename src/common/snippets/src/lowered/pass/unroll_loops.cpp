@@ -30,7 +30,10 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
             ov::is_type<const ov::op::v1::Subtract>(node) ||
             ov::is_type<const ov::op::v0::Exp>(node) ||
             ov::is_type<const ov::op::v1::Add>(node) ||
-            ov::is_type<const ov::op::v1::Multiply>(node)) {
+            ov::is_type<const ov::op::v1::Multiply>(node) ||
+            ov::is_type<const ov::op::v1::Divide>(node) ||
+            ov::is_type<const ov::op::v0::Relu>(node) ||
+            ov::is_type<const ov::snippets::op::PowerStatic>(node)) {
             return true;
         }
         return false;

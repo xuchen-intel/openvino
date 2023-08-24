@@ -9,6 +9,9 @@
 #include "snippets/itt.hpp"
 #include "snippets/utils.hpp"
 
+// include this cpu plugin headfile only for testing loop unrolling of fma
+#include "snippets/../../../../plugins/intel_cpu/src/transformations/snippets/x64/op/fused_mul_add.hpp"
+
 namespace ov {
 namespace snippets {
 namespace lowered {
@@ -33,7 +36,8 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
             ov::is_type<const ov::op::v1::Multiply>(node) ||
             ov::is_type<const ov::op::v1::Divide>(node) ||
             ov::is_type<const ov::op::v0::Relu>(node) ||
-            ov::is_type<const ov::snippets::op::PowerStatic>(node)) {
+            ov::is_type<const ov::snippets::op::PowerStatic>(node) ||
+            ov::is_type<const ov::intel_cpu::FusedMulAdd>(node)) {
             return true;
         }
         return false;

@@ -63,7 +63,10 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
             // Check#1
             // Hard code to increase all non-sharely vector register index by 4 * unroll_idx,
             // to check if assigning new registers can bring performance benefit
-            reg = vec_regs_unroll[pos] + 4 * unroll_idx;
+            // hard code vector register #15 to be reserved for aux register of emitters
+            if (vec_regs_unroll[pos] + 4 * unroll_idx < 15) {
+                reg = vec_regs_unroll[pos] + 4 * unroll_idx;
+            }
         }
         // Check#2
         // Increase all vector register index by 4 * unroll_idx, regardless of accuracy
@@ -141,6 +144,8 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
                 for (const auto& reg : rinfo.second)
                     vec_regs.erase(reg);
             }
+// Remove the logic that only work for decomposed Softmax pattern
+#if 0
             // In decomposed Softmax pattern, the binary Eltwise node right after Load has a sharely used regs
             // that should be excluded
             if (is_supported_eltwise_node(node)) {
@@ -159,6 +164,7 @@ bool UnrollLoops::run(LinearIR& linear_ir) {
                         vec_regs.erase(reg);
                 }
             }
+#endif
         }
         vec_regs_unroll.assign(vec_regs.begin(), vec_regs.end());
     };

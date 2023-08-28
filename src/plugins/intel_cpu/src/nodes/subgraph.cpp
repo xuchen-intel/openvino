@@ -209,7 +209,7 @@ void Snippet::initSupportedPrimitiveDescriptors() {
 
             BlockedMemoryDesc::CmpMask outputMask = BlockedMemoryDesc::SKIP_OFFSET_MASK;
             PortConfig portConfig;
-            portConfig.inPlace(0);
+            portConfig.inPlace(-1);
             portConfig.constant(false);
             if (outputShapes[i].getDims()[0] == 1) {
                 outputMask.reset(0); // accepts any stride on batch axis

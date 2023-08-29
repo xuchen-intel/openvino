@@ -13,7 +13,7 @@ namespace pass {
 
 /**
  * @interface SoftmaxDecomposition
- * @brief Decompose Softmax to a set of ReduceMax, Sub, Exp, ReduceSum, Div ops.
+ * @brief Decompose Softmax to a set of ReduceMax, Sub, Exp, ReduceSum and Div ops.
  * @ingroup snippets
  */
 class SoftmaxDecomposition: public ov::pass::MatcherPass {

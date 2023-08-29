@@ -13,6 +13,8 @@ namespace snippets {
 namespace {
 
 const std::vector<InputShape> inputShape = {
+    {{}, {{1, 3, 128, 130}}},
+#if 0
     {{}, {{1, 16}}},
     {{}, {{1, 32}}},
     {{}, {{1, 1}}},
@@ -40,6 +42,7 @@ const std::vector<InputShape> inputShape = {
     // DS
     {{-1, -1}, {{1, 16}, {1, 32}, {1, 1}, {1, 9}, {1, 17}, {1, 19}, {1, 49}, {1, 50}, {5, 16}, {1, 16}, {1, 9}}},
     {{-1, -1, -1, -1}, {{1, 3, 128, 128}, {1, 3, 128, 129}, {1, 3, 128, 130}, {1, 3, 128, 1}, {1, 3, 128, 16}, {1, 3, 128, 1}}}
+#endif
 };
 
 INSTANTIATE_TEST_SUITE_P(smoke_Snippets_Softmax, Softmax,

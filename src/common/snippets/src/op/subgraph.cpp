@@ -17,6 +17,7 @@
 #include "snippets/pass/matmul_to_brgemm.hpp"
 #include "snippets/pass/fuse_transpose_brgemm.hpp"
 #include "snippets/pass/set_softmax_ports.hpp"
+#include "snippets/pass/softmax_decomposition.hpp"
 
 #include "snippets/utils.hpp"
 
@@ -554,6 +555,7 @@ void snippets::op::Subgraph::data_flow_transformations(ov::pass::Manager& pre_co
         common_manager.register_pass<snippets::pass::FuseTransposeBrgemm>();
         common_manager.register_pass<snippets::pass::TransposeDecomposition>();
         common_manager.register_pass<snippets::pass::SetSoftmaxPorts>();
+        common_manager.register_pass<snippets::pass::SoftmaxDecomposition>();
     }
     common_manager.register_pass<snippets::pass::BroadcastToMoveBroadcast>();
     common_manager.register_pass<snippets::pass::ConvertConstantsToScalars>();

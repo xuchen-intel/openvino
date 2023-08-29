@@ -17,10 +17,11 @@ namespace pass {
 
 SoftmaxDecomposition::SoftmaxDecomposition() {
     MATCHER_SCOPE(SoftmaxDecomposition);
-    auto softmax = ov::pass::pattern::wrap_type<ov::op::v1::Softmax, ov::op::v8::Softmax>();
+    auto match_softmax = ov::pass::pattern::wrap_type<ov::op::v1::Softmax, ov::op::v8::Softmax>();
     matcher_pass_callback callback = [=](ov::pass::pattern::Matcher& m) {
         using namespace lowered;
         auto m_softmax = m.get_match_root();
+        Output<Node> input;
 
         if (transformation_callback(m_softmax)) {
             return false;
@@ -30,17 +31,33 @@ SoftmaxDecomposition::SoftmaxDecomposition() {
         if (pshape.is_dynamic())
             return false;
 
+        const auto shape = pshape.get_shape();
+        const auto rank = shape.size();
+
+        int64_t axis;
+        if (const auto softmax_v8 = ov::as_type_ptr<ov::op::v8::Softmax>(m_softmax)) {
+            input = softmax_v8->input_value(0);
+            OPENVINO_SUPPRESS_DEPRECATED_START
+            axis = ov::normalize_axis(m_softmax->get_friendly_name(), softmax_v8->get_axis(), rank);
+            OPENVINO_SUPPRESS_DEPRECATED_END
+        } else if (const auto softmax_v1 = ov::as_type_ptr<ov::op::v1::Softmax>(m_softmax)) {
+            input = softmax_v1->input_value(0);
+            axis = softmax_v1->get_axis();
+        } else {
+            return false;
+        }
+
         const auto float_min_constant = uint32_t(0xff7fffff);
         const auto zero_constant = uint32_t(0x00000000);
         // ReduceMax
         const auto vector_buffer_max = std::make_shared<op::VectorBuffer>();
         const auto fill_max = std::make_shared<op::Fill>(vector_buffer_max, 0, float_min_constant);
-        const auto max = std::make_shared<ov::op::v1::Maximum>(softmax->get_input_source_output(0), fill_max);
+        const auto max = std::make_shared<ov::op::v1::Maximum>(input, fill_max);
         const auto horizon_max = std::make_shared<op::HorizonMax>(max);
         const auto broadcast_horizon_max = std::make_shared<op::BroadcastMove>(horizon_max,
                                            horizon_max->get_input_partial_shape(0));
         // Sub + Exp
-        const auto sub = std::make_shared<ov::op::v1::Subtract>(softmax->get_input_source_output(0), broadcast_horizon_max);
+        const auto sub = std::make_shared<ov::op::v1::Subtract>(input, broadcast_horizon_max);
         const auto exp = std::make_shared<ov::op::v0::Exp>(sub);
         // ReduceSum
         const auto vector_buffer_sum = std::make_shared<op::VectorBuffer>();
@@ -57,20 +74,6 @@ SoftmaxDecomposition::SoftmaxDecomposition() {
                                       sub, exp, vector_buffer_sum, fill_sum, sum, horizon_sum,
                                       pow, broadcast_pow, mul});
         mul->set_friendly_name(m_softmax->get_friendly_name());
-
-        const auto shape = pshape.get_shape();
-        const auto rank = shape.size();
-
-        int64_t axis;
-        if (const auto softmax_v8 = ov::as_type_ptr<ov::op::v8::Softmax>(m_softmax)) {
-            OPENVINO_SUPPRESS_DEPRECATED_START
-            axis = ov::normalize_axis(m_softmax->get_friendly_name(), softmax_v8->get_axis(), rank);
-            OPENVINO_SUPPRESS_DEPRECATED_END
-        } else if (const auto softmax_v1 = ov::as_type_ptr<ov::op::v1::Softmax>(m_softmax)) {
-            axis = softmax_v1->get_axis();
-        } else {
-            return false;
-        }
 
         OPENVINO_ASSERT(axis < static_cast<int64_t>(rank), "Softmax has incorrect axis");
         std::vector<size_t> subtensor(rank, 1);
@@ -115,7 +118,7 @@ SoftmaxDecomposition::SoftmaxDecomposition() {
         return true;
     };
 
-    auto m = std::make_shared<ov::pass::pattern::Matcher>(softmax, matcher_name);
+    auto m = std::make_shared<ov::pass::pattern::Matcher>(match_softmax, matcher_name);
     register_matcher(m, callback);
 }
 

@@ -6,8 +6,9 @@
 
 #include "snippets/itt.hpp"
 #include "snippets/snippets_isa.hpp"
-// #include "snippets/lowered/port_descriptor.hpp"
+#include "snippets/lowered/port_descriptor.hpp"
 #include "openvino/pass/pattern/op/wrap_type.hpp"
+#include "openvino/core/validation_util.hpp"
 #include "openvino/core/rt_info.hpp"
 
 namespace ov {
@@ -16,25 +17,18 @@ namespace pass {
 
 SoftmaxDecomposition::SoftmaxDecomposition() {
     MATCHER_SCOPE(SoftmaxDecomposition);
-        auto softmax = ov::pass::pattern::wrap_type<ov::op::v1::Softmax, ov::op::v8::Softmax>();
-        matcher_pass_callback callback = [=](ov::pass::pattern::Matcher& m) {
+    auto softmax = ov::pass::pattern::wrap_type<ov::op::v1::Softmax, ov::op::v8::Softmax>();
+    matcher_pass_callback callback = [=](ov::pass::pattern::Matcher& m) {
+        using namespace lowered;
         auto m_softmax = m.get_match_root();
-        // Output<Node> input;
-        // int64_t softmax_axis;
 
         if (transformation_callback(m_softmax)) {
             return false;
         }
 
-        // if (auto m_softmax_v1 = std::dynamic_pointer_cast<ov::op::v1::Softmax>(m_softmax)) {
-        //     input = m_softmax_v1->input_value(0);
-        //     softmax_axis = static_cast<int64_t>(m_softmax_v1->get_axis());
-        // } else if (auto m_softmax_v8 = std::dynamic_pointer_cast<ov::op::v8::Softmax>(m_softmax)) {
-        //     input = m_softmax_v8->input_value(0);
-        //     softmax_axis = m_softmax_v8->get_axis();
-        // } else {
-        //     return false;
-        // }
+        const auto& pshape = m_softmax->get_input_partial_shape(0);
+        if (pshape.is_dynamic())
+            return false;
 
         const auto float_min_constant = uint32_t(0xff7fffff);
         const auto zero_constant = uint32_t(0x00000000);
@@ -45,11 +39,12 @@ SoftmaxDecomposition::SoftmaxDecomposition() {
         const auto horizon_max = std::make_shared<op::HorizonMax>(max);
         const auto broadcast_horizon_max = std::make_shared<op::BroadcastMove>(horizon_max,
                                            horizon_max->get_input_partial_shape(0));
-        const auto vector_buffer_sum = std::make_shared<op::VectorBuffer>();
-        const auto fill_sum = std::make_shared<op::Fill>(vector_buffer_sum, 0, zero_constant);
-        // Sub + Exp + ReduceSum
+        // Sub + Exp
         const auto sub = std::make_shared<ov::op::v1::Subtract>(softmax->get_input_source_output(0), broadcast_horizon_max);
         const auto exp = std::make_shared<ov::op::v0::Exp>(sub);
+        // ReduceSum
+        const auto vector_buffer_sum = std::make_shared<op::VectorBuffer>();
+        const auto fill_sum = std::make_shared<op::Fill>(vector_buffer_sum, 0, zero_constant);
         const auto sum = std::make_shared<ov::op::v1::Add>(exp, fill_sum);
         const auto horizon_sum = std::make_shared<op::HorizonSum>(sum);
         // Div
@@ -59,22 +54,65 @@ SoftmaxDecomposition::SoftmaxDecomposition() {
 
         replace_node(m_softmax, mul);
         copy_runtime_info(m_softmax, {vector_buffer_max, fill_max, max, horizon_max, broadcast_horizon_max,
-                                      vector_buffer_sum, fill_sum, sub, exp, sum, horizon_sum,
+                                      sub, exp, vector_buffer_sum, fill_sum, sum, horizon_sum,
                                       pow, broadcast_pow, mul});
         mul->set_friendly_name(m_softmax->get_friendly_name());
+
+        const auto shape = pshape.get_shape();
+        const auto rank = shape.size();
+
+        int64_t axis;
+        if (const auto softmax_v8 = ov::as_type_ptr<ov::op::v8::Softmax>(m_softmax)) {
+            OPENVINO_SUPPRESS_DEPRECATED_START
+            axis = ov::normalize_axis(m_softmax->get_friendly_name(), softmax_v8->get_axis(), rank);
+            OPENVINO_SUPPRESS_DEPRECATED_END
+        } else if (const auto softmax_v1 = ov::as_type_ptr<ov::op::v1::Softmax>(m_softmax)) {
+            axis = softmax_v1->get_axis();
+        } else {
+            return false;
+        }
+
+        OPENVINO_ASSERT(axis < static_cast<int64_t>(rank), "Softmax has incorrect axis");
+        std::vector<size_t> subtensor(rank, 1);
+        for (size_t i = axis; i < rank; ++i)
+            subtensor[i] = PortDescriptor::ServiceDimensions::FULL_DIM;
+
+        // Set port descriptors for ReduceMax
+        PortDescriptorUtils::set_port_descriptor_ptr(vector_buffer_max->input(0), std::make_shared<PortDescriptor>(vector_buffer_max->input(0), subtensor));
+        PortDescriptorUtils::set_port_descriptor_ptr(vector_buffer_max->output(0), std::make_shared<PortDescriptor>(vector_buffer_max->output(0), subtensor));
+        PortDescriptorUtils::set_port_descriptor_ptr(fill_max->input(0), std::make_shared<PortDescriptor>(fill_max->input(0), subtensor));
+        PortDescriptorUtils::set_port_descriptor_ptr(fill_max->output(0), std::make_shared<PortDescriptor>(fill_max->output(0), subtensor));
+        PortDescriptorUtils::set_port_descriptor_ptr(max->input(0), std::make_shared<PortDescriptor>(max->input(0), subtensor));
+        PortDescriptorUtils::set_port_descriptor_ptr(max->output(0), std::make_shared<PortDescriptor>(max->output(0), subtensor));
+        PortDescriptorUtils::set_port_descriptor_ptr(horizon_max->input(0), std::make_shared<PortDescriptor>(horizon_max->input(0), subtensor));
+        PortDescriptorUtils::set_port_descriptor_ptr(horizon_max->output(0), std::make_shared<PortDescriptor>(horizon_max->output(0), subtensor));
+        PortDescriptorUtils::set_port_descriptor_ptr(broadcast_horizon_max->input(0),
+                    std::make_shared<PortDescriptor>(broadcast_horizon_max->input(0), subtensor));
+        PortDescriptorUtils::set_port_descriptor_ptr(broadcast_horizon_max->output(0),
+                    std::make_shared<PortDescriptor>(broadcast_horizon_max->output(0), subtensor));
+        // Set port descriptors for Sub + Exp
+        PortDescriptorUtils::set_port_descriptor_ptr(sub->input(0), std::make_shared<PortDescriptor>(sub->input(0), subtensor));
+        PortDescriptorUtils::set_port_descriptor_ptr(sub->output(0), std::make_shared<PortDescriptor>(sub->output(0), subtensor));
+        PortDescriptorUtils::set_port_descriptor_ptr(exp->input(0), std::make_shared<PortDescriptor>(exp->input(0), subtensor));
+        PortDescriptorUtils::set_port_descriptor_ptr(exp->output(0), std::make_shared<PortDescriptor>(exp->output(0), subtensor));
+        // Set port descriptors for ReduceSum
+        PortDescriptorUtils::set_port_descriptor_ptr(vector_buffer_sum->input(0), std::make_shared<PortDescriptor>(vector_buffer_sum->input(0), subtensor));
+        PortDescriptorUtils::set_port_descriptor_ptr(vector_buffer_sum->output(0), std::make_shared<PortDescriptor>(vector_buffer_sum->output(0), subtensor));
+        PortDescriptorUtils::set_port_descriptor_ptr(fill_sum->input(0), std::make_shared<PortDescriptor>(fill_sum->input(0), subtensor));
+        PortDescriptorUtils::set_port_descriptor_ptr(fill_sum->output(0), std::make_shared<PortDescriptor>(fill_sum->output(0), subtensor));
+        PortDescriptorUtils::set_port_descriptor_ptr(sum->input(0), std::make_shared<PortDescriptor>(sum->input(0), subtensor));
+        PortDescriptorUtils::set_port_descriptor_ptr(sum->output(0), std::make_shared<PortDescriptor>(sum->output(0), subtensor));
+        PortDescriptorUtils::set_port_descriptor_ptr(horizon_sum->input(0), std::make_shared<PortDescriptor>(horizon_sum->input(0), subtensor));
+        PortDescriptorUtils::set_port_descriptor_ptr(horizon_sum->output(0), std::make_shared<PortDescriptor>(horizon_sum->output(0), subtensor));
+        // Set port descriptors for Div
+        PortDescriptorUtils::set_port_descriptor_ptr(pow->input(0), std::make_shared<PortDescriptor>(pow->input(0), subtensor));
+        PortDescriptorUtils::set_port_descriptor_ptr(pow->output(0), std::make_shared<PortDescriptor>(pow->output(0), subtensor));
+        PortDescriptorUtils::set_port_descriptor_ptr(broadcast_pow->input(0), std::make_shared<PortDescriptor>(broadcast_pow->input(0), subtensor));
+        PortDescriptorUtils::set_port_descriptor_ptr(broadcast_pow->output(0), std::make_shared<PortDescriptor>(broadcast_pow->output(0), subtensor));
+        PortDescriptorUtils::set_port_descriptor_ptr(mul->input(0), std::make_shared<PortDescriptor>(mul->input(0), subtensor));
+        PortDescriptorUtils::set_port_descriptor_ptr(mul->output(0), std::make_shared<PortDescriptor>(mul->output(0), subtensor));
+
         return true;
-
-        // auto axis = ov::op::v0::Constant::create(ov::element::i64, ov::Shape{1}, {softmax_axis});
-        // auto reduce_max = std::make_shared<ov::op::v1::ReduceMax>(input, axis, true);
-        // auto sub = std::make_shared<ov::op::v1::Subtract>(input, reduce_max);
-        // auto exp = std::make_shared<ov::op::v0::Exp>(sub);
-        // auto reduce_sum = std::make_shared<ov::op::v1::ReduceSum>(exp, axis, true);
-        // auto div = std::make_shared<ov::op::v1::Divide>(exp, reduce_sum);
-
-        // replace_node(m_softmax, div);
-        // copy_runtime_info(m_softmax, {reduce_max, reduce_sum, sub, exp, div});
-        // div->set_friendly_name(m_softmax->get_friendly_name());
-        // return true;
     };
 
     auto m = std::make_shared<ov::pass::pattern::Matcher>(softmax, matcher_name);

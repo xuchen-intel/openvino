@@ -735,7 +735,7 @@ void Transformations::PostSnippets(void) {
 }
 
 void Transformations::Snippets(void) {
-    const bool useSnippets = false && snippetsMode != Config::SnippetsMode::Disable &&
+    const bool useSnippets = snippetsMode != Config::SnippetsMode::Disable &&
         CPU_DEBUG_CAP_IS_TRANSFORMATION_ENABLED(config.debugCaps, Snippets);
     if (!useSnippets)
         return;

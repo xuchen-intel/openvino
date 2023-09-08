@@ -18,6 +18,7 @@ namespace pass {
  */
 class SetSoftmaxPorts: public ov::pass::MatcherPass {
 public:
+    OPENVINO_RTTI("SetSoftmaxPorts", "0");
     SetSoftmaxPorts();
 };
 

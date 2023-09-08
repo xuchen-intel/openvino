@@ -19,6 +19,7 @@ namespace pass {
  */
 class ConvertConstantsToScalars: public ov::pass::MatcherPass {
 public:
+    OPENVINO_RTTI("ConvertConstantsToScalars", "0");
     ConvertConstantsToScalars();
 };
 

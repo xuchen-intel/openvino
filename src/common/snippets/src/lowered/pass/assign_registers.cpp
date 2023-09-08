@@ -179,6 +179,8 @@ bool AssignRegisters::run(LinearIR& linear_ir) {
     std::vector<std::set<Reg>> life_in_gpr(std::move(used_gpr));
     std::vector<std::set<Reg>> life_out_gpr(typed_ops.size(), std::set<Reg>());
 
+    {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "Snippets::AssignRegisters algorithm")
     // todo: this part if O(N*N), so it's slow for large subgraphs. Can we simplify it? At least add an early stopping criteria
     for (size_t i = 0; i < typed_ops.size(); i++) {
         for (size_t n = 0; n < typed_ops.size(); n++) {
@@ -221,6 +223,8 @@ bool AssignRegisters::run(LinearIR& linear_ir) {
             }
         }
     }
+    }
+
     struct by_starting {
         auto operator()(const std::pair<int, int>& lhs, const std::pair<int, int>& rhs) const -> bool {
             return lhs.first < rhs.first|| (lhs.first == rhs.first && lhs.second < rhs.second);
@@ -248,11 +252,14 @@ bool AssignRegisters::run(LinearIR& linear_ir) {
         }
         return i;
     };
+    {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "Snippets::AssignRegisters algorithm 2")
     for (int i = 0; i < static_cast<int>(typed_ops.size()); i++) {
         for (const auto& def : defined_vec[i])
             live_intervals_vec[std::make_pair(i, find_last_use(life_in_vec, static_cast<int>(def)))] = def;
         for (const auto& def : defined_gpr[i])
             live_intervals_gpr[std::make_pair(i, find_last_use(life_in_gpr, static_cast<int>(def)))] = def;
+    }
     }
 
     auto linescan_assign_registers = [](const decltype(live_intervals_vec)& live_intervals,

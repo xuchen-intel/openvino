@@ -19,6 +19,7 @@ namespace pass {
  */
 class InsertMoveBroadcast: public ov::pass::MatcherPass {
 public:
+    OPENVINO_RTTI("InsertMoveBroadcast", "0");
     InsertMoveBroadcast();
 
     static Output<ov::Node> BroadcastNodeLastDim(const ov::Output<ov::Node>& value,

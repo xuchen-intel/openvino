@@ -18,6 +18,7 @@ namespace pass {
  */
 class ConvertPowerToPowerStatic: public ov::pass::MatcherPass {
 public:
+    OPENVINO_RTTI("ConvertPowerToPowerStatic", "0");
     ConvertPowerToPowerStatic();
 };
 

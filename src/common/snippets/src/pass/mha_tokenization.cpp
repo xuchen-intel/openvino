@@ -514,7 +514,10 @@ ov::snippets::pass::TokenizeMHASnippets::TokenizeMHASnippets(const SnippetsToken
         auto body = op::create_body(last_node->get_friendly_name(), body_results, body_parameters);
         auto subgraph = std::make_shared<op::Subgraph>(subgraph_inputs, body);
         // Copy runtime info from last node to subgraph - to copy topological order
+        {
+        OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "TokenizeMHASnippets copy_runtime_info")
         copy_runtime_info(last_node, subgraph);
+        }
         subgraph->set_friendly_name(last_node->get_friendly_name());
 
         for (size_t i = 0; i < subgraph->get_output_size(); ++i) {

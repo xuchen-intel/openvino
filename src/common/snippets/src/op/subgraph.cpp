@@ -144,7 +144,10 @@ auto Subgraph::get_estimated_buffer_count(const ov::NodeVector& ops) -> size_t {
 Subgraph::Subgraph(const OutputVector& args, const std::shared_ptr<ov::Model>& body)
         : SubGraphOp(args), m_generator(nullptr) {
     SubGraphOp::set_function(body);
+    {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "Subgraph init_config")
     init_config();
+    }
     constructor_validate_and_infer_types();
     for (size_t i = 0; i < body->get_parameters().size(); ++i)
         m_input_descriptions[0].push_back(std::make_shared<InvariantInputDescription>(i, i));

@@ -4,6 +4,7 @@
 
 #include "jit_dnnl_emitters.hpp"
 #include <nodes/eltwise.h>
+#include "snippets/itt.hpp"
 
 using namespace dnnl::impl::utils;
 using namespace dnnl::impl;
@@ -19,6 +20,7 @@ std::set<std::vector<element::Type>> jit_dnnl_emitter::get_supported_precisions(
 
 jit_dnnl_emitter::jit_dnnl_emitter(jit_generator *host, cpu_isa_t host_isa, const std::shared_ptr<ngraph::Node>& node, InferenceEngine::Precision exec_prc)
     : jit_emitter(host, host_isa, node, exec_prc) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_dnnl_emitter::jit_dnnl_emitter")
 
     kind = dnnl_eltwise_tanh;
     alpha = 0.f;
@@ -31,6 +33,7 @@ jit_dnnl_emitter::jit_dnnl_emitter(jit_generator *host, cpu_isa_t host_isa,
                                    dnnl_alg_kind_t algKind, float alpha, float beta,
                                    InferenceEngine::Precision exec_prc)
     : jit_emitter(host, host_isa, exec_prc), kind(algKind), alpha(alpha), beta(beta) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_dnnl_emitter::jit_dnnl_emitter")
 
     set_injector();
 }
@@ -54,6 +57,7 @@ size_t jit_dnnl_emitter::get_inputs_num() const { return 1; }
 
 void jit_dnnl_emitter::emit_code(const std::vector<size_t> &in_vec_idxs, const std::vector<size_t> &out_vec_idxs,
                                  const std::vector<size_t> &pool_vec_idxs, const std::vector<size_t> &pool_gpr_idxs) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_dnnl_emitter::emit_code")
     if (host_isa_ == cpu::x64::sse41) {
         if (out_vec_idxs[0] != in_vec_idxs[0])
             h->uni_vmovups(Xmm(out_vec_idxs[0]), Xmm(in_vec_idxs[0]));

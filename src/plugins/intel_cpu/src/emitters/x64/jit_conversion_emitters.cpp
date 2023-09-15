@@ -7,6 +7,7 @@
 #include <cpu/x64/jit_uni_eltwise.hpp>
 #include <ngraph/opsets/opset1.hpp>
 #include <nodes/eltwise.h>
+#include "snippets/itt.hpp"
 
 using namespace InferenceEngine;
 using namespace dnnl::impl::utils;
@@ -19,6 +20,7 @@ namespace intel_cpu {
 
 jit_convert_emitter::jit_convert_emitter(jit_generator *host, cpu_isa_t host_isa, const std::shared_ptr<ngraph::Node>& node, Precision exec_prc)
 : jit_emitter(host, host_isa, node, exec_prc) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_convert_emitter::jit_convert_emitter")
     input_type = node->get_input_element_type(0);
     output_type = node->get_output_element_type(0);
 
@@ -60,6 +62,7 @@ void jit_convert_emitter::float2bfloat(const std::vector<size_t> &in_vec_idxs, c
 jit_convert_truncation_emitter::jit_convert_truncation_emitter(jit_generator *host, cpu_isa_t host_isa,
                                                                const std::shared_ptr<ngraph::Node>& node, Precision exec_prc)
         : jit_convert_emitter(host, host_isa, node, exec_prc) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_convert_truncation_emitter::jit_convert_truncation_emitter")
     prepare_table();
 }
 
@@ -69,6 +72,7 @@ bool jit_convert_truncation_emitter::is_i8_and_u8_case() const {
 }
 
 void jit_convert_truncation_emitter::emit_impl(const std::vector<size_t> &in_vec_idxs, const std::vector<size_t> &out_vec_idxs) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_convert_truncation_emitter::emit_impl")
     validate_types();
     if (host_isa_ == cpu::x64::sse41) {
         emit_isa<cpu::x64::sse41>(in_vec_idxs, out_vec_idxs);
@@ -198,6 +202,7 @@ jit_convert_saturation_emitter::jit_convert_saturation_emitter(jit_generator *ho
 }
 
 void jit_convert_saturation_emitter::emit_impl(const std::vector<size_t> &in_vec_idxs, const std::vector<size_t> &out_vec_idxs) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_convert_saturation_emitter::emit_impl")
     validate_types();
     if (host_isa_ == cpu::x64::sse41) {
         emit_isa<cpu::x64::sse41>(in_vec_idxs, out_vec_idxs);

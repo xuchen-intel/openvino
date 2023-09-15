@@ -6,6 +6,7 @@
 
 #include <cpu/x64/jit_generator.hpp>
 
+#include "snippets/itt.hpp"
 #include "snippets/snippets_isa.hpp"
 #include "snippets/lowered/expression.hpp"
 #include "snippets/lowered/port_connector.hpp"
@@ -97,6 +98,7 @@ KernelEmitter::KernelEmitter(dnnl::impl::cpu::x64::jit_generator* h, dnnl::impl:
     jit_container_emitter(h, isa, n),
     reg_indexes_idx(abi_param1.getIdx()),
     reg_const_params_idx(abi_param2.getIdx()) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "KernelEmitter::KernelEmitter")
     const auto kernel = ov::as_type_ptr<snippets::op::Kernel>(n);
     if (!kernel)
         IE_THROW() << "KernelEmitter invoked with invalid op argument";
@@ -295,6 +297,7 @@ void KernelEmitter::init_data_pointers(const Xbyak::Reg64& reg_indexes, const Xb
 }
 void KernelEmitter::emit_impl(const std::vector<size_t>& in,
                               const std::vector<size_t>& out) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "KernelEmitter::emit_impl")
     h->preamble();
 
     Reg64 reg_indexes = Reg64(static_cast<int>(reg_indexes_idx));
@@ -315,6 +318,7 @@ void KernelEmitter::emit_impl(const std::vector<size_t>& in,
 
 LoopBeginEmitter::LoopBeginEmitter(dnnl::impl::cpu::x64::jit_generator* h, dnnl::impl::cpu::x64::cpu_isa_t isa,
                          const std::shared_ptr<ov::Node>& n) : jit_emitter(h, isa, n) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "LoopBeginEmitter::LoopBeginEmitter")
     loop_begin = ov::as_type_ptr<snippets::op::LoopBegin>(n);
     if (!loop_begin)
         IE_THROW() << "LoopBeginEmitter invoked with invalid op argument";
@@ -346,6 +350,7 @@ void LoopBeginEmitter::validate_arguments(const std::vector<size_t> &in,
 
 void LoopBeginEmitter::emit_impl(const std::vector<size_t>& in,
                                  const std::vector<size_t>& out) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "LoopBeginEmitter::emit_impl")
     // todo: In dynamic case we will also need to set broadcasting info here
     Reg64 reg_work_amount = Reg64(static_cast<int>(out.back()));
     Label for_body;
@@ -361,6 +366,7 @@ void LoopBeginEmitter::emit_impl(const std::vector<size_t>& in,
 
 LoopEndEmitter::LoopEndEmitter(dnnl::impl::cpu::x64::jit_generator* h, dnnl::impl::cpu::x64::cpu_isa_t isa,
                                    const std::shared_ptr<ov::Node>& n) : jit_emitter(h, isa, n) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "LoopEndEmitter::LoopEndEmitter")
     loop_end = ov::as_type_ptr<snippets::op::LoopEnd>(n);
     if (!loop_end)
         IE_THROW() << "LoopEndEmitter invoked with invalid op argument";
@@ -402,6 +408,7 @@ void LoopEndEmitter::validate_arguments(const std::vector<size_t> &in,
 
 void LoopEndEmitter::emit_impl(const std::vector<size_t>& in,
                                  const std::vector<size_t>& out) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "LoopEndEmitter::emit_impl")
     std::vector<size_t> data_ptr_reg_idxs;
     // the last input is actually a work_amount reg
     data_ptr_reg_idxs.reserve(num_inputs - 1);
@@ -427,16 +434,19 @@ void LoopEndEmitter::emit_impl(const std::vector<size_t>& in,
 
 ParameterEmitter::ParameterEmitter(dnnl::impl::cpu::x64::jit_generator* h, dnnl::impl::cpu::x64::cpu_isa_t isa,
                                    const std::shared_ptr<ov::Node>& n) : NopEmitter(h, isa, n) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "ParameterEmitter::ParameterEmitter")
     in_out_type_ = emitter_in_out_map::gpr_to_gpr;
 }
 
 ResultEmitter::ResultEmitter(dnnl::impl::cpu::x64::jit_generator* h, dnnl::impl::cpu::x64::cpu_isa_t isa,
                                    const std::shared_ptr<ov::Node>& n) : NopEmitter(h, isa, n) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "ResultEmitter::ResultEmitter")
     in_out_type_ = emitter_in_out_map::gpr_to_gpr;
 }
 
 BroadcastMoveEmitter::BroadcastMoveEmitter(dnnl::impl::cpu::x64::jit_generator* h, dnnl::impl::cpu::x64::cpu_isa_t isa,
                                            const std::shared_ptr<ov::Node>& n) : jit_emitter(h, isa, n) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "BroadcastMoveEmitter::BroadcastMoveEmitter")
     if (n->get_input_element_type(0) != n->get_output_element_type(0))
         IE_THROW() << "BroadcastMoveEmitter supports only equal input and output types but gets: "
             << n->get_input_element_type(0) << " and " << n->get_output_element_type(0);
@@ -445,6 +455,7 @@ BroadcastMoveEmitter::BroadcastMoveEmitter(dnnl::impl::cpu::x64::jit_generator* 
 
 void BroadcastMoveEmitter::emit_impl(const std::vector<size_t>& in,
           const std::vector<size_t>& out) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "BroadcastMoveEmitter::emit_impl")
     if (host_isa_ == dnnl::impl::cpu::x64::sse41) {
         emit_isa<dnnl::impl::cpu::x64::sse41>(in, out);
     } else if (host_isa_ == dnnl::impl::cpu::x64::avx2) {
@@ -473,6 +484,7 @@ void BroadcastMoveEmitter::emit_isa(const std::vector<size_t> &in, const std::ve
 
 ScalarEmitter::ScalarEmitter(dnnl::impl::cpu::x64::jit_generator* h, dnnl::impl::cpu::x64::cpu_isa_t isa,
                              const std::shared_ptr<ov::Node>& n) : jit_emitter(h, isa, n) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "ScalarEmitter::ScalarEmitter")
     const auto precision = n->get_output_element_type(0);
     switch (precision) {
         case element::i32: {
@@ -493,6 +505,7 @@ ScalarEmitter::ScalarEmitter(dnnl::impl::cpu::x64::jit_generator* h, dnnl::impl:
 
 void ScalarEmitter::emit_impl(const std::vector<size_t>& in,
                               const std::vector<size_t>& out) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "ScalarEmitter::emit_impl")
     if (host_isa_ == dnnl::impl::cpu::x64::sse41) {
         emit_isa<dnnl::impl::cpu::x64::sse41>(in, out);
     } else if (host_isa_ == dnnl::impl::cpu::x64::avx2) {
@@ -515,12 +528,14 @@ void ScalarEmitter::emit_isa(const std::vector<size_t> &in, const std::vector<si
 
 MemoryEmitter::MemoryEmitter(dnnl::impl::cpu::x64::jit_generator* h, dnnl::impl::cpu::x64::cpu_isa_t isa,
                              const std::shared_ptr<ov::Node>& n) : jit_emitter(h, isa, n) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "MemoryEmitter::MemoryEmitter")
     src_prc = InferenceEngine::details::convertPrecision(n->get_input_element_type(0));
     dst_prc = InferenceEngine::details::convertPrecision(n->get_output_element_type(0));
 }
 
 StoreEmitter::StoreEmitter(dnnl::impl::cpu::x64::jit_generator* h, dnnl::impl::cpu::x64::cpu_isa_t isa,
                            const std::shared_ptr<ov::Node>& n) : MemoryEmitter(h, isa, n) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "StoreEmitter::StoreEmitter")
     if (src_prc != dst_prc)
         IE_THROW() << "StoreEmitter supports only equal input and output types but gets: " << src_prc.name() << " and " << dst_prc.name();
 
@@ -533,6 +548,7 @@ StoreEmitter::StoreEmitter(dnnl::impl::cpu::x64::jit_generator* h, dnnl::impl::c
 
 void StoreEmitter::emit_impl(const std::vector<size_t>& in,
                              const std::vector<size_t>& out) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "StoreEmitter::emit_impl")
     if (host_isa_ == dnnl::impl::cpu::x64::sse41) {
         emit_isa<dnnl::impl::cpu::x64::sse41>(in, out);
     } else if (host_isa_ == dnnl::impl::cpu::x64::avx2) {
@@ -557,6 +573,7 @@ void StoreEmitter::emit_data() const {
 
 LoadEmitter::LoadEmitter(dnnl::impl::cpu::x64::jit_generator* h, dnnl::impl::cpu::x64::cpu_isa_t isa,
                          const std::shared_ptr<ov::Node>& n) : MemoryEmitter(h, isa, n) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "LoadEmitter::LoadEmitter")
     if (src_prc != dst_prc)
         IE_THROW() << "LoadEmitter supports only equal input and output types but gets: " << src_prc.name() << " and " << dst_prc.name();
 
@@ -569,6 +586,7 @@ LoadEmitter::LoadEmitter(dnnl::impl::cpu::x64::jit_generator* h, dnnl::impl::cpu
 
 void LoadEmitter::emit_impl(const std::vector<size_t>& in,
                             const std::vector<size_t>& out) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "LoadEmitter::emit_impl")
     if (host_isa_ == dnnl::impl::cpu::x64::sse41) {
         emit_isa<dnnl::impl::cpu::x64::sse41>(in, out);
     } else if (host_isa_ == dnnl::impl::cpu::x64::avx2) {
@@ -593,6 +611,7 @@ void LoadEmitter::emit_data() const {
 
 BroadcastLoadEmitter::BroadcastLoadEmitter(dnnl::impl::cpu::x64::jit_generator* h, dnnl::impl::cpu::x64::cpu_isa_t isa,
                                            const std::shared_ptr<ov::Node>& n) : MemoryEmitter(h, isa, n) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "BroadcastLoadEmitter::BroadcastLoadEmitter")
     if (src_prc != dst_prc)
         IE_THROW() << "BroadcastEmitters support only equal input and output types but gets: " << src_prc.name() << " and " << dst_prc.name();
 
@@ -603,6 +622,7 @@ BroadcastLoadEmitter::BroadcastLoadEmitter(dnnl::impl::cpu::x64::jit_generator* 
 
 void BroadcastLoadEmitter::emit_impl(const std::vector<size_t>& in,
                                      const std::vector<size_t>& out) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "BroadcastLoadEmitter::emit_impl")
     if (host_isa_ == dnnl::impl::cpu::x64::sse41) {
         emit_isa<dnnl::impl::cpu::x64::sse41>(in, out);
     } else if (host_isa_ == dnnl::impl::cpu::x64::avx2) {
@@ -633,6 +653,7 @@ void BroadcastLoadEmitter::emit_isa(const std::vector<size_t> &in, const std::ve
 
 LoadConvertEmitter::LoadConvertEmitter(dnnl::impl::cpu::x64::jit_generator* h, dnnl::impl::cpu::x64::cpu_isa_t isa, const std::shared_ptr<ov::Node>& n)
     : MemoryEmitter(h, isa, n) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "LoadConvertEmitter::LoadConvertEmitter")
     const auto load = ov::as_type_ptr<snippets::op::Load>(n);
     count = load->get_count();
     byte_offset = load->get_offset();
@@ -642,6 +663,7 @@ LoadConvertEmitter::LoadConvertEmitter(dnnl::impl::cpu::x64::jit_generator* h, d
 
 void LoadConvertEmitter::emit_impl(const std::vector<size_t>& in,
                                    const std::vector<size_t>& out) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "LoadConvertEmitter::emit_impl")
     if (host_isa_ == dnnl::impl::cpu::x64::sse41) {
         emit_isa<dnnl::impl::cpu::x64::sse41>(in, out);
     } else if (host_isa_ == dnnl::impl::cpu::x64::avx2) {
@@ -666,6 +688,7 @@ void LoadConvertEmitter::emit_data() const {
 
 StoreConvertEmitter::StoreConvertEmitter(dnnl::impl::cpu::x64::jit_generator* h, dnnl::impl::cpu::x64::cpu_isa_t isa,
                                          const std::shared_ptr<ov::Node>& n) : MemoryEmitter(h, isa, n) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "StoreConvertEmitter::StoreConvertEmitter")
     const auto store = ov::as_type_ptr<snippets::op::Store>(n);
     count = store->get_count();
     byte_offset = store->get_offset();
@@ -680,6 +703,7 @@ StoreConvertEmitter::StoreConvertEmitter(dnnl::impl::cpu::x64::jit_generator* h,
 
 void StoreConvertEmitter::emit_impl(const std::vector<size_t>& in,
                                     const std::vector<size_t>& out) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "StoreConvertEmitter::emit_impl")
     if (host_isa_ == dnnl::impl::cpu::x64::sse41) {
         emit_isa<dnnl::impl::cpu::x64::sse41>(in, out);
     } else if (host_isa_ == dnnl::impl::cpu::x64::avx2) {
@@ -706,6 +730,8 @@ size_t BrgemmEmitter::getBrgIdx(size_t kIdx, size_t nIdx) {
 }
 BrgemmEmitter::BrgemmEmitter(dnnl::impl::cpu::x64::jit_generator* h, dnnl::impl::cpu::x64::cpu_isa_t isa,
                              const std::shared_ptr<ov::Node>& node) : jit_emitter(h, isa, node) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "BrgemmEmitter::BrgemmEmitter")
+
     m_brgCtxs.fill(brgemmCtx());
     std::generate(m_brgKernels.begin(), m_brgKernels.end(), [](){ return nullptr; });
     in_out_type_ = emitter_in_out_map::gpr_to_gpr;
@@ -956,6 +982,8 @@ void BrgemmEmitter::emit_N_blocking_loops(size_t k_kernel_id,
 
 void BrgemmEmitter::emit_impl(const std::vector<size_t>& in,
                               const std::vector<size_t>& out) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "BrgemmEmitter::emit_impl")
+
     validate_arguments(in, out);
     if (host_isa_ == cpu::x64::avx512_core) {
         Xbyak::Reg64 input_0(static_cast<int>(in[0]));
@@ -1192,6 +1220,7 @@ void BrgemmEmitter::kernel_execute(const brgemm_kernel_t *brg_kernel,
 
 BrgemmCopyBEmitter::BrgemmCopyBEmitter(dnnl::impl::cpu::x64::jit_generator* h, dnnl::impl::cpu::x64::cpu_isa_t isa, const std::shared_ptr<ov::Node>& n)
     : jit_emitter(h, isa, n) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "BrgemmCopyBEmitter::BrgemmCopyBEmitter")
     in_out_type_ = emitter_in_out_map::gpr_to_gpr;
     const auto brgemm_repack = ov::as_type_ptr<ov::intel_cpu::BrgemmCopyB>(n);
     if (!brgemm_repack)
@@ -1282,6 +1311,7 @@ void BrgemmCopyBEmitter::init_brgemm_copy(std::unique_ptr<matmul::jit_brgemm_mat
 
 void BrgemmCopyBEmitter::emit_impl(const std::vector<size_t>& in,
                                    const std::vector<size_t>& out) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "BrgemmCopyBEmitter::emit_impl")
     if (host_isa_ == cpu::x64::avx512_core) {
         Xbyak::Reg64 src(static_cast<int>(in[0]));
         Xbyak::Reg64 dst(static_cast<int>(out[0]));
@@ -1444,6 +1474,7 @@ void BrgemmCopyBEmitter::execute(matmul::jit_brgemm_matmul_copy_b_t *kernel, con
 
 HorizonEmitter::HorizonEmitter(dnnl::impl::cpu::x64::jit_generator* h, dnnl::impl::cpu::x64::cpu_isa_t isa, const std::shared_ptr<ov::Node>& n) :
     jit_emitter(h, isa, n, Precision::FP32, emitter_in_out_map::vec_to_vec) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "HorizonEmitter::HorizonEmitter")
     if (ov::is_type<const snippets::op::HorizonMax>(n)) {
         m_op_type = OpType::max;
     } else if (ov::is_type<const snippets::op::HorizonSum>(n)) {
@@ -1455,6 +1486,7 @@ HorizonEmitter::HorizonEmitter(dnnl::impl::cpu::x64::jit_generator* h, dnnl::imp
 
 void HorizonEmitter::emit_impl(const std::vector<size_t>& in,
                                     const std::vector<size_t>& out) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "HorizonEmitter::emit_impl")
     if (host_isa_ == dnnl::impl::cpu::x64::sse41) {
         emit_isa<dnnl::impl::cpu::x64::sse41>(in, out);
     } else if (host_isa_ == dnnl::impl::cpu::x64::avx2) {
@@ -1512,6 +1544,7 @@ void HorizonEmitter::perform_op(const Vmm &vmm1, const Vmm &vmm2, const Vmm &vmm
 
 FillEmitter::FillEmitter(dnnl::impl::cpu::x64::jit_generator* h, dnnl::impl::cpu::x64::cpu_isa_t isa, const std::shared_ptr<ov::Node>& n) :
     jit_emitter(h, isa, n, Precision::FP32, emitter_in_out_map::vec_to_vec) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "FillEmitter::FillEmitter")
     const auto fill = ov::as_type_ptr<snippets::op::Fill>(n);
     if (fill->get_element_type().size() != 4) {
         IE_THROW() << "Fill emitter supports only 4 Byte element types but gets: " << fill->get_element_type();
@@ -1537,6 +1570,7 @@ size_t FillEmitter::aux_gprs_count() const {
 
 void FillEmitter::emit_impl(const std::vector<size_t>& in,
                             const std::vector<size_t>& out) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "FillEmitter::emit_impl")
     if (host_isa_ == dnnl::impl::cpu::x64::sse41) {
         emit_isa<dnnl::impl::cpu::x64::sse41>(in, out);
     } else if (host_isa_ == dnnl::impl::cpu::x64::avx2) {

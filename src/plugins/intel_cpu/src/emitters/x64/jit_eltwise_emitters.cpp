@@ -4,6 +4,7 @@
 
 #include "jit_eltwise_emitters.hpp"
 #include "ie_ngraph_utils.hpp"
+#include "snippets/itt.hpp"
 
 using namespace InferenceEngine;
 using namespace dnnl::impl::utils;
@@ -43,6 +44,7 @@ jit_add_emitter::jit_add_emitter(x64::jit_generator *host, x64::cpu_isa_t host_i
 size_t jit_add_emitter::get_inputs_num() const { return 2; }
 
 void jit_add_emitter::emit_impl(const std::vector<size_t> &in_vec_idxs, const std::vector<size_t> &out_vec_idxs) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_add_emitter::emit_impl")
     if (host_isa_ == x64::sse41) {
         emit_isa<x64::sse41>(in_vec_idxs, out_vec_idxs);
     } else if (host_isa_ == x64::avx2) {
@@ -90,6 +92,7 @@ jit_mul_add_emitter::jit_mul_add_emitter(x64::jit_generator *host, x64::cpu_isa_
 size_t jit_mul_add_emitter::get_inputs_num() const { return 3; }
 
 void jit_mul_add_emitter::emit_impl(const std::vector<size_t> &in_vec_idxs, const std::vector<size_t> &out_vec_idxs) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_mul_add_emitter::emit_impl")
     if (host_isa_ == x64::sse41) {
         emit_isa<x64::sse41>(in_vec_idxs, out_vec_idxs);
     } else if (host_isa_ == x64::avx2) {
@@ -181,6 +184,7 @@ jit_subtract_emitter::jit_subtract_emitter(x64::jit_generator *host, x64::cpu_is
 size_t jit_subtract_emitter::get_inputs_num() const { return 2; }
 
 void jit_subtract_emitter::emit_impl(const std::vector<size_t> &in_vec_idxs, const std::vector<size_t> &out_vec_idxs) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_subtract_emitter::emit_impl")
     if (host_isa_ == x64::sse41) {
         emit_isa<x64::sse41>(in_vec_idxs, out_vec_idxs);
     } else if (host_isa_ == x64::avx2) {
@@ -228,6 +232,7 @@ jit_multiply_emitter::jit_multiply_emitter(x64::jit_generator *host, x64::cpu_is
 size_t jit_multiply_emitter::get_inputs_num() const { return 2; }
 
 void jit_multiply_emitter::emit_impl(const std::vector<size_t> &in_vec_idxs, const std::vector<size_t> &out_vec_idxs) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_multiply_emitter::emit_impl")
     if (host_isa_ == x64::sse41) {
         emit_isa<x64::sse41>(in_vec_idxs, out_vec_idxs);
     } else if (host_isa_ == x64::avx2) {
@@ -275,6 +280,7 @@ jit_divide_emitter::jit_divide_emitter(x64::jit_generator *host, x64::cpu_isa_t 
 size_t jit_divide_emitter::get_inputs_num() const { return 2; }
 
 void jit_divide_emitter::emit_impl(const std::vector<size_t> &in_vec_idxs, const std::vector<size_t> &out_vec_idxs) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_divide_emitter::emit_impl")
     if (host_isa_ == x64::sse41) {
         emit_isa<x64::sse41>(in_vec_idxs, out_vec_idxs);
     } else if (host_isa_ == x64::avx2) {
@@ -344,6 +350,7 @@ std::set<std::vector<element::Type>> jit_floor_emitter::get_supported_precisions
 }
 
 void jit_floor_emitter::emit_impl(const std::vector<size_t>& in_vec_idxs, const std::vector<size_t>& out_vec_idxs) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_floor_emitter::emit_impl")
     if (host_isa_ == x64::sse41) {
         emit_isa<x64::sse41>(in_vec_idxs, out_vec_idxs);
     } else if (host_isa_ == x64::avx2) {
@@ -377,6 +384,7 @@ std::set<std::vector<element::Type>> jit_ceiling_emitter::get_supported_precisio
 
 void jit_ceiling_emitter::emit_impl(const std::vector<size_t>& in_vec_idxs,
                                     const std::vector<size_t>& out_vec_idxs) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_ceiling_emitter::emit_impl")
     if (host_isa_ == x64::sse41) {
         emit_isa<x64::sse41>(in_vec_idxs, out_vec_idxs);
     } else if (host_isa_ == x64::avx2) {
@@ -409,6 +417,7 @@ std::set<std::vector<element::Type>> jit_floor_mod_emitter::get_supported_precis
 }
 
 void jit_floor_mod_emitter::emit_impl(const std::vector<size_t>& in_vec_idxs, const std::vector<size_t>& out_vec_idxs) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_floor_mod_emitter::emit_impl")
     if (host_isa_ == x64::sse41) {
         emit_isa<x64::sse41>(in_vec_idxs, out_vec_idxs);
     } else if (host_isa_ == x64::avx2) {
@@ -463,6 +472,7 @@ std::set<std::vector<element::Type>> jit_mod_emitter::get_supported_precisions(c
 }
 
 void jit_mod_emitter::emit_impl(const std::vector<size_t>& in_vec_idxs, const std::vector<size_t>& out_vec_idxs) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_mod_emitter::emit_impl")
     if (host_isa_ == x64::sse41) {
         emit_isa<x64::sse41>(in_vec_idxs, out_vec_idxs);
     } else if (host_isa_ == x64::avx2) {
@@ -513,6 +523,7 @@ jit_maximum_emitter::jit_maximum_emitter(x64::jit_generator *host, x64::cpu_isa_
 size_t jit_maximum_emitter::get_inputs_num() const { return 2; }
 
 void jit_maximum_emitter::emit_impl(const std::vector<size_t> &in_vec_idxs, const std::vector<size_t> &out_vec_idxs) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_maximum_emitter::emit_impl")
     if (host_isa_ == x64::sse41) {
         emit_isa<x64::sse41>(in_vec_idxs, out_vec_idxs);
     } else if (host_isa_ == x64::avx2) {
@@ -561,6 +572,7 @@ jit_minimum_emitter::jit_minimum_emitter(x64::jit_generator *host, x64::cpu_isa_
 size_t jit_minimum_emitter::get_inputs_num() const { return 2; }
 
 void jit_minimum_emitter::emit_impl(const std::vector<size_t> &in_vec_idxs, const std::vector<size_t> &out_vec_idxs) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_minimum_emitter::emit_impl")
     if (host_isa_ == x64::sse41) {
         emit_isa<x64::sse41>(in_vec_idxs, out_vec_idxs);
     } else if (host_isa_ == x64::avx2) {
@@ -610,6 +622,7 @@ jit_squared_difference_emitter::jit_squared_difference_emitter(x64::jit_generato
 size_t jit_squared_difference_emitter::get_inputs_num() const { return 2; }
 
 void jit_squared_difference_emitter::emit_impl(const std::vector<size_t> &in_vec_idxs, const std::vector<size_t> &out_vec_idxs) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_squared_difference_emitter::emit_impl")
     if (host_isa_ == x64::sse41) {
         emit_isa<x64::sse41>(in_vec_idxs, out_vec_idxs);
     } else if (host_isa_ == x64::avx2) {
@@ -669,6 +682,7 @@ std::set<std::vector<element::Type>> jit_power_dynamic_emitter::get_supported_pr
 }
 
 void jit_power_dynamic_emitter::emit_impl(const std::vector<size_t>& in_vec_idxs, const std::vector<size_t>& out_vec_idxs) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_power_dynamic_emitter::emit_impl")
     if (host_isa_ == x64::sse41) {
         emit_isa<x64::sse41>(in_vec_idxs, out_vec_idxs);
     } else if (host_isa_ == x64::avx2) {
@@ -770,10 +784,12 @@ void jit_power_dynamic_emitter::emit_isa(const std::vector<size_t> &in_vec_idxs,
 /// EQUAL ///
 jit_equal_emitter::jit_equal_emitter(x64::jit_generator *host, x64::cpu_isa_t host_isa, const std::shared_ptr<ov::Node>& node, Precision exec_prc)
 : jit_emitter(host, host_isa, node, exec_prc) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_equal_emitter::jit_equal_emitter")
     prepare_table();
 }
 jit_equal_emitter::jit_equal_emitter(x64::jit_generator *host, x64::cpu_isa_t host_isa, Precision exec_prc)
 : jit_emitter(host, host_isa, exec_prc) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_equal_emitter::jit_equal_emitter")
     prepare_table();
 }
 
@@ -784,6 +800,7 @@ std::set<std::vector<element::Type>> jit_equal_emitter::get_supported_precisions
 }
 
 void jit_equal_emitter::emit_impl(const std::vector<size_t>& in_vec_idxs, const std::vector<size_t>& out_vec_idxs) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_equal_emitter::emit_impl")
     if (host_isa_ == x64::sse41) {
         emit_isa<x64::sse41>(in_vec_idxs, out_vec_idxs);
     } else if (host_isa_ == x64::avx2) {
@@ -833,10 +850,12 @@ size_t jit_equal_emitter::aux_vecs_count() const {
 /// NOT_EQUAL ///
 jit_not_equal_emitter::jit_not_equal_emitter(x64::jit_generator *host, x64::cpu_isa_t host_isa, const std::shared_ptr<ov::Node>& node, Precision exec_prc)
 : jit_emitter(host, host_isa, node, exec_prc) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_not_equal_emitter::jit_not_equal_emitter")
     prepare_table();
 }
 jit_not_equal_emitter::jit_not_equal_emitter(x64::jit_generator *host, x64::cpu_isa_t host_isa, Precision exec_prc)
 : jit_emitter(host, host_isa, exec_prc) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_not_equal_emitter::jit_not_equal_emitter")
     prepare_table();
 }
 
@@ -847,6 +866,7 @@ std::set<std::vector<element::Type>> jit_not_equal_emitter::get_supported_precis
 }
 
 void jit_not_equal_emitter::emit_impl(const std::vector<size_t>& in_vec_idxs, const std::vector<size_t>& out_vec_idxs) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_not_equal_emitter::emit_impl")
     if (host_isa_ == x64::sse41) {
         emit_isa<x64::sse41>(in_vec_idxs, out_vec_idxs);
     } else if (host_isa_ == x64::avx2) {
@@ -896,10 +916,12 @@ size_t jit_not_equal_emitter::aux_vecs_count() const {
 /// GREATER ///
 jit_greater_emitter::jit_greater_emitter(x64::jit_generator *host, x64::cpu_isa_t host_isa, const std::shared_ptr<ov::Node>& node, Precision exec_prc)
 : jit_emitter(host, host_isa, node, exec_prc) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_greater_emitter::jit_greater_emitter")
     prepare_table();
 }
 jit_greater_emitter::jit_greater_emitter(x64::jit_generator *host, x64::cpu_isa_t host_isa, Precision exec_prc)
 : jit_emitter(host, host_isa, exec_prc) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_greater_emitter::jit_greater_emitter")
     prepare_table();
 }
 
@@ -910,6 +932,7 @@ std::set<std::vector<element::Type>> jit_greater_emitter::get_supported_precisio
 }
 
 void jit_greater_emitter::emit_impl(const std::vector<size_t>& in_vec_idxs, const std::vector<size_t>& out_vec_idxs) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_greater_emitter::emit_impl")
     if (host_isa_ == x64::sse41) {
         emit_isa<x64::sse41>(in_vec_idxs, out_vec_idxs);
     } else if (host_isa_ == x64::avx2) {
@@ -960,10 +983,12 @@ size_t jit_greater_emitter::aux_vecs_count() const {
 jit_greater_equal_emitter::jit_greater_equal_emitter(x64::jit_generator *host, x64::cpu_isa_t host_isa, const std::shared_ptr<ov::Node>& node,
                                                      Precision exec_prc)
 : jit_emitter(host, host_isa, node, exec_prc) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_greater_equal_emitter::jit_greater_equal_emitter")
     prepare_table();
 }
 jit_greater_equal_emitter::jit_greater_equal_emitter(x64::jit_generator *host, x64::cpu_isa_t host_isa, Precision exec_prc)
 : jit_emitter(host, host_isa, exec_prc) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_greater_equal_emitter::jit_greater_equal_emitter")
     prepare_table();
 }
 
@@ -974,6 +999,7 @@ std::set<std::vector<element::Type>> jit_greater_equal_emitter::get_supported_pr
 }
 
 void jit_greater_equal_emitter::emit_impl(const std::vector<size_t>& in_vec_idxs, const std::vector<size_t>& out_vec_idxs) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_greater_equal_emitter::emit_impl")
     if (host_isa_ == x64::sse41) {
         emit_isa<x64::sse41>(in_vec_idxs, out_vec_idxs);
     } else if (host_isa_ == x64::avx2) {
@@ -1023,10 +1049,12 @@ size_t jit_greater_equal_emitter::aux_vecs_count() const {
 /// LESS ///
 jit_less_emitter::jit_less_emitter(x64::jit_generator *host, x64::cpu_isa_t host_isa, const std::shared_ptr<ov::Node>& node, Precision exec_prc)
 : jit_emitter(host, host_isa, node, exec_prc) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_less_emitter::jit_less_emitter")
     prepare_table();
 }
 jit_less_emitter::jit_less_emitter(x64::jit_generator *host, x64::cpu_isa_t host_isa, Precision exec_prc)
 : jit_emitter(host, host_isa, exec_prc) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_less_emitter::jit_less_emitter")
     prepare_table();
 }
 
@@ -1037,6 +1065,7 @@ std::set<std::vector<element::Type>> jit_less_emitter::get_supported_precisions(
 }
 
 void jit_less_emitter::emit_impl(const std::vector<size_t>& in_vec_idxs, const std::vector<size_t>& out_vec_idxs) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_less_emitter::emit_impl")
     if (host_isa_ == x64::sse41) {
         emit_isa<x64::sse41>(in_vec_idxs, out_vec_idxs);
     } else if (host_isa_ == x64::avx2) {
@@ -1086,10 +1115,12 @@ size_t jit_less_emitter::aux_vecs_count() const {
 /// LESS_EQUAL ///
 jit_less_equal_emitter::jit_less_equal_emitter(x64::jit_generator *host, x64::cpu_isa_t host_isa, const std::shared_ptr<ov::Node>& node, Precision exec_prc)
 : jit_emitter(host, host_isa, node, exec_prc) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_less_equal_emitter::jit_less_equal_emitter")
     prepare_table();
 }
 jit_less_equal_emitter::jit_less_equal_emitter(x64::jit_generator *host, x64::cpu_isa_t host_isa, Precision exec_prc)
 : jit_emitter(host, host_isa, exec_prc) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_less_equal_emitter::jit_less_equal_emitter")
     prepare_table();
 }
 
@@ -1100,6 +1131,7 @@ std::set<std::vector<element::Type>> jit_less_equal_emitter::get_supported_preci
 }
 
 void jit_less_equal_emitter::emit_impl(const std::vector<size_t>& in_vec_idxs, const std::vector<size_t>& out_vec_idxs) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_less_equal_emitter::emit_impl")
     if (host_isa_ == x64::sse41) {
         emit_isa<x64::sse41>(in_vec_idxs, out_vec_idxs);
     } else if (host_isa_ == x64::avx2) {
@@ -1150,10 +1182,12 @@ size_t jit_less_equal_emitter::aux_vecs_count() const {
 /// LOGICAL_AND ///
 jit_logical_and_emitter::jit_logical_and_emitter(x64::jit_generator *host, x64::cpu_isa_t host_isa, const std::shared_ptr<ov::Node>& node, Precision exec_prc)
 : jit_emitter(host, host_isa, node, exec_prc) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_logical_and_emitter::jit_logical_and_emitter")
     prepare_table();
 }
 jit_logical_and_emitter::jit_logical_and_emitter(x64::jit_generator *host, x64::cpu_isa_t host_isa, Precision exec_prc)
 : jit_emitter(host, host_isa, exec_prc) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_logical_and_emitter::jit_logical_and_emitter")
     prepare_table();
 }
 
@@ -1164,6 +1198,7 @@ std::set<std::vector<element::Type>> jit_logical_and_emitter::get_supported_prec
 }
 
 void jit_logical_and_emitter::emit_impl(const std::vector<size_t>& in_vec_idxs, const std::vector<size_t>& out_vec_idxs) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_logical_and_emitter::emit_impl")
     if (host_isa_ == x64::sse41) {
         emit_isa<x64::sse41>(in_vec_idxs, out_vec_idxs);
     } else if (host_isa_ == x64::avx2) {
@@ -1234,10 +1269,12 @@ size_t jit_logical_and_emitter::aux_vecs_count() const {
 /// LOGICAL_OR ///
 jit_logical_or_emitter::jit_logical_or_emitter(x64::jit_generator *host, x64::cpu_isa_t host_isa, const std::shared_ptr<ov::Node>& node, Precision exec_prc)
 : jit_emitter(host, host_isa, node, exec_prc) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_logical_or_emitter::jit_logical_or_emitter")
     prepare_table();
 }
 jit_logical_or_emitter::jit_logical_or_emitter(x64::jit_generator *host, x64::cpu_isa_t host_isa, Precision exec_prc)
 : jit_emitter(host, host_isa, exec_prc) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_logical_or_emitter::jit_logical_or_emitter")
     prepare_table();
 }
 
@@ -1248,6 +1285,7 @@ std::set<std::vector<element::Type>> jit_logical_or_emitter::get_supported_preci
 }
 
 void jit_logical_or_emitter::emit_impl(const std::vector<size_t>& in_vec_idxs, const std::vector<size_t>& out_vec_idxs) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_logical_or_emitter::emit_impl")
     if (host_isa_ == x64::sse41) {
         emit_isa<x64::sse41>(in_vec_idxs, out_vec_idxs);
     } else if (host_isa_ == x64::avx2) {
@@ -1317,10 +1355,12 @@ size_t jit_logical_or_emitter::aux_vecs_count() const {
 /// LOGICAL_XOR ///
 jit_logical_xor_emitter::jit_logical_xor_emitter(x64::jit_generator *host, x64::cpu_isa_t host_isa, const std::shared_ptr<ov::Node>& node, Precision exec_prc)
 : jit_emitter(host, host_isa, node, exec_prc) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_logical_xor_emitter::jit_logical_xor_emitter")
     prepare_table();
 }
 jit_logical_xor_emitter::jit_logical_xor_emitter(x64::jit_generator *host, x64::cpu_isa_t host_isa, Precision exec_prc)
 : jit_emitter(host, host_isa, exec_prc) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_logical_xor_emitter::jit_logical_xor_emitter")
     prepare_table();
 }
 
@@ -1331,6 +1371,7 @@ std::set<std::vector<element::Type>> jit_logical_xor_emitter::get_supported_prec
 }
 
 void jit_logical_xor_emitter::emit_impl(const std::vector<size_t>& in_vec_idxs, const std::vector<size_t>& out_vec_idxs) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_logical_xor_emitter::emit_impl")
     if (host_isa_ == x64::sse41) {
         emit_isa<x64::sse41>(in_vec_idxs, out_vec_idxs);
     } else if (host_isa_ == x64::avx2) {
@@ -1400,10 +1441,12 @@ size_t jit_logical_xor_emitter::aux_vecs_count() const {
 /// LOGICAL_NOT ///
 jit_logical_not_emitter::jit_logical_not_emitter(x64::jit_generator *host, x64::cpu_isa_t host_isa, const std::shared_ptr<ov::Node>& node, Precision exec_prc)
 : jit_emitter(host, host_isa, node, exec_prc) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_logical_not_emitter::jit_logical_not_emitter")
     prepare_table();
 }
 jit_logical_not_emitter::jit_logical_not_emitter(x64::jit_generator *host, x64::cpu_isa_t host_isa, Precision exec_prc)
 : jit_emitter(host, host_isa, exec_prc) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_logical_not_emitter::jit_logical_not_emitter")
     prepare_table();
 }
 
@@ -1414,6 +1457,7 @@ std::set<std::vector<element::Type>> jit_logical_not_emitter::get_supported_prec
 }
 
 void jit_logical_not_emitter::emit_impl(const std::vector<size_t>& in_vec_idxs, const std::vector<size_t>& out_vec_idxs) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_logical_not_emitter::emit_impl")
     if (host_isa_ == x64::sse41) {
         emit_isa<x64::sse41>(in_vec_idxs, out_vec_idxs);
     } else if (host_isa_ == x64::avx2) {
@@ -1478,6 +1522,7 @@ jit_power_static_emitter::jit_power_static_emitter(x64::jit_generator *host, x64
                                                    float inpPower, float inpScale, float inpShift,
                                                    Precision exec_prc)
 : jit_emitter(host, host_isa, exec_prc), power(inpPower), scale(inpScale), shift(inpShift) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_power_static_emitter::jit_power_static_emitter")
     prepare_table();
 }
 
@@ -1488,6 +1533,7 @@ std::set<std::vector<element::Type>> jit_power_static_emitter::get_supported_pre
 }
 
 void jit_power_static_emitter::emit_impl(const std::vector<size_t>& in_vec_idxs, const std::vector<size_t>& out_vec_idxs) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_power_static_emitter::emit_impl")
     if (host_isa_ == x64::sse41) {
         emit_isa<x64::sse41>(in_vec_idxs, out_vec_idxs);
     } else if (host_isa_ == x64::avx2) {
@@ -1653,10 +1699,12 @@ size_t jit_power_static_emitter::aux_vecs_count() const {
 /// PRELU ///
 jit_prelu_emitter::jit_prelu_emitter(x64::jit_generator *host, x64::cpu_isa_t host_isa, const std::shared_ptr<ov::Node>& node, Precision exec_prc)
 : jit_emitter(host, host_isa, node, exec_prc) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_prelu_emitter::jit_prelu_emitter")
     prepare_table();
 }
 jit_prelu_emitter::jit_prelu_emitter(x64::jit_generator *host, x64::cpu_isa_t host_isa, Precision exec_prc)
 : jit_emitter(host, host_isa, exec_prc) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_prelu_emitter::jit_prelu_emitter")
     prepare_table();
 }
 size_t jit_prelu_emitter::get_inputs_num() const { return 2; }
@@ -1666,6 +1714,7 @@ std::set<std::vector<element::Type>> jit_prelu_emitter::get_supported_precisions
 }
 
 void jit_prelu_emitter::emit_impl(const std::vector<size_t>& in_vec_idxs, const std::vector<size_t>& out_vec_idxs) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_prelu_emitter::emit_impl")
     if (host_isa_ == x64::sse41) {
         emit_isa<x64::sse41>(in_vec_idxs, out_vec_idxs);
     } else if (host_isa_ == x64::avx2) {
@@ -1725,6 +1774,7 @@ std::set<std::vector<element::Type>> jit_sqrt_emitter::get_supported_precisions(
 }
 
 void jit_sqrt_emitter::emit_impl(const std::vector<size_t>& in_vec_idxs, const std::vector<size_t>& out_vec_idxs) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_sqrt_emitter::emit_impl")
     if (host_isa_ == x64::sse41) {
         emit_isa<x64::sse41>(in_vec_idxs, out_vec_idxs);
     } else if (host_isa_ == x64::avx2) {
@@ -1756,6 +1806,7 @@ std::set<std::vector<element::Type>> jit_negative_emitter::get_supported_precisi
 }
 
 void jit_negative_emitter::emit_impl(const std::vector<size_t>& in_vec_idxs, const std::vector<size_t>& out_vec_idxs) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_negative_emitter::emit_impl")
     if (host_isa_ == x64::sse41) {
         emit_isa<x64::sse41>(in_vec_idxs, out_vec_idxs);
     } else if (host_isa_ == x64::avx2) {
@@ -1779,11 +1830,13 @@ void jit_negative_emitter::emit_isa(const std::vector<size_t> &in_vec_idxs, cons
 /// ERF ///
 jit_erf_emitter::jit_erf_emitter(x64::jit_generator *host, x64::cpu_isa_t host_isa, Precision exec_prc)
 : jit_emitter(host, host_isa, exec_prc) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_erf_emitter::jit_erf_emitter")
     prepare_table();
 }
 
 jit_erf_emitter::jit_erf_emitter(x64::jit_generator *host, x64::cpu_isa_t host_isa, const std::shared_ptr<ov::Node>& node, Precision exec_prc)
 : jit_emitter(host, host_isa, node, exec_prc) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_erf_emitter::jit_erf_emitter")
     prepare_table();
 }
 
@@ -1796,6 +1849,7 @@ std::set<std::vector<element::Type>> jit_erf_emitter::get_supported_precisions(c
 void jit_erf_emitter::emit_impl(
     const std::vector<size_t> &in_vec_idxs,
     const std::vector<size_t> &out_vec_idxs) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_erf_emitter::emit_impl")
     if (host_isa_ == x64::sse41) {
         emit_isa<x64::sse41>(in_vec_idxs, out_vec_idxs);
     } else if (host_isa_ == x64::avx2) {
@@ -1964,10 +2018,12 @@ size_t jit_erf_emitter::aux_vecs_count() const {
 /// SOFT SIGN ///
 jit_soft_sign_emitter::jit_soft_sign_emitter(x64::jit_generator *host, x64::cpu_isa_t host_isa, const std::shared_ptr<ov::Node>& node, Precision exec_prc)
 : jit_emitter(host, host_isa, node, exec_prc) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_soft_sign_emitter::jit_soft_sign_emitter")
     prepare_table();
 }
 jit_soft_sign_emitter::jit_soft_sign_emitter(x64::jit_generator *host, x64::cpu_isa_t host_isa, Precision exec_prc)
 : jit_emitter(host, host_isa, exec_prc) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_soft_sign_emitter::jit_soft_sign_emitter")
     prepare_table();
 }
 
@@ -1978,6 +2034,7 @@ std::set<std::vector<element::Type>> jit_soft_sign_emitter::get_supported_precis
 }
 
 void jit_soft_sign_emitter::emit_impl(const std::vector<size_t>& in_vec_idxs, const std::vector<size_t>& out_vec_idxs) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_soft_sign_emitter::emit_impl")
     if (host_isa_ == x64::sse41) {
         emit_isa<x64::sse41>(in_vec_idxs, out_vec_idxs);
     } else if (host_isa_ == x64::avx2) {
@@ -2040,6 +2097,7 @@ void jit_is_finite_emitter::emit_isa(const std::vector<size_t> &in_vec_idxs, con
 }
 
 void jit_is_finite_emitter::emit_impl(const std::vector<size_t> &in_vec_idxs, const std::vector<size_t> &out_vec_idxs) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_is_finite_emitter::emit_impl")
     if (host_isa_ == x64::avx512_core) {
         emit_isa<x64::avx512_core>(in_vec_idxs, out_vec_idxs);
     } else if (host_isa_ == x64::avx2) {
@@ -2113,6 +2171,7 @@ void jit_is_inf_emitter::emit_isa(const std::vector<size_t> &in_vec_idxs, const 
 }
 
 void jit_is_inf_emitter::emit_impl(const std::vector<size_t> &in_vec_idxs, const std::vector<size_t> &out_vec_idxs) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_is_inf_emitter::emit_impl")
     if (host_isa_ == x64::avx512_core) {
         emit_isa<x64::avx512_core>(in_vec_idxs, out_vec_idxs);
     } else if (host_isa_ == x64::avx2) {
@@ -2163,6 +2222,7 @@ void jit_is_nan_emitter::emit_isa(const std::vector<size_t> &in_vec_idxs, const 
 }
 
 void jit_is_nan_emitter::emit_impl(const std::vector<size_t> &in_vec_idxs, const std::vector<size_t> &out_vec_idxs) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_is_nan_emitter::emit_impl")
     if (host_isa_ == x64::avx512_core) {
         emit_isa<x64::avx512_core>(in_vec_idxs, out_vec_idxs);
     } else if (host_isa_ == x64::avx2) {
@@ -2202,6 +2262,7 @@ size_t jit_select_emitter::aux_vecs_count() const {
 }
 
 void jit_select_emitter::emit_impl(const std::vector<size_t> &in_vec_idxs, const std::vector<size_t> &out_vec_idxs) const {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "jit_select_emitter::emit_impl")
     if (host_isa_ == x64::sse41) {
         emit_isa<x64::sse41>(in_vec_idxs, out_vec_idxs);
     } else if (host_isa_ == x64::avx2) {

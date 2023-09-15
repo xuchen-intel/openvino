@@ -29,7 +29,10 @@ Generator::LoweringResult Generator::generate(lowered::LinearIR& linear_ir, cons
     lowered_pipeline.register_pass<lowered::pass::InsertTailLoop>();
     lowered_pipeline.run(linear_ir);
 
+    {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "init_emitters")
     linear_ir.init_emitters(target);
+    }
 
     OV_ITT_TASK_NEXT(GENERATE, "::EmitCode")
     auto loops2DKernel = std::make_shared<op::Kernel>(linear_ir);

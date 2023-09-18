@@ -612,7 +612,10 @@ TokenizeSnippets::TokenizeSnippets() {
             body->get_parameters()[i]->set_friendly_name(body_parameters[i]->get_friendly_name());
         }
         auto subgraph = op::build_subgraph(node, external_inputs, body, subgraph_name);
+        {
+        OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "TokenizeSnippets copy_runtime_info")
         copy_runtime_info(replaced_nodes, subgraph);
+        }
         const auto& act_body = subgraph->body();
         for (size_t i = 0; i < act_body.get_parameters().size(); i++) {
             act_body.get_parameters()[i]->set_friendly_name(body_parameters[i]->get_friendly_name());

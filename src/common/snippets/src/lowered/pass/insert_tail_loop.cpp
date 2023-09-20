@@ -24,12 +24,21 @@ std::shared_ptr<op::LoopEnd> InsertTailLoop::create_tail_loop(LinearIR& linear_i
                                                               bool need_vector_loop,
                                                               size_t tail_size,
                                                               const std::vector<int64_t>& tail_finalization_offsets) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "Snippets::insertTailLoop section 2 create_tail_loop")
     // tail is required => transform the body into a tail representation
     // tail loop is fake loop because for tail we should calculate only
     // finalization offsets which are supported by LoopEnd.
     if (need_vector_loop) {
-        auto vector_loop_deep_copy = LinearIR::deep_copy_range(vector_begin, vector_end);
+        OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "Snippets::insertTailLoop section 2 create_tail_loop section 1")
+        LinearIR::container vector_loop_deep_copy;
+        {
+        OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "Snippets::insertTailLoop section 2 create_tail_loop section 1 LinearIR::deep_copy_range")
+        vector_loop_deep_copy = LinearIR::deep_copy_range(vector_begin, vector_end);
+        }
+        {
+        OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "Snippets::insertTailLoop section 2 create_tail_loop section 1 linear_ir.insert")
         tail_begin = linear_ir.insert(vector_end, vector_loop_deep_copy.begin(), vector_loop_deep_copy.end());
+        }
         tail_end = vector_end;
     } else {
         tail_begin = vector_begin;
@@ -41,6 +50,7 @@ std::shared_ptr<op::LoopEnd> InsertTailLoop::create_tail_loop(LinearIR& linear_i
     const auto& loop_manager = linear_ir.get_loop_manager();
     const auto& current_loop_Info = loop_manager->get_loop_info(vector_loop_end->get_id());
     if (current_loop_Info->outer_splited_loop) {
+        OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "Snippets::insertTailLoop section 2 create_tail_loop section 2")
         const auto current_dim_idx = current_loop_Info->dim_idx;
         for (auto it = std::next(tail_begin); it != std::prev(tail_end); ++it) {
             const auto& expr = *it;
@@ -67,6 +77,7 @@ std::shared_ptr<op::LoopEnd> InsertTailLoop::create_tail_loop(LinearIR& linear_i
         }
     }
 
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "Snippets::insertTailLoop section 2 create_tail_loop section 3")
     tail_transformations(linear_ir, tail_begin, tail_end, tail_size);
     std::shared_ptr<op::LoopEnd> tail_loop_end = ov::as_type_ptr<op::LoopBegin>((*tail_begin)->get_node())->get_loop_end();
     tail_loop_end->set_increment(tail_size);
@@ -140,6 +151,7 @@ void InsertTailLoop::tail_transformations(LinearIR& linear_ir,
 }
 
 bool InsertTailLoop::optimize_single_evaluation(const std::shared_ptr<op::LoopEnd>& loop) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "Snippets::insertTailLoop section 2 optimize_single_evaluation")
     // *1* solo vector/tail loop + empty outer loop
     //      => skip increments (both counter & ptr) : set evaluate_once flag
     // *2* solo vector/tail loop + non-empty outer loop
@@ -184,6 +196,7 @@ bool InsertTailLoop::run(LinearIR& linear_ir) {
         const auto tail_finalization_offsets = need_tail ? loop_end->get_finalization_offsets() : std::vector<int64_t>{};
         // vector loops are required => Just copy the body, original loop is already a vector one
         if (need_vector_loop) {
+            OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "Snippets::insertTailLoop section 1")
             // Note that finalization offsets should be applied after the last iteration.
             // So if there is a tail, then we should apply offsets after it, but not now.
             if (need_tail)
@@ -196,6 +209,7 @@ bool InsertTailLoop::run(LinearIR& linear_ir) {
         // tail loop is fake loop because for tail we should calculate only
         // finalization offsets which are supported by LoopEnd.
         if (need_tail) {
+            OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "Snippets::insertTailLoop section 2")
             const auto loop_begin = loop_end->get_loop_begin();
             const auto begin_it = linear_ir.find(linear_ir.get_expr_by_node(loop_begin));
             LinearIR::constExprIt tail_begin, tail_end;

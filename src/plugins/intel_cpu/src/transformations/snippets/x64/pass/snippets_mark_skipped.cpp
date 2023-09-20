@@ -12,6 +12,7 @@
 #include <utils/cpu_utils.hpp>
 
 #include "itt.hpp"
+#include "snippets/itt.hpp"
 
 
 namespace ov {
@@ -252,9 +253,17 @@ bool isSuitableChildForFusingMatMul(const std::shared_ptr<const Node> &node, con
     bool can_be_converted_to_FC = false;
     ov::PartialShape bias_shape;
     ov::PartialShape matmul_shape;
+    bool flag = false, combiled_flag = false;
+
+    {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "isSuitableChildForFusingMatMul section 1")
     for (const auto &parent_out : node->input_values()) {
         const auto parent = parent_out.get_node_shared_ptr();
-        if (ov::op::util::is_on_constant_path(parent_out)) {
+        {
+        OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "isSuitableChildForFusingMatMul section 1 is_on_constant_path 1")
+        flag = ov::op::util::is_on_constant_path(parent_out);
+        }
+        if (flag) {
             bias_shape = parent_out.get_shape();
             num_non_const_inputs++;
         } else {
@@ -262,10 +271,14 @@ bool isSuitableChildForFusingMatMul(const std::shared_ptr<const Node> &node, con
               if (matmul_shape.size() == 0)
                 return false;
             const auto& grandparents = parent->input_values();
+            {
+            OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "isSuitableChildForFusingMatMul section 1 is_on_constant_path 2")
+            combiled_flag = grandparents.size() == 2 &&
+                            grandparents[1].get_partial_shape().is_static() &&
+                            ov::op::util::is_on_constant_path(grandparents[1]);
+            }
             // first check that weights are constant and both activations and weights have static shape
-            if (grandparents.size() == 2 &&
-                grandparents[1].get_partial_shape().is_static() &&
-                (ov::op::util::is_on_constant_path(grandparents[1]))) {
+            if (combiled_flag) {
                 auto rank_a = grandparents[0].get_partial_shape().rank().get_length();
                 auto rank_w = grandparents[1].get_partial_shape().rank().get_length();
                 if (rank_a != 1 && rank_w != 1 && rank_a <= 3 && rank_w <= 3)
@@ -275,7 +288,10 @@ bool isSuitableChildForFusingMatMul(const std::shared_ptr<const Node> &node, con
     }
     if (num_non_const_inputs != 1)
         return false;
+    }
 
+    {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "isSuitableChildForFusingMatMul section 2")
     // Matmul / FC bias fusion
     if (ov::is_type<ov::opset1::Add>(node) &&
         bias_shape.is_static() && matmul_shape.rbegin()->is_static() &&
@@ -292,7 +308,10 @@ bool isSuitableChildForFusingMatMul(const std::shared_ptr<const Node> &node, con
         updatedChainType = NodeFusingType::FusedWithMisc;
         return true;
     }
+    }
 
+    {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "isSuitableChildForFusingMatMul section 3")
     // MatMul specific checks from ::canFuse()
     if (!can_be_converted_to_FC) {
         // can with rank() > 2
@@ -336,6 +355,7 @@ bool isSuitableChildForFusingMatMul(const std::shared_ptr<const Node> &node, con
                 return false;
             }
         }
+    }
     }
 
     return true;
@@ -472,6 +492,7 @@ bool SnippetsMarkSkipped::run_on_model(const std::shared_ptr<ov::Model> &m) {
         // We perform this check separately because we mark here only weights path
         // Matmul itself will be checked further
         if (isSuitableMatMulWithConstantPath(node)) {
+            OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "SnippetsMarkSkipped isSuitableMatMulWithConstantPath")
             auto markup_func = [](Node* node) {
                 SetSnippetsNodeType(node->shared_from_this(), snippets::pass::SnippetsNodeType::SkippedByPlugin);
             };
@@ -479,17 +500,21 @@ bool SnippetsMarkSkipped::run_on_model(const std::shared_ptr<ov::Model> &m) {
             ov::op::util::visit_shape_path(node->get_input_node_ptr(1), visited, markup_func);
         }
         if (isSuitableConvolutionParent(node)) {
+            OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "SnippetsMarkSkipped isSuitableConvolutionParent")
             // Initiate fusing chain
             SetNodeFusingType(node, NodeFusingType::FusedWithConvolution);
             channelAxis = DEFAULT_AXIS;
         } else if (isSuitableBinaryConvolutionParent(node)) {
+            OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "SnippetsMarkSkipped isSuitableBinaryConvolutionParent")
             SetNodeFusingType(node, NodeFusingType::FusedWithBinaryConvolution);
             channelAxis = DEFAULT_AXIS;
         } else if (isSuitableReduceParent(node)) {
+            OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "SnippetsMarkSkipped isSuitableReduceParent")
             const auto reduce = std::dynamic_pointer_cast<const ov::op::util::ArithmeticReductionKeepDims>(node);
             channelAxis = getChannelAxis(reduce->get_reduction_axes(), reduce->get_keep_dims());
             SetNodeFusingType(node, NodeFusingType::FusedWithReduce);
         } else if (isSuitableMiscParent(node)) {
+            OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "SnippetsMarkSkipped isSuitableMiscParent")
             if (const auto reduce = std::dynamic_pointer_cast<const ov::op::util::ArithmeticReductionKeepDims>(node)) {
                 channelAxis = getChannelAxis(reduce->get_reduction_axes(), reduce->get_keep_dims());
             } else {
@@ -497,29 +522,36 @@ bool SnippetsMarkSkipped::run_on_model(const std::shared_ptr<ov::Model> &m) {
             }
             SetNodeFusingType(node, NodeFusingType::FusedWithMisc);
         } else if (isSuitableMatMulParent(node)) {
+            OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "SnippetsMarkSkipped isSuitableMatMulParent")
             if (canBeMatMulExecutedInInt8(node->get_input_element_type(0), node->get_input_element_type(1)))
                 SetNodeFusingType(node, NodeFusingType::FusedWithMatMulI8);
             else
                 SetNodeFusingType(node, NodeFusingType::FusedWithMatMul);
             channelAxis = DEFAULT_AXIS;
         } else if (isSuitableSubtractAsZeroPointsParent(node)) {
+            OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "SnippetsMarkSkipped isSuitableSubtractAsZeroPointsParent")
             SetSnippetsNodeType(node, snippets::pass::SnippetsNodeType::SkippedByPlugin);
             channelAxis = DEFAULT_AXIS;
         // CVS-105447
         // This WA skip convert with same I/O precision in Snippets
         // Such useless Convert is executed in Snippets
         } else if (enableBF16 && isSuitableConvert(node)) {
+            OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "SnippetsMarkSkipped isSuitableConvert")
             SetSnippetsNodeType(node, snippets::pass::SnippetsNodeType::SkippedByPlugin);
             channelAxis = DEFAULT_AXIS;
         } else {
+            OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "SnippetsMarkSkipped else")
             for (const auto fusingChainType : getContinuableChains(node)) {
                 if (fusingChainType == NodeFusingType::FusedWithReduce) {
+                    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "SnippetsMarkSkipped else sub1")
                     if (isSuitableReduceChild(node, channelAxis))
                         PropagateIfHasOnlyChild(node, fusingChainType);
                 } else if (isSuitableChildForFusingSimple(node, channelAxis)) {
+                    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "SnippetsMarkSkipped else sub2")
                     PropagateIfHasOnlyChild(node, fusingChainType);
                 } else if (fusingChainType == NodeFusingType::FusedWithConvolution ||
                            fusingChainType == NodeFusingType::FusedWithBinaryConvolution) {
+                    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "SnippetsMarkSkipped else sub3")
                     if (isSuitableParentForFusingSumActivation(node)) {
                         PropagateIfHasOnlyChild(node, NodeFusingType::FusedWithConvolutionSumActivation);
                         // Mimic FuseConvolutionAndSimpleOperationThroughMaxPool
@@ -528,11 +560,13 @@ bool SnippetsMarkSkipped::run_on_model(const std::shared_ptr<ov::Model> &m) {
                     }
                 } else if (fusingChainType == NodeFusingType::FusedWithConvolutionSumActivation &&
                            isSuitableChildForFusingSumActivation(node)) {
+                    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "SnippetsMarkSkipped else sub4")
                     // Todo: Chain could be converted from FusedWithBinaryConvolution to FusedWithConvolution at this point
                     // Set FusedWithConvolution, so the fusing chain could be propagated
                     PropagateIfHasOnlyChild(node, NodeFusingType::FusedWithConvolution);
                 } else if (fusingChainType == NodeFusingType::FusedWithMatMul ||
                            fusingChainType == NodeFusingType::FusedWithMatMulI8) {
+                    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "SnippetsMarkSkipped else sub5")
                     const bool isExecutedInINT8 = fusingChainType == NodeFusingType::FusedWithMatMulI8;
                     // Handle fusings for both MatMul and FullyConnected
                     NodeFusingType updatedChainType = fusingChainType;

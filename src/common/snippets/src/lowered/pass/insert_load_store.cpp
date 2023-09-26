@@ -61,6 +61,8 @@ size_t InsertLoadStore::get_count(const PortDescriptorPtr& port_desc) const {
 }
 
 bool InsertLoadStore::insert_load(LinearIR& linear_ir, const LinearIR::constExprIt& data_expr_it) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "Snippets::InsertLoadStore insert_load")
+
     const auto& loop_manager = linear_ir.get_loop_manager();
     const auto& data_expr = *data_expr_it;
     const auto& data_node = data_expr->get_node();
@@ -81,18 +83,38 @@ bool InsertLoadStore::insert_load(LinearIR& linear_ir, const LinearIR::constExpr
         const auto inner_loop = get_inner_loop_id(loop_ids);
         OPENVINO_ASSERT(inner_loop != Expression::LOOP_NULL_ID, "Loop hasn't been found!");
 
-        const auto load = std::make_shared<op::Load>(data_node->output(0), get_count(data_expr->get_output_port_descriptor(0)));
+        std::shared_ptr<op::Load> load;
+        {
+        OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "Snippets::InsertLoadStore std::make_shared<op::Load>")
+        load = std::make_shared<op::Load>(data_node->output(0), get_count(data_expr->get_output_port_descriptor(0)));
+        }
+        {
+        OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "Snippets::InsertLoadStore set_port_descriptor_ptr")
         PortDescriptorUtils::set_port_descriptor_ptr(load->output(0), consumer_input.get_descriptor_ptr()->clone());
-        const auto load_expr = linear_ir.create_expression(load, {output_connector});
+        }
+        ExpressionPtr load_expr;
+        {
+        OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "Snippets::InsertLoadStore create_expression")
+        load_expr = linear_ir.create_expression(load, {output_connector});
+        }
+        {
+        OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "ins+find")
         linear_ir.insert(std::find(data_expr_it, linear_ir.cend(), consumer_expr), load_expr);
+        }
+        {
+        OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "Snippets::InsertLoadStore replace_input")
         linear_ir.replace_input(consumer_input, load_expr->get_output_port_connector(0));
+        }
         // Copy Loop identifies
         load_expr->set_loop_ids(loop_ids);
 
         // Need to update all the corresponding Loops with the same Entry Point
         const auto prev_entry_point = consumer_input;
         const auto new_entry_point = load_expr->get_input_port(0);
+        {
+        OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "Snippets::InsertLoadStore update_loops")
         update_loops(loop_manager, loop_ids, prev_entry_point, {new_entry_point}, true);
+        }
         was_inserted = true;
     }
 
@@ -100,6 +122,8 @@ bool InsertLoadStore::insert_load(LinearIR& linear_ir, const LinearIR::constExpr
 }
 
 bool InsertLoadStore::insert_store(LinearIR& linear_ir, const LinearIR::constExprIt& data_expr_it) {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "Snippets::InsertLoadStore insert_store")
+
     const auto& loop_manager = linear_ir.get_loop_manager();
     const auto& data_expr = *data_expr_it;
     const auto& input_connector = data_expr->get_input_port_connector(0);
@@ -116,30 +140,61 @@ bool InsertLoadStore::insert_store(LinearIR& linear_ir, const LinearIR::constExp
     const auto inner_loop = get_inner_loop_id(loop_ids);
     OPENVINO_ASSERT(inner_loop != Expression::LOOP_NULL_ID, "Loop hasn't been found!");
 
-    const auto store = std::make_shared<op::Store>(parent->output(port), get_count(data_expr->get_input_port_descriptor(0)));
+    std::shared_ptr<op::Store> store;
+    {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "Snippets::InsertLoadStore std::make_shared<op::Store>")
+    store = std::make_shared<op::Store>(parent->output(port), get_count(data_expr->get_input_port_descriptor(0)));
+    }
+    {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "Snippets::InsertLoadStore set_port_descriptor_ptr")
     PortDescriptorUtils::set_port_descriptor_ptr(store->output(0), parent_output.get_descriptor_ptr()->clone());
-    const auto store_expr = linear_ir.create_expression(store, {input_connector});
-    const auto& reverse_insertion_pos = std::find(std::reverse_iterator<LinearIR::constExprIt>(data_expr_it), linear_ir.crend(), parent_expr);
+    }
+    ov::snippets::lowered::ExpressionPtr store_expr;
+    {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "Snippets::InsertLoadStore create_expression")
+    store_expr = linear_ir.create_expression(store, {input_connector});
+    }
+    std::reverse_iterator<ov::snippets::lowered::LinearIR::constExprIt> reverse_insertion_pos;
+    {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "find")
+    reverse_insertion_pos = std::find(std::reverse_iterator<LinearIR::constExprIt>(data_expr_it), linear_ir.crend(), parent_expr);
+    }
     const auto& insertion_pos = reverse_insertion_pos.base();
+    {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "insert")
     linear_ir.insert(insertion_pos, store_expr);
+    }
+    {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "Snippets::InsertLoadStore replace_input")
     linear_ir.replace_input(data_expr->get_input_port(0), store_expr->get_output_port_connector(0));
+    }
     // Copy Loop identifies
+    {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "Snippets::InsertLoadStore set_loop_ids")
     store_expr->set_loop_ids(loop_ids);
+    }
 
     // Need to update all the corresponding Loops with the same Exit Point
     const auto prev_exit_point = parent_output;
     // The previous exit point byt one output port can have several consumers that can be potential exit points
     // So we should verify on the possible future exit points
     const auto consumer_inputs = input_connector->get_consumers();
-    const auto should_be_saved = std::any_of(consumer_inputs.begin(), consumer_inputs.end(),
+    bool should_be_saved;
+    {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "Snippets::InsertLoadStore should_be_saved")
+    should_be_saved = std::any_of(consumer_inputs.begin(), consumer_inputs.end(),
                                 [](const ExpressionPort& input_port) {
                                     const auto& node = input_port.get_expr()->get_node();
                                     return ov::is_type<ov::op::v0::Result>(node) || ov::is_type<op::Buffer>(node);
                                 });
+    }
     const auto new_exit_point = store_expr->get_output_port(0);
     const auto new_exit_points = should_be_saved ? std::vector<ExpressionPort>{prev_exit_point, new_exit_point}
                                                  : std::vector<ExpressionPort>{new_exit_point};
+    {
+    OV_ITT_SCOPED_TASK(ov::pass::itt::domains::SnippetsTransform, "Snippets::InsertLoadStore update_loops")
     update_loops(loop_manager, loop_ids, prev_exit_point, new_exit_points, false);
+    }
     return true;
 }
 

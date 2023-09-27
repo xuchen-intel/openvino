@@ -639,6 +639,7 @@ void Node::redefineOutputMemory(const std::vector<VectorDims> &newOutputShapes) 
 }
 
 void Node::initSupportedPrimitiveDescriptors() {
+    OV_ITT_SCOPED_TASK(itt::domains::intel_cpu, "Node::initSupportedPrimitiveDescriptors")
     if (!supportedPrimitiveDescriptors.empty())
         return;
 
@@ -937,13 +938,27 @@ bool Node::isInPlace() const {
 bool Node::isConstant() {
     if (constant == ConstantType::Unknown) {
         std::vector<NodePtr> checkNodes;
+        {
+        OV_ITT_SCOPED_TASK(itt::domains::intel_cpu, "Node::isConstant Section 1")
         for (size_t i = 0; i < getChildEdges().size(); i++) {
             checkNodes.push_back(getChildEdgeAt(i)->getChild());
         }
-        while (constant != ConstantType::NoConst && !checkNodes.empty()) {
-            constant = checkNodes.front()->checkConstant(LOOK_DOWN, checkNodes);
-            checkNodes.erase(checkNodes.begin());
         }
+        {
+        OV_ITT_SCOPED_TASK(itt::domains::intel_cpu, "Node::isConstant Section 2")
+        while (constant != ConstantType::NoConst && !checkNodes.empty()) {
+            {
+            OV_ITT_SCOPED_TASK(itt::domains::intel_cpu, "Node::isConstant Section 2 checkConstant")
+            constant = checkNodes.front()->checkConstant(LOOK_DOWN, checkNodes);
+            }
+            {
+            OV_ITT_SCOPED_TASK(itt::domains::intel_cpu, "Node::isConstant Section 2 checkNodes.erase")
+            checkNodes.erase(checkNodes.begin());
+            }
+        }
+        }
+        {
+        OV_ITT_SCOPED_TASK(itt::domains::intel_cpu, "Node::isConstant Section 3")
         if (constant != ConstantType::Const) {
             constant = ConstantType::Unknown;
             checkNodes.clear();
@@ -954,6 +969,7 @@ bool Node::isConstant() {
                 constant = checkNodes.front()->checkConstant(LOOK_UP, checkNodes);
                 checkNodes.erase(checkNodes.begin());
             }
+        }
         }
         if (constant == ConstantType::Unknown)
             constant = ConstantType::NoConst;

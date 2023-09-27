@@ -12,6 +12,7 @@
 #include "shape_inference/custom/reshape.hpp"
 
 #include "common/cpu_memcpy.h"
+#include "itt.h"
 
 using namespace dnnl;
 using namespace InferenceEngine;
@@ -92,6 +93,7 @@ void Reshape::getSupportedDescriptors() {
 }
 
 void Reshape::initSupportedPrimitiveDescriptors() {
+    OV_ITT_SCOPED_TASK(itt::domains::intel_cpu, "Reshape::initSupportedPrimitiveDescriptors")
     if (!supportedPrimitiveDescriptors.empty())
         return;
 
@@ -106,23 +108,43 @@ void Reshape::initSupportedPrimitiveDescriptors() {
 
     bool canBeInPlace = true;
 
+    bool flag = false;
+    bool flag1 = false;
+
     // CVS-81059 : disable inPlace in following case since it won't be satisfied by framework
-    if (!isConstant() && getParentEdgeAt(0)->getParent()->isConstant())
-        canBeInPlace = false;
+    {
+    OV_ITT_SCOPED_TASK(itt::domains::intel_cpu, "Reshape::initSupportedPrimitiveDescriptors isConstant")
+    flag = isConstant();
+    }
+    if (!flag) {
+        {
+        OV_ITT_SCOPED_TASK(itt::domains::intel_cpu, "Reshape::initSupportedPrimitiveDescriptors parent-isConstant")
+        flag1 = getParentEdgeAt(0)->getParent()->isConstant();
+        }
+        if (flag1) {
+            canBeInPlace = false;
+        }
+    }
 
     NodeConfig config;
-    config.inConfs.resize(getParentEdges().size());
     auto& creatorsMap = BlockedDescCreator::getCommonCreators();
+    {
+    OV_ITT_SCOPED_TASK(itt::domains::intel_cpu, "Reshape::initSupportedPrimitiveDescriptors inConfs")
+    config.inConfs.resize(getParentEdges().size());
     for (size_t i = 0; i < getParentEdges().size(); i++) {
         config.inConfs[i].inPlace(0 == i && canBeInPlace ? 0 : -1);
         config.inConfs[i].constant(false);
         config.inConfs[i].setMemDesc(creatorsMap.at(LayoutType::ncsp)->createSharedDesc((i > 0 ? secondInPrc : inPrec), getInputShapeAtPort(i)));
     }
+    }
+    {
+    OV_ITT_SCOPED_TASK(itt::domains::intel_cpu, "Reshape::initSupportedPrimitiveDescriptors inConfs")
     config.outConfs.resize(1);
     config.outConfs[0].inPlace(canBeInPlace ? 0 : -1);
     config.outConfs[0].constant(false);
     config.outConfs[0].setMemDesc(creatorsMap.at(LayoutType::ncsp)->createSharedDesc(outPrec, getOutputShapeAtPort(0)));
     supportedPrimitiveDescriptors.emplace_back(config, impl_desc_type::unknown);
+    }
 }
 
 void Reshape::executeDynamicImpl(dnnl::stream strm) {

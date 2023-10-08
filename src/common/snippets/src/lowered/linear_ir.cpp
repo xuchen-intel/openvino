@@ -20,6 +20,9 @@ namespace lowered {
 
 LinearIR::LinearIR(const std::shared_ptr<ov::Model>& model, Config config)
         : m_io_expressions{}, m_config{std::move(config)}, m_loop_manager(std::make_shared<LoopManager>()) {
+    // To avoid memory reallocation by std::vector::insert, which will break pointer of previous elements
+    m_expressions.reserve(1024);
+    m_io_expressions.reserve(1024);
     constExprIt last_param = m_expressions.end();
     for (const auto& n : get_ordered_ops(model)) {
         constExprIt insertion_pos = m_expressions.end();
@@ -255,7 +258,9 @@ LinearIR::exprIt LinearIR::erase(LinearIR::constExprIt pos) {
 
 void LinearIR::move(LinearIR::constExprIt from, LinearIR::constExprIt to) {
     // Instead of `insert()` + `erase()`, we use `splice()` for the same list
-    m_expressions.splice(to, m_expressions, from);
+    // m_expressions.splice(to, m_expressions, from);
+    m_expressions.insert(to, *from);
+    m_expressions.erase(from);
 }
 
 }// namespace lowered

@@ -48,6 +48,8 @@ bool SoftmaxDecomposition::run(LinearIR& linear_ir) {
             // We need an iterator to the inserted element
             auto push_node = [&linear_ir, &expr_it, &softmax_loop_ids](const std::shared_ptr<Node>& n) {
                 const auto expr = linear_ir.insert(expr_it, n);
+                // Avoid std::vector::insert breaking expr_it
+                expr_it++;
                 (*expr)->set_loop_ids(softmax_loop_ids);
                 return std::make_pair(expr, n);
             };

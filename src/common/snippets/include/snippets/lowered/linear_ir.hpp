@@ -27,8 +27,8 @@ public:
 class LinearIR {
     class ExpressionFactory;
 public:
-    using container = std::list<ExpressionPtr>;
-    using io_container = std::list<std::shared_ptr<IOExpression>>;
+    using container = std::vector<ExpressionPtr>;
+    using io_container = std::vector<std::shared_ptr<IOExpression>>;
     using exprIt = container::iterator;
     using constExprIt = container::const_iterator;
 

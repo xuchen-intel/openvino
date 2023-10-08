@@ -211,12 +211,17 @@ bool InsertLoadStore::run(LinearIR& linear_ir) {
         }
         if (ov::is_type<ov::op::v0::Result>(node)) {
             modified |= insert_store(linear_ir, expr_it);
+            // Avoid std::vector::insert breaking expr_it
+            expr_it++;
             continue;
         }
         if (auto buffer = ov::as_type_ptr<op::Buffer>(node)) {
             modified |= insert_load(linear_ir, expr_it);
-            if (buffer->is_intermediate_memory())
+            if (buffer->is_intermediate_memory()) {
                 modified |= insert_store(linear_ir, expr_it);
+                // Avoid std::vector::insert breaking expr_it
+                expr_it++;
+            }
             continue;
         }
     }

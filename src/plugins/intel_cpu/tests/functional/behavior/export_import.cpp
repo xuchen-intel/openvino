@@ -11,6 +11,9 @@
 
 namespace {
 
+// todo: Remove the architecture constraint, after Eltwise emitters of ARM Snippets having supported
+// Maximum operation that contained by the decomposed Softmax.
+#if defined(OPENVINO_ARCH_X86_64)
 using PropertiesParams = std::tuple<std::string, std::vector<ov::AnyMap>>;
 
 class ExportOptimalNumStreams : public ::testing::TestWithParam<PropertiesParams> {};
@@ -130,5 +133,6 @@ INSTANTIATE_TEST_CASE_P(smoke_ExportImportTest,
                                                              testing_property_for_scheduling_core_type_3,
                                                              testing_property_for_enable_hyper_threading,
                                                              testing_property_for_enable_cpu_pinning)));
+#endif
 
 }  // namespace

@@ -4,11 +4,18 @@
 
 #pragma once
 
+#include "openvino/core/visibility.hpp"
+
+#if defined(OPENVINO_ARCH_X86_64)
 #include <cpu/x64/jit_generator.hpp>
+#elif defined(OPENVINO_ARCH_ARM64)
+#include <cpu/aarch64/jit_generator.hpp>
+#endif
 
 namespace ov {
 namespace intel_cpu {
 
+#if defined(OPENVINO_ARCH_X86_64)
 // Usage
 // 1. Include this headfile where JIT kennels of CPU plugin are implemented for Register printing
 // 2. Invoke RegPrinter::print method. Here are some examples. Note that user friendly register name
@@ -88,6 +95,18 @@ private:
     static constexpr size_t reg_len = 8;
     static constexpr size_t reg_cnt = 16;
 };
+#endif
+
+template<typename T>
+std::vector<size_t> convert_to_size_t(const std::vector<T> &vec_in);
+
+template<typename T>
+std::vector<uint32_t> convert_to_u32(const std::vector<T> &vec_in);
+
+#if defined(OPENVINO_ARCH_ARM64)
+void push_XReg(dnnl::impl::cpu::aarch64::jit_generator *h, uint32_t xreg_idx);
+void pop_XReg(dnnl::impl::cpu::aarch64::jit_generator *h, uint32_t xreg_idx);
+#endif
 
 }   // namespace intel_cpu
 }   // namespace ov

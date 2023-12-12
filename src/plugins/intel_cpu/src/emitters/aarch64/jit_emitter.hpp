@@ -63,6 +63,7 @@ public:
     virtual size_t get_inputs_count() const = 0;
     virtual size_t get_aux_vecs_count() const;
     virtual size_t get_aux_gprs_count() const;
+    emitter_in_out_map get_in_out_type() const;
 
     /**
      * @brief Returns supported precisions.
@@ -168,6 +169,7 @@ private:
         const auto scale = te.bcast ? get_vec_length() : sizeof(table_entry_val_t);
         return te.off + key_off_val_shift * scale;
     }
+    virtual void validate_arguments(const std::vector<size_t>&, const std::vector<size_t>&) const {}
 };
 
 }   // namespace aarch64

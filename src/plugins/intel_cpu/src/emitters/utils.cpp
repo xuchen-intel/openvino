@@ -9,6 +9,7 @@
 namespace ov {
 namespace intel_cpu {
 
+#if defined(OPENVINO_ARCH_X86_64)
 using namespace Xbyak;
 using namespace dnnl::impl::cpu::x64;
 
@@ -210,6 +211,38 @@ void RegPrinter::print_reg(jit_generator &h, REG_T reg, const char *name) {
 
     postamble(h);
 }
+#endif
+
+template<typename T>
+std::vector<size_t> convert_to_size_t(const std::vector<T> &vec_in) {
+    std::vector<size_t> vec_out;
+    for (const auto& in : vec_in) {
+        vec_out.push_back(static_cast<size_t>(in));
+    }
+    return vec_out;
+}
+
+template<typename T>
+std::vector<uint32_t> convert_to_u32(const std::vector<T> &vec_in) {
+    std::vector<uint32_t> vec_out;
+    for (const auto& in : vec_in) {
+        vec_out.push_back(static_cast<uint32_t>(in));
+    }
+    return vec_out;
+}
+
+template std::vector<size_t> convert_to_size_t<uint32_t>(const std::vector<uint32_t> &vec_in);
+template std::vector<uint32_t> convert_to_u32<size_t>(const std::vector<size_t> &vec_in);
+
+#if defined(OPENVINO_ARCH_ARM64)
+void push_XReg(dnnl::impl::cpu::aarch64::jit_generator *h, uint32_t xreg_idx) {
+    h->str(Xbyak_aarch64::XReg(xreg_idx), pre_ptr(h->sp, -16));
+}
+
+void pop_XReg(dnnl::impl::cpu::aarch64::jit_generator *h, uint32_t xreg_idx) {
+    h->ldr(Xbyak_aarch64::XReg(xreg_idx), post_ptr(h->sp, 16));
+}
+#endif
 
 }   // namespace intel_cpu
 }   // namespace ov

@@ -311,7 +311,7 @@ std::vector<std::string> disabledTestPatterns() {
     retVector.emplace_back(R"(MultipleLSTMCellTest/MultipleLSTMCellTest.CompareWithRefs.*)");
     // int8 / code-generation specific
     retVector.emplace_back(R"(smoke_LPT.*)");
-    retVector.emplace_back(R"(smoke_Snippets.*)");
+    // retVector.emplace_back(R"(smoke_Snippets.*)");
 #endif
 
 #if defined(_WIN32)

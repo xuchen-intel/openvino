@@ -311,7 +311,14 @@ std::vector<std::string> disabledTestPatterns() {
     retVector.emplace_back(R"(MultipleLSTMCellTest/MultipleLSTMCellTest.CompareWithRefs.*)");
     // int8 / code-generation specific
     retVector.emplace_back(R"(smoke_LPT.*)");
-    retVector.emplace_back(R"(smoke_Snippets.*)");
+    retVector.emplace_back(R"(smoke_Snippets(?!_Eltwise).*)");
+    // ConvertSaturation is not implemented for non-x64 CPU yet:
+    retVector.emplace_back(R"(.*Behavior.*InferRequestSetBlobByType.*)");
+    retVector.emplace_back(R"(.*Behavior.*OVCompiledGraphImportExportTest.*(i|u)8.*)");
+    retVector.emplace_back(R"(.*CompileModelCacheTestBase.CompareWithRefImpl.*(i|u)8.*)");
+    retVector.emplace_back(R"(.*LoadNetworkCacheTestBase.CompareWithRefImpl.*(i|u)8.*)");
+    retVector.emplace_back(R"(.*DepthToSpaceTransformation.CompareWithRefImpl.*)");
+    retVector.emplace_back(R"(smoke_Preprocessing/PreprocessingYUV2GreyTest.convert_(?!single).*)");
 #endif
 
 #if defined(_WIN32)

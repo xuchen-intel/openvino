@@ -26,6 +26,9 @@ void PreprocessingYUV2GreyTest::SetUp() {
 }
 
 void PreprocessingYUV2GreyTest::run() {
+    if (ov::test::utils::current_test_is_disabled())
+        GTEST_SKIP() << "Disabled test due to configuration" << std::endl;
+
     compile_model();
     infer();
     validate();

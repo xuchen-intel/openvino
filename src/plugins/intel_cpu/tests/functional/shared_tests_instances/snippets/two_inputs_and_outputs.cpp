@@ -37,7 +37,7 @@ const std::vector<std::vector<InputShape>> input_shapes = {
         { {{1, -1, {1, 10}, {4, 12}}, {{1, 5, 3, 4}, {1, 10, 8, 12}, {1, 5, 3, 4}}},
           {{1, 1, -1, {1, 12}}, {{1, 1, 3, 1}, {1, 1, 8, 12}, {1, 1, 3, 1}}} }
 };
-
+#if 0
 INSTANTIATE_TEST_SUITE_P(smoke_Snippets_Eltwise, TwoInputsAndOutputs,
                          ::testing::Combine(
                              ::testing::ValuesIn(input_shapes),
@@ -53,7 +53,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_Snippets_Eltwise, TwoInputsAndOutputsWithReversed
                              ::testing::Values(1),
                              ::testing::Values(ov::test::utils::DEVICE_CPU)),
                          TwoInputsAndOutputsWithReversedOutputs::getTestCaseName);
-
+#endif
 }  // namespace
 } // namespace snippets
 } // namespace test

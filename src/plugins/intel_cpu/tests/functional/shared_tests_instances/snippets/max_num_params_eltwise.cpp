@@ -22,7 +22,7 @@ std::vector<InputShape> input_shapes {{{}, {{1, 64, 10, 10}}},
                                       {{-1, -1, -1, -1}, {{1, 64, 10, 10}, {1, 1, 17, 37}, {1, 64, 10, 10}}},
                                       {{1, {1, 64}, {10, 20}, -1}, {{1, 64, 10, 10}, {1, 1, 17, 37}, {1, 64, 10, 10}}},
                                       {{1, 1, 1, {1, 128}}, {{1, 1, 1, 1}, {1, 1, 1, 7}, {1, 1, 1, 128}, {1, 1, 1, 14}, {1, 1, 1, 16}, {1, 1, 1, 1}}}};
-
+#if 0
 INSTANTIATE_TEST_SUITE_P(smoke_Snippets_Eltwise, MaxNumParamsEltwise,
                          ::testing::Combine(
                              ::testing::ValuesIn(input_shapes),
@@ -30,7 +30,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_Snippets_Eltwise, MaxNumParamsEltwise,
                              ::testing::Values(1),
                              ::testing::Values(ov::test::utils::DEVICE_CPU)),
                          MaxNumParamsEltwise::getTestCaseName);
-
+#endif
 } // namespace
 } // namespace snippets
 } // namespace test

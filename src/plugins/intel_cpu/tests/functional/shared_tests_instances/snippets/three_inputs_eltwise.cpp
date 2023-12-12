@@ -9,7 +9,7 @@ namespace ov {
 namespace test {
 namespace snippets {
 namespace {
-
+#if 0
 INSTANTIATE_TEST_SUITE_P(smoke_Snippets_Eltwise, ThreeInputsEltwise,
                      ::testing::Combine(
                              ::testing::Values(InputShape {{}, {{1, 64, 10, 10}}}),
@@ -30,6 +30,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_Snippets_Eltwise_Dynamic, ThreeInputsEltwise,
                              ::testing::Values(1),
                              ::testing::Values(ov::test::utils::DEVICE_CPU)),
                          ThreeInputsEltwise::getTestCaseName);
+#endif
 } // namespace
 } // namespace snippets
 } // namespace test

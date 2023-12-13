@@ -105,7 +105,8 @@ if(NOT (AARCH64 OR ARM))
     list(APPEND EXCLUDE_PATHS ${CMAKE_CURRENT_SOURCE_DIR}/src/transformations/cpu_opset/arm/*
                               ${CMAKE_CURRENT_SOURCE_DIR}/src/emitters/aarch64/*
                               ${CMAKE_CURRENT_SOURCE_DIR}/src/nodes/executors/aarch64/*
-                              ${CMAKE_CURRENT_SOURCE_DIR}/src/nodes/kernels/aarch64/*)
+                              ${CMAKE_CURRENT_SOURCE_DIR}/src/nodes/kernels/aarch64/*
+                              ${CMAKE_CURRENT_SOURCE_DIR}/src/transformations/snippets/aarch64/*)
 endif()
 
 if (NOT ENABLE_MLAS_FOR_CPU)

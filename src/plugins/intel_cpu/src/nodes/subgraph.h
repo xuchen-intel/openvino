@@ -5,10 +5,16 @@
 #pragma once
 
 #include <ie_common.h>
-
 #include <onednn/dnnl.h>
+#include "openvino/pass/visualize_tree.hpp"
+
+#if defined(OPENVINO_ARCH_X86_64)
 #include <cpu/x64/jit_generator.hpp>
 #include "emitters/x64/jit_snippets_emitters.hpp"
+#elif defined(OPENVINO_ARCH_ARM64)
+#include <cpu/aarch64/jit_generator.hpp>
+#include "emitters/aarch64/jit_snippets_emitters.hpp"
+#endif
 
 #include <node.h>
 #include "snippets/op/subgraph.hpp"
@@ -67,7 +73,11 @@ private:
     size_t outputNum = 0;
 
     // Holds ISA version used is codeGeneration target
+#if defined(OPENVINO_ARCH_X86_64)
     dnnl::impl::cpu::x64::cpu_isa_t host_isa;
+#elif defined(OPENVINO_ARCH_ARM64)
+    dnnl::impl::cpu::aarch64::cpu_isa_t host_isa;
+#endif
 
     std::vector<MemoryPtr> srcMemPtrs = {};
     std::vector<MemoryPtr> dstMemPtrs = {};

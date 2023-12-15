@@ -21,9 +21,9 @@
 #include <snippets/lowered/pass/optimize_domain.hpp>
 #include "snippets/pass/matmul_to_brgemm.hpp"
 #include "utils/cpu_utils.hpp"
-#include "emitters/x64/cpu_generator.hpp"
 
 #if defined(OPENVINO_ARCH_X86_64)
+#include "emitters/x64/cpu_generator.hpp"
 #include "transformations/snippets/x64/pass/lowered/set_brgemm_copy_b_buffers_shape.hpp"
 #include "transformations/snippets/x64/pass/lowered/fuse_load_store_and_convert.hpp"
 #include "transformations/snippets/x64/pass/lowered/brgemm_blocking.hpp"
@@ -34,6 +34,7 @@
 #include "transformations/snippets/x64/pass/set_brgemm_cpu_blocking_params.hpp"
 #include "transformations/snippets/x64/shape_inference.hpp"
 #elif defined(OPENVINO_ARCH_ARM64)
+#include "emitters/aarch64/cpu_generator.hpp"
 #include "transformations/snippets/aarch64/shape_inference.hpp"
 #endif
 
@@ -46,8 +47,14 @@
 using namespace InferenceEngine;
 using namespace dnnl::impl::utils;
 using namespace dnnl::impl::cpu;
+
+#if defined(OPENVINO_ARCH_X86_64)
 using namespace dnnl::impl::cpu::x64;
 using namespace Xbyak;
+#elif defined(OPENVINO_ARCH_ARM64)
+using namespace dnnl::impl::cpu::aarch64;
+using namespace Xbyak_aarch64;
+#endif
 
 namespace ov {
 namespace intel_cpu {
@@ -128,14 +135,20 @@ bool SnippetKey::operator==(const SnippetKey& rhs) const {
 
 Snippet::Snippet(const std::shared_ptr<ov::Node>& op, const GraphContext::CPtr& context)
         : Node(op, context, SnippetShapeInferFactory(op)) {
+#if defined(OPENVINO_ARCH_X86_64)
     host_isa = dnnl::impl::cpu::x64::mayiuse(dnnl::impl::cpu::x64::avx512_core) ?
         dnnl::impl::cpu::x64::avx512_core : dnnl::impl::cpu::x64::avx2;
+#elif defined(OPENVINO_ARCH_ARM64)
+    host_isa = dnnl::impl::cpu::aarch64::asimd;
+#endif
     const auto& tmp_snippet = ov::as_type_ptr<snippets::op::Subgraph>(op);
     OPENVINO_ASSERT(tmp_snippet, "Attempt to create Snippet node from an invalid op type");
     snippetAttrs.snippet = tmp_snippet->clone();
     snippetAttrs.bodyHash = get_body_hash(tmp_snippet);
 
 #if defined(OPENVINO_ARCH_X86_64)
+    snippetAttrs.snippet->set_generator(std::make_shared<CPUGenerator>(host_isa));
+#elif defined(OPENVINO_ARCH_ARM64)
     snippetAttrs.snippet->set_generator(std::make_shared<CPUGenerator>(host_isa));
 #else
     OPENVINO_THROW("CPU plugin: Snippets code-generator is not supported on non-x64 platforms");
@@ -207,7 +220,11 @@ void Snippet::initSupportedPrimitiveDescriptors() {
 
                 return std::make_shared<CpuBlockedMemoryDesc>(prc, shape, blocks, order, offset);
             } else if (lt == Blocked && shape.getRank() != 1 && (shape.getMinDims()[1] != Shape::UNDEFINED_DIM && shape.getMinDims()[1] > 1)) {
+#if defined(OPENVINO_ARCH_X86_64)
                 size_t blockSize = mayiuse(dnnl::impl::cpu::x64::avx512_core) ? 16 : 8;
+#elif defined(OPENVINO_ARCH_ARM64)
+                size_t blockSize = 16;
+#endif
 
                 VectorDims blocks = dims;
                 VectorDims order(blocks.size());
@@ -271,11 +288,15 @@ void Snippet::initSupportedPrimitiveDescriptors() {
         }
 
         impl_desc_type impl_type = impl_desc_type::unknown;
+#if defined(OPENVINO_ARCH_X86_64)
         if (mayiuse(x64::avx512_core)) {
             impl_type = impl_desc_type::jit_avx512;
         } else if (mayiuse(x64::avx2)) {
             impl_type = impl_desc_type::jit_avx2;
         }
+#elif defined(OPENVINO_ARCH_ARM64)
+        impl_type = impl_desc_type::jit_asimd;
+#endif
         return {config, impl_type};
     };
 

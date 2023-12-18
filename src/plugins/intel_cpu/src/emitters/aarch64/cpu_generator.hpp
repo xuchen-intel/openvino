@@ -11,6 +11,7 @@
 
 namespace ov {
 namespace intel_cpu {
+namespace aarch64 {
 
 class CompiledSnippetCPU : public snippets::CompiledSnippet {
 public:
@@ -47,5 +48,6 @@ protected:
     opRegType get_specific_op_reg_type(const std::shared_ptr<ov::Node>& op) const override;
 };
 
+}   // namespace aarch64
 }   // namespace intel_cpu
 }   // namespace ov

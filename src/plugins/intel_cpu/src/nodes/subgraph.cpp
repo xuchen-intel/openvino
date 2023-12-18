@@ -149,7 +149,7 @@ Snippet::Snippet(const std::shared_ptr<ov::Node>& op, const GraphContext::CPtr& 
 #if defined(OPENVINO_ARCH_X86_64)
     snippetAttrs.snippet->set_generator(std::make_shared<CPUGenerator>(host_isa));
 #elif defined(OPENVINO_ARCH_ARM64)
-    snippetAttrs.snippet->set_generator(std::make_shared<CPUGenerator>(host_isa));
+    snippetAttrs.snippet->set_generator(std::make_shared<aarch64::CPUGenerator>(host_isa));
 #else
     OPENVINO_THROW("CPU plugin: Snippets code-generator is not supported on non-x64 platforms");
 

@@ -68,6 +68,9 @@ CPUTargetMachine::CPUTargetMachine(dnnl::impl::cpu::aarch64::cpu_isa_t host_isa)
 
     // binary
     jitters[op::v1::Add::get_type_info_static()] = CREATE_CPU_EMITTER(jit_add_emitter);
+
+    // control flow
+    jitters[snippets::op::LoopBegin::get_type_info_static()] = CREATE_SNIPPETS_EMITTER(LoopBeginEmitter);
 }
 
 bool CPUTargetMachine::is_supported() const {

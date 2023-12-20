@@ -211,5 +211,26 @@ void RegPrinter::print_reg(jit_generator &h, REG_T reg, const char *name) {
     postamble(h);
 }
 
+template<typename T>
+std::vector<size_t> convert_to_size_t(const std::vector<T> &vec_in) {
+    std::vector<size_t> vec_out;
+    for (const auto& in : vec_in) {
+        vec_out.push_back(static_cast<size_t>(in));
+    }
+    return vec_out;
+}
+
+template<typename T>
+std::vector<uint32_t> convert_to_u32(const std::vector<T> &vec_in) {
+    std::vector<uint32_t> vec_out;
+    for (const auto& in : vec_in) {
+        vec_out.push_back(static_cast<uint32_t>(in));
+    }
+    return vec_out;
+}
+
+template std::vector<size_t> convert_to_size_t<uint32_t>(const std::vector<uint32_t> &vec_in);
+template std::vector<uint32_t> convert_to_u32<size_t>(const std::vector<size_t> &vec_in);
+
 }   // namespace intel_cpu
 }   // namespace ov

@@ -67,6 +67,7 @@ CPUTargetMachine::CPUTargetMachine(dnnl::impl::cpu::aarch64::cpu_isa_t host_isa)
 
     // memory access
     jitters[snippets::op::Load::get_type_info_static()] = CREATE_SNIPPETS_EMITTER(LoadEmitter);
+    jitters[snippets::op::Store::get_type_info_static()] = CREATE_SNIPPETS_EMITTER(StoreEmitter);
 
     // binary
     jitters[op::v1::Add::get_type_info_static()] = CREATE_CPU_EMITTER(jit_add_emitter);

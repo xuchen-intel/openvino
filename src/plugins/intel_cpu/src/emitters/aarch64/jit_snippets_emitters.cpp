@@ -117,6 +117,41 @@ void LoadEmitter::emit_data() const {
     load_emitter->emit_data();
 }
 
+StoreEmitter::StoreEmitter(jit_generator* h, cpu_isa_t isa, const ExpressionPtr& expr) : MemoryEmitter(h, isa, expr) {
+    if (src_prc != dst_prc)
+        OPENVINO_THROW("StoreEmitter supports only equal input and output types but gets: ",
+                       src_prc.get_type_name(),
+                       " and ",
+                       dst_prc.get_type_name());
+
+    const auto store = ov::as_type_ptr<snippets::op::Store>(expr->get_node());
+    count = store->get_count();
+    byte_offset = store->get_offset();
+    in_out_type_ = emitter_in_out_map::vec_to_gpr;
+    store_emitter.reset(new jit_store_emitter(h, isa, src_prc, dst_prc, count));
+}
+
+void StoreEmitter::emit_impl(const std::vector<size_t>& in,
+                             const std::vector<size_t>& out) const {
+    if (host_isa_ == dnnl::impl::cpu::aarch64::asimd) {
+        emit_isa<dnnl::impl::cpu::aarch64::asimd>(in, out);
+    } else {
+        OPENVINO_THROW("Store emitter doesn't support ", host_isa_);
+    }
+}
+
+template <cpu_isa_t isa>
+void StoreEmitter::emit_isa(const std::vector<size_t> &in, const std::vector<size_t> &out) const {
+    if (!store_emitter)
+        OPENVINO_THROW("Store CPU emitter isn't initialized for StoreEmitter!");
+    store_emitter->emit_code({in[0], byte_offset}, {out[0]}, convert_to_size_t<uint32_t>(aux_vec_idxs),
+                             convert_to_size_t<uint32_t>(aux_gpr_idxs));
+}
+
+void StoreEmitter::emit_data() const {
+    store_emitter->emit_data();
+}
+
 }   // namespace aarch64
 }   // namespace intel_cpu
 }   // namespace ov

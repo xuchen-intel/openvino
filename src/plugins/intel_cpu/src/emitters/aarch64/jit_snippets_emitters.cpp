@@ -6,6 +6,8 @@
 
 #include <cpu/aarch64/jit_generator.hpp>
 
+#include "emitters/utils.hpp"
+
 using namespace Xbyak_aarch64;
 
 namespace ov {
@@ -72,6 +74,47 @@ void LoopBeginEmitter::emit_isa(const std::vector<size_t>& in,
     // or ready(), but they both set internal flags and that's not a desired way to use them.
     // So the most obvious WA is just to use current address manually
     loop_begin->begin_address = h->getCurr();
+}
+
+MemoryEmitter::MemoryEmitter(jit_generator* h, cpu_isa_t isa, const ExpressionPtr& expr) : jit_emitter(h, isa) {
+    const auto n = expr->get_node();
+    src_prc = n->get_input_element_type(0);
+    dst_prc = n->get_output_element_type(0);
+}
+
+LoadEmitter::LoadEmitter(jit_generator* h, cpu_isa_t isa, const ExpressionPtr& expr) : MemoryEmitter(h, isa, expr) {
+    if (src_prc != dst_prc)
+        OPENVINO_THROW("LoadEmitter supports only equal input and output types but gets: ",
+                       src_prc.get_type_name(),
+                       " and ",
+                       dst_prc.get_type_name());
+
+    const auto load = std::dynamic_pointer_cast<snippets::op::Load>(expr->get_node());
+    count = load->get_count();
+    byte_offset = load->get_offset();
+    in_out_type_ = emitter_in_out_map::gpr_to_vec;
+    load_emitter.reset(new jit_load_emitter(h, isa, src_prc, dst_prc, count));
+}
+
+void LoadEmitter::emit_impl(const std::vector<size_t>& in,
+                            const std::vector<size_t>& out) const {
+    if (host_isa_ == dnnl::impl::cpu::aarch64::asimd) {
+        emit_isa<dnnl::impl::cpu::aarch64::asimd>(in, out);
+    } else {
+        OPENVINO_THROW("Load emitter doesn't support ", host_isa_);
+    }
+}
+
+template <cpu_isa_t isa>
+void LoadEmitter::emit_isa(const std::vector<size_t> &in, const std::vector<size_t> &out) const {
+    if (!load_emitter)
+        OPENVINO_THROW("Load CPU emitter isn't initialized for LoadEmitter!");
+    load_emitter->emit_code({in[0], byte_offset}, {out[0]}, convert_to_size_t<uint32_t>(aux_vec_idxs),
+                            convert_to_size_t<uint32_t>(aux_gpr_idxs));
+}
+
+void LoadEmitter::emit_data() const {
+    load_emitter->emit_data();
 }
 
 }   // namespace aarch64

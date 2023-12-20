@@ -5,6 +5,7 @@
 #pragma once
 
 #include "jit_emitter.hpp"
+#include "jit_load_store_emitters.hpp"
 
 namespace ov {
 namespace intel_cpu {
@@ -57,6 +58,50 @@ private:
     std::shared_ptr<snippets::op::LoopBegin> loop_begin;
     bool evaluate_once = false;
     size_t work_amount = 0;
+};
+
+///
+/// Memory emitters:
+///
+/// *Note*: post increment is embedded into Load/Store operation which means that
+/// it's illigal to load/store to the same address multiple times
+/// Typical application can be if Load and BroadcastLoad are performed from the same pointer.
+/// If Load goes before BroadcastLoad topologicaly the resilt will be incorrect
+/// For scalar loads we can use different loops. Tiling indeed can be arbitrary and post increment should be somehow coded into ISA.
+/// Blocked parameter to tell if input is actually blocked. Broadcast means broadcast by W in other cases no need to substitute load.
+class MemoryEmitter : public jit_emitter  {
+public:
+    MemoryEmitter(dnnl::impl::cpu::aarch64::jit_generator* h,
+                  dnnl::impl::cpu::aarch64::cpu_isa_t isa,
+                  const ov::snippets::lowered::ExpressionPtr& expr);
+
+protected:
+    ov::element::Type src_prc;
+    ov::element::Type dst_prc;
+
+    size_t count = 0;
+    size_t byte_offset = 0;
+};
+
+class LoadEmitter : public MemoryEmitter {
+public:
+    LoadEmitter(dnnl::impl::cpu::aarch64::jit_generator* h,
+                dnnl::impl::cpu::aarch64::cpu_isa_t isa,
+                const ov::snippets::lowered::ExpressionPtr& expr);
+
+    size_t get_inputs_count() const override {return 0;}
+
+private:
+    void emit_impl(const std::vector<size_t>& in,
+              const std::vector<size_t>& out) const override;
+
+    // todo: revise parameters
+    template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
+    void emit_isa(const std::vector<size_t> &in, const std::vector<size_t> &out) const;
+    void emit_data() const override;
+
+private:
+    std::unique_ptr<jit_load_emitter> load_emitter = nullptr;
 };
 
 }   // namespace aarch64

@@ -89,5 +89,11 @@ private:
     static constexpr size_t reg_cnt = 16;
 };
 
+template<typename T>
+std::vector<size_t> convert_to_size_t(const std::vector<T> &vec_in);
+
+template<typename T>
+std::vector<uint32_t> convert_to_u32(const std::vector<T> &vec_in);
+
 }   // namespace intel_cpu
 }   // namespace ov

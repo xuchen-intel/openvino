@@ -68,6 +68,10 @@ size_t jit_emitter::get_aux_vecs_count() const {
     return 0;
 }
 
+emitter_in_out_map jit_emitter::get_in_out_type() const {
+    return in_out_type_;
+}
+
 void jit_emitter::prepare_table() {
     register_table_entries();
 

@@ -447,7 +447,7 @@ void LoopEndEmitter::emit_isa(const std::vector<size_t>& in,
         }
         h->sub(reg_work_amount, reg_work_amount, wa_increment);
         h->cmp(reg_work_amount, wa_increment);
-        h->b(GE, reinterpret_cast<int64_t>(loop_begin->begin_address));
+        h->b(GE, reinterpret_cast<int64_t>(loop_begin->begin_address) - reinterpret_cast<int64_t>(h->getCurr()));
     }
 
     for (size_t idx = 0; idx < data_ptr_regs.size(); idx++) {

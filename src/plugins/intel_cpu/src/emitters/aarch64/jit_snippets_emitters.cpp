@@ -93,8 +93,8 @@ void jit_container_emitter::map_abstract_registers(mapping_info& gpr_map_pool,  
 
 KernelEmitter::KernelEmitter(jit_generator* h, cpu_isa_t isa, const ExpressionPtr& expr)
     : jit_container_emitter(h, isa, expr),
-      reg_indexes_idx(0), // todo: revise
-      reg_const_params_idx(1) { // todo: revise
+      reg_indexes_idx(Operand::X0),
+      reg_const_params_idx(Operand::X1) {
     const auto kernel = ov::as_type_ptr<snippets::op::Kernel>(expr->get_node());
     if (!kernel)
         OPENVINO_THROW("KernelEmitter invoked with invalid op argument");
@@ -146,8 +146,8 @@ KernelEmitter::KernelEmitter(jit_generator* h, cpu_isa_t isa, const ExpressionPt
     }
 
     // Initialize pools of gp and vec registers
-    gp_regs_pool.resize(16); // todo revise
-    vec_regs_pool.resize(16); // todo revise
+    gp_regs_pool.resize(16);
+    vec_regs_pool.resize(16);
     // It's easier to remove the last item during mapping, so fill descending to map ascending
     for (size_t i = 0; i < 16; i++)
         gp_regs_pool[i] = vec_regs_pool[i] = 15 - i;
@@ -158,10 +158,8 @@ KernelEmitter::KernelEmitter(jit_generator* h, cpu_isa_t isa, const ExpressionPt
         pool.erase(std::remove_if(pool.begin(), pool.end(),
                                        [&](size_t x) {return to_remove.count(x) != 0;}), pool.end());
     };
-    // Reserve stack base and pointer for push(...) and pop(...) operations
     // Reserve abi_param1 and abi_param2, since they'll be used to pass runtime call args to kernel
-    remove_regs_from_pool(gp_regs_pool, {Xbyak::Operand::RSP, Xbyak::Operand::RBP,
-                                         reg_indexes_idx, reg_const_params_idx});
+    remove_regs_from_pool(gp_regs_pool, {reg_indexes_idx, reg_const_params_idx});
 
     mapping_info gpr_map_pool({}, gp_regs_pool);
     mapping_info vec_map_pool({}, vec_regs_pool);

@@ -19,7 +19,7 @@ enum arithmetic_mode {
 class jit_load_emitter : public jit_emitter {
 public:
     jit_load_emitter(dnnl::impl::cpu::aarch64::jit_generator *host, dnnl::impl::cpu::aarch64::cpu_isa_t host_isa,
-                     ov::element::Type src_prc, ov::element::Type dst_prc, int load_num,
+                     ov::element::Type src_prc, ov::element::Type dst_prc, int load_num, int byte_offset,
                      ov::element::Type exec_prc = ov::element::f32,
                      bool is_fill = false, std::string fill_value = "zero",
                      emitter_in_out_map in_out_type = emitter_in_out_map::gpr_to_vec);
@@ -33,9 +33,10 @@ private:
     void emit_isa(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const;
 
     std::string name_;
-    int v_len_elt_;
-    int load_num_;
-    int load_size_;
+    int v_len_elt_; // the element number that a vector register can hold maximumly
+    int load_num_;  // the element number to load
+    int load_size_; // the byte number to load
+    int byte_offset_;
     ov::element::Type src_prc_;
     ov::element::Type dst_prc_;
     bool is_fill_;
@@ -45,7 +46,7 @@ private:
 class jit_store_emitter : public jit_emitter {
 public:
     jit_store_emitter(dnnl::impl::cpu::aarch64::jit_generator *host, dnnl::impl::cpu::aarch64::cpu_isa_t host_isa,
-                      ov::element::Type src_prc, ov::element::Type dst_prc, int store_num,
+                      ov::element::Type src_prc, ov::element::Type dst_prc, int store_num, int byte_offset_,
                       arithmetic_mode mode = arithmetic_mode::saturation,
                       ov::element::Type exec_prc = ov::element::f32,
                       emitter_in_out_map in_out_type = emitter_in_out_map::vec_to_gpr);
@@ -59,9 +60,10 @@ private:
     void emit_isa(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const;
 
     std::string name_;
-    int v_len_elt_;
-    int store_num_;
-    int store_size_;
+    int v_len_elt_;  // the element number that a vector register can hold maximumly
+    int store_num_;  // the element number to store
+    int store_size_; // the byte number to store
+    int byte_offset_;
     ov::element::Type src_prc_;
     ov::element::Type dst_prc_;
     arithmetic_mode mode_ = arithmetic_mode::saturation;

@@ -460,7 +460,7 @@ LoadEmitter::LoadEmitter(jit_generator* h, cpu_isa_t isa, const ExpressionPtr& e
     count = load->get_count();
     byte_offset = load->get_offset();
     in_out_type_ = emitter_in_out_map::gpr_to_vec;
-    load_emitter.reset(new jit_load_emitter(h, isa, src_prc, dst_prc, count));
+    load_emitter.reset(new jit_load_emitter(h, isa, src_prc, dst_prc, count, byte_offset));
 }
 
 void LoadEmitter::emit_impl(const std::vector<size_t>& in,
@@ -476,7 +476,7 @@ template <cpu_isa_t isa>
 void LoadEmitter::emit_isa(const std::vector<size_t> &in, const std::vector<size_t> &out) const {
     if (!load_emitter)
         OPENVINO_THROW("Load CPU emitter isn't initialized for LoadEmitter!");
-    load_emitter->emit_code({in[0], byte_offset}, {out[0]}, convert_to_size_t<uint32_t>(aux_vec_idxs),
+    load_emitter->emit_code(in, out, convert_to_size_t<uint32_t>(aux_vec_idxs),
                             convert_to_size_t<uint32_t>(aux_gpr_idxs));
 }
 
@@ -495,7 +495,7 @@ StoreEmitter::StoreEmitter(jit_generator* h, cpu_isa_t isa, const ExpressionPtr&
     count = store->get_count();
     byte_offset = store->get_offset();
     in_out_type_ = emitter_in_out_map::vec_to_gpr;
-    store_emitter.reset(new jit_store_emitter(h, isa, src_prc, dst_prc, count));
+    store_emitter.reset(new jit_store_emitter(h, isa, src_prc, dst_prc, count, byte_offset));
 }
 
 void StoreEmitter::emit_impl(const std::vector<size_t>& in,
@@ -511,7 +511,7 @@ template <cpu_isa_t isa>
 void StoreEmitter::emit_isa(const std::vector<size_t> &in, const std::vector<size_t> &out) const {
     if (!store_emitter)
         OPENVINO_THROW("Store CPU emitter isn't initialized for StoreEmitter!");
-    store_emitter->emit_code({in[0], byte_offset}, {out[0]}, convert_to_size_t<uint32_t>(aux_vec_idxs),
+    store_emitter->emit_code(in, out, convert_to_size_t<uint32_t>(aux_vec_idxs),
                              convert_to_size_t<uint32_t>(aux_gpr_idxs));
 }
 

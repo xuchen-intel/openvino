@@ -239,6 +239,12 @@ void KernelEmitter::emit_impl(const std::vector<size_t>& in,
 
 void KernelEmitter::init_data_pointers(const XReg& reg_indexes, const XReg& reg_const_params,
                                        const std::vector<XReg>& data_ptr_regs) const {
+    // X19~X28 are Callee-saved registers. Their contents must be saved before usage and restored afterwards.
+    push_XReg(h, 19);
+    push_XReg(h, 20);
+    XReg reg_tmp = XReg(19);
+    XReg reg_aux = XReg(20);
+
     const auto num_params = num_inputs + num_outputs;
     // Note that we don't need offset for the last dim, since it's handled directly by Tile emitter
     const size_t offset_rank = master_shape.size() - 1;
@@ -281,24 +287,16 @@ void KernelEmitter::init_data_pointers(const XReg& reg_indexes, const XReg& reg_
         data_offsets[i] = offset_calculation(io_shapes[i],  io_data_layouts[i], io_data_sizes[i], i < num_inputs);
     }
     // master_shape size must be valid in both static and dynamic cases
-    std::function<void(XReg, const std::vector<size_t>&, XReg, XReg)> init_ptr_with_offset;
-    init_ptr_with_offset = [&](XReg pointer, const std::vector<size_t>& offsets, XReg reg_tmp, XReg reg_tmp1) {
+    auto init_ptr_with_offset = [&](XReg pointer, const std::vector<size_t>& offsets) {
         for (size_t j = 0; j < offset_rank; j++) {
             if (master_shape[j] != 1 && offsets[j] != 0) {
                 h->mov(reg_tmp, offsets[j]);
-                h->ldr(reg_tmp1, ptr(reg_indexes, static_cast<int32_t>(j * sizeof(size_t))));
-                h->mul(reg_tmp, reg_tmp, reg_tmp1);
+                h->ldr(reg_aux, ptr(reg_indexes, static_cast<int32_t>(j * sizeof(size_t))));
+                h->mul(reg_tmp, reg_tmp, reg_aux);
                 h->add(pointer, pointer, reg_tmp);
             }
         }
     };
-    const auto spare_corruptable_gpr = std::find_if(gp_regs_pool.begin(), gp_regs_pool.end(),
-                                                   [this](size_t reg) {
-                                                        return reg != reg_indexes_idx && reg != reg_const_params_idx;
-                                                   });
-    const bool last_iter_explicitly = spare_corruptable_gpr == gp_regs_pool.end();
-    XReg reg_tmp = last_iter_explicitly ? data_ptr_regs[num_params - 1] : XReg(static_cast<uint32_t>(*spare_corruptable_gpr));
-    XReg reg_tmp1 = XReg(30); // todo: revise
     // Vector "data_ptr_regs" is sorted by abstract regs.
     // It means that the vector contains the physical registers in order [src, .., src, dst, .., dst, buffer]
     // So we can initialize buffer register firstly as last value of vector "data_ptr_regs"
@@ -307,25 +305,16 @@ void KernelEmitter::init_data_pointers(const XReg& reg_indexes, const XReg& reg_
     for (size_t i = 0; i < num_unique_buffers; ++i) {
         h->ldr(data_ptr_regs[num_params + i], ptr(reg_const_params, static_cast<int32_t>(GET_OFF(buffer_scratchpad_ptr))));
     }
-    size_t i = 0;
-    for (; i < num_params - last_iter_explicitly; i++) {
+    for (size_t i = 0; i < num_params; i++) {
         if (i < num_inputs)
             h->ldr(data_ptr_regs[i], ptr(reg_const_params, static_cast<int32_t>(GET_OFF(src_ptrs) + i * sizeof(void*))));
         else
             h->ldr(data_ptr_regs[i], ptr(reg_const_params, static_cast<int32_t>(GET_OFF(dst_ptrs) + (i - num_inputs) * sizeof(void*))));
-        init_ptr_with_offset(data_ptr_regs[i], data_offsets[i], reg_tmp, reg_tmp1);
+        init_ptr_with_offset(data_ptr_regs[i], data_offsets[i]);
     }
-    // a rare case when num_params is maximal, so we have no spare gprs
-    // * Static case: we can use reg_const_params as the last reg_tmp for the last iteration (and corrupt it), since
-    //     it won't be used anymore
-    // * Dynamic case: we will need reg_const_params to pass runtime args to LoopScheduler, so we have to
-    //     push a reg on the stack, and restore it value afterwards
-    if (last_iter_explicitly) {
-        h->ldr(data_ptr_regs[i], ptr(reg_const_params, static_cast<int32_t>(GET_OFF(dst_ptrs) + (i - num_inputs) * sizeof(void*))));
-        reg_tmp = reg_const_params;
-        // can corrupt reg_const_params, since we won't use it anymore
-        init_ptr_with_offset(data_ptr_regs[i], data_offsets[i], reg_tmp, reg_tmp1);
-    }
+
+    pop_XReg(h, 20);
+    pop_XReg(h, 19);
 }
 
 LoopBeginEmitter::LoopBeginEmitter(jit_generator* h, cpu_isa_t isa, const ExpressionPtr& expr) : jit_emitter(h, isa) {

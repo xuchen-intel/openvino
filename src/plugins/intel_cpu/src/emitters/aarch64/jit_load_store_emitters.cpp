@@ -11,10 +11,10 @@ namespace aarch64 {
 using cpu_isa_t = dnnl::impl::cpu::aarch64::cpu_isa_t;
 
 jit_load_emitter::jit_load_emitter(dnnl::impl::cpu::aarch64::jit_generator *host, dnnl::impl::cpu::aarch64::cpu_isa_t host_isa,
-                                   ov::element::Type src_prc, ov::element::Type dst_prc, int load_num, ov::element::Type exec_prc,
-                                   bool is_fill, std::string fill_value, emitter_in_out_map in_out_type)
-: jit_emitter(host, host_isa, exec_prc, in_out_type), name_("unknown"), load_num_(load_num), src_prc_(src_prc),
-    dst_prc_(dst_prc), is_fill_(is_fill), fill_value_(fill_value) {
+                                   ov::element::Type src_prc, ov::element::Type dst_prc, int load_num, int byte_offset,
+                                   ov::element::Type exec_prc, bool is_fill, std::string fill_value, emitter_in_out_map in_out_type)
+: jit_emitter(host, host_isa, exec_prc, in_out_type), name_("unknown"), load_num_(load_num), byte_offset_(byte_offset),
+              src_prc_(src_prc), dst_prc_(dst_prc), is_fill_(is_fill), fill_value_(fill_value) {
     prepare_table();
     load_size_ = load_num * src_prc.size();
     v_len_elt_ = get_vec_length() / exec_prc.size();
@@ -33,9 +33,10 @@ template <cpu_isa_t isa>
 void jit_load_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {}
 
 jit_store_emitter::jit_store_emitter(dnnl::impl::cpu::aarch64::jit_generator *host, dnnl::impl::cpu::aarch64::cpu_isa_t host_isa,
-                                     ov::element::Type src_prc, ov::element::Type dst_prc, int store_num, arithmetic_mode mode, ov::element::Type exec_prc,
-                                     emitter_in_out_map in_out_type)
-    : jit_emitter(host, host_isa, exec_prc, in_out_type), name_("unknown"), store_num_(store_num), src_prc_(src_prc), dst_prc_(dst_prc), mode_(mode) {
+                                     ov::element::Type src_prc, ov::element::Type dst_prc, int store_num, int byte_offset,
+                                     arithmetic_mode mode, ov::element::Type exec_prc, emitter_in_out_map in_out_type)
+    : jit_emitter(host, host_isa, exec_prc, in_out_type), name_("unknown"), store_num_(store_num), byte_offset_(byte_offset),
+                  src_prc_(src_prc), dst_prc_(dst_prc), mode_(mode) {
     prepare_table();
     v_len_elt_ = get_vec_length() / exec_prc.size();
     store_size_ = store_num * dst_prc.size();

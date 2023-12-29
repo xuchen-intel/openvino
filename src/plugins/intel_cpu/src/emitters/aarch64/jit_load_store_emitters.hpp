@@ -5,6 +5,7 @@
 #pragma once
 
 #include "jit_emitter.hpp"
+#include <cpu/aarch64/jit_generator.hpp>
 
 namespace ov {
 namespace intel_cpu {
@@ -25,7 +26,6 @@ public:
                      emitter_in_out_map in_out_type = emitter_in_out_map::gpr_to_vec);
 
     void emit_impl(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const override;
-
     size_t get_inputs_count() const override { return 1; };
 
 private:
@@ -52,7 +52,6 @@ public:
                       emitter_in_out_map in_out_type = emitter_in_out_map::vec_to_gpr);
 
     void emit_impl(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const override;
-
     size_t get_inputs_count() const override { return 1; }
 
 private:

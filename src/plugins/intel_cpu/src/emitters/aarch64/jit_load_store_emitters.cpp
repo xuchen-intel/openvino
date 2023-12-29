@@ -3,11 +3,17 @@
 //
 
 #include "jit_load_store_emitters.hpp"
+#include <cpu/aarch64/cpu_isa_traits.hpp>
+
+#include "emitters/utils.hpp"
+
+using namespace Xbyak_aarch64;
 
 namespace ov {
 namespace intel_cpu {
 namespace aarch64 {
 
+using jit_generator = dnnl::impl::cpu::aarch64::jit_generator;
 using cpu_isa_t = dnnl::impl::cpu::aarch64::cpu_isa_t;
 
 jit_load_emitter::jit_load_emitter(dnnl::impl::cpu::aarch64::jit_generator *host, dnnl::impl::cpu::aarch64::cpu_isa_t host_isa,
@@ -28,9 +34,20 @@ void jit_load_emitter::emit_impl(const std::vector<size_t> &in_idxs, const std::
     }
 }
 
-// todo: implement
 template <cpu_isa_t isa>
-void jit_load_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {}
+void jit_load_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {
+    bool matched_prc = src_prc_ == ov::element::f32 && dst_prc_ == ov::element::f32;
+    if (!matched_prc)
+        OPENVINO_THROW("Load emitter in ", name_, " only support both input and output precisions of being FP32.");
+    if (load_num_ > static_cast<int>((get_vec_length() / dst_prc_.size())))
+        OPENVINO_THROW("Load emitter in ", name_, " have unexpected number of elements to load.");
+
+    using TReg = typename dnnl::impl::cpu::aarch64::cpu_isa_traits<isa>::TReg;
+    XReg xreg = XReg(convert_to_u32<size_t>(in_idxs)[0]);
+    TReg treg = TReg(convert_to_u32<size_t>(out_idxs)[0]);
+
+    h->uni_ldr(treg, xreg, byte_offset_);
+}
 
 jit_store_emitter::jit_store_emitter(dnnl::impl::cpu::aarch64::jit_generator *host, dnnl::impl::cpu::aarch64::cpu_isa_t host_isa,
                                      ov::element::Type src_prc, ov::element::Type dst_prc, int store_num, int byte_offset,
@@ -50,9 +67,20 @@ void jit_store_emitter::emit_impl(const std::vector<size_t> &in_idxs, const std:
     }
 }
 
-// todo: implement
 template <cpu_isa_t isa>
-void jit_store_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {}
+void jit_store_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {
+    bool matched_prc = src_prc_ == ov::element::f32 && dst_prc_ == ov::element::f32;
+    if (!matched_prc)
+        OPENVINO_THROW("Store emitter in ", name_, " only support both input and output precisions of being FP32.");
+    if (store_num_ > static_cast<int>((get_vec_length() / dst_prc_.size())))
+        OPENVINO_THROW("Store emitter in ", name_, " have unexpected number of elements to store.");
+
+    using TReg = typename dnnl::impl::cpu::aarch64::cpu_isa_traits<isa>::TReg;
+    TReg treg = TReg(convert_to_u32<size_t>(in_idxs)[0]);
+    XReg xreg = XReg(convert_to_u32<size_t>(out_idxs)[0]);
+
+    h->str(QReg(treg.getIdx()), ptr(xreg, byte_offset_));
+}
 
 }   // namespace aarch64
 }   // namespace intel_cpu

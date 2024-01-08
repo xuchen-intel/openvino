@@ -94,6 +94,18 @@ public:
     bool canBeInPlace() const override {
         return false;
     }
+    bool getStable() const { return stable; }
+    int getTopk() const {return top_k; }
+    int getAxis() const { return axis; }
+    void setAxis(int ax) { axis = ax; }
+    void setTopkInnermost(bool topk_inner) { topk_innermost = topk_inner; }
+    void setInputShapeAtPort(size_t port, const Shape& shape) {
+        inputShapes[port] = Shape(shape.getDims());
+    }
+    void setOutputShapeAtPort(size_t port, const Shape& shape) {
+        outputShapes[port] = Shape(shape.getDims());
+    }
+    TopKLayoutType getLayout() const { return layout; }
 
     static bool isSupportedOperation(const std::shared_ptr<const ov::Node> &op, std::string &errorMessage) noexcept;
 

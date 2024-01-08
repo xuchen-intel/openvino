@@ -41,6 +41,12 @@ public:
     void setOptimized(bool isOptimized) {
         this->isOptimized = isOptimized;
     }
+    void setInputShapeAtPort(size_t port, const Shape& shape) {
+        inputShapes[port] = Shape(shape.getDims());
+    }
+    void setOutputShapeAtPort(size_t port, const Shape& shape) {
+        outputShapes[port] = Shape(shape.getDims());
+    }
 
 protected:
     void executeDynamicImpl(dnnl::stream strm) override;

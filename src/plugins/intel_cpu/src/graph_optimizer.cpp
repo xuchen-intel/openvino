@@ -20,6 +20,7 @@
 #include "nodes/rnn.h"
 #include "nodes/scaled_attn.h"
 #include "nodes/transpose.h"
+#include "nodes/topk.h"
 #include "onednn/dnnl.h"
 #include "openvino/opsets/opset1.hpp"
 #include "cpu_types.h"
@@ -194,6 +195,9 @@ void GraphOptimizer::ApplyImplSpecificGraphOptimizations(Graph &graph) {
     graph.RemoveDroppedNodes();
 
     MergeTransposeAndReorder(graph);
+    graph.RemoveDroppedNodes();
+
+    SwapTransposeAndTopK(graph);
     graph.RemoveDroppedNodes();
 
     graph.RemoveDroppedEdges();
@@ -2573,6 +2577,82 @@ void GraphOptimizer::MergeTransposeAndReorder(Graph &graph) {
         if (checkAscendingSummaryOrder(parentNode, childNode)) {
             mergeTransposeAndReorder(parentNode, childNode);
         }
+    }
+}
+
+void GraphOptimizer::SwapTransposeAndTopK(Graph &graph) {
+    // TODO: Remove this line, and finish the implementation.
+    return;
+
+    auto& graphNodes = graph.GetNodes();
+
+    auto isSuitableTopKNode = [](NodePtr node) -> bool {
+        if (node->getType() != Type::TopK) {
+            return false;
+        }
+
+        const auto parentNode = node->getParentEdgesAtPort(0)[0]->getParent();
+        if (parentNode->getType() != Type::Transpose) {
+            return false;
+        }
+
+        const auto topkNode = std::dynamic_pointer_cast<node::TopK>(node);
+        return !node->isDynamicNode() && topkNode->getStable() && topkNode->getLayout() == node::topk_ncsp
+               && node->getInputShapeAtPort(0).getRank() == 4 && topkNode->getAxis() == 3
+               && parentNode->getInputShapeAtPort(0).getRank() == 4;
+    };
+
+    for (size_t i = 0; i < graphNodes.size(); i++) {
+        auto node = graphNodes[i];
+        if (!isSuitableTopKNode(node)) {
+            continue;
+        }
+
+        const auto topkNode = std::dynamic_pointer_cast<node::TopK>(node);
+
+        const auto parentNode = node->getParentEdgesAtPort(0)[0]->getParent();
+        const auto transposeNode = std::dynamic_pointer_cast<node::Transpose>(parentNode);
+
+        auto& order = transposeNode->getOrder();
+        int axis = topkNode->getAxis();
+        int topk = topkNode->getOutputShapeAtPort(0).getDims()[axis];
+
+        topkNode->setAxis(order[axis]);
+        topkNode->setTopkInnermost(true);
+
+        auto& topkNewInputShape = transposeNode->getInputShapeAtPort(0);
+        auto topkDims = topkNewInputShape.getDims();
+        topkDims[topkNode->getAxis()] = topk;
+        auto topkNewOutputShape = Shape(topkDims);
+
+        topkNode->setInputShapeAtPort(0, topkNewInputShape);
+        topkNode->setOutputShapeAtPort(0, topkNewOutputShape);
+
+        auto transposeDims = transposeNode->getOutputShapeAtPort(0).getDims();
+        transposeDims[axis] = topk;
+        auto transposeNewOutputShape = Shape(transposeDims);
+
+        transposeNode->setInputShapeAtPort(0, topkNode->getOutputShapeAtPort(0));
+        transposeNode->setOutputShapeAtPort(0, transposeNewOutputShape);
+
+        EdgePtr tranposeMajorParentEdge = parentNode->getParentEdgesAtPort(0)[0];
+        const auto preNode = tranposeMajorParentEdge->getParent();
+        int prePort = tranposeMajorParentEdge->getOutputNum();
+        int topkPort = 0;
+        graph.RemoveEdge(tranposeMajorParentEdge);
+
+        EdgePtr topkMajorParentEdge = node->getParentEdgesAtPort(0)[0];
+        graph.RemoveEdge(topkMajorParentEdge);
+
+        graph.CreateEdge(preNode, node, prePort, topkPort);
+        graph.CreateEdge(node, parentNode, 0, 0);
+
+        // TODO: To swap Tranpose with TopK, Transpose + TopK ==> TopK + Transpose x 2,
+        //       A new Tranpose node is needed. Refer to this link:
+        //       https://github.com/openvinotoolkit/openvino/blob/master/src/plugins/intel_cpu/src/graph_optimizer.cpp#L627-L645
+        //       to add the new Tranpose node connected with TopK's second output tensor.
+        // std::shared_ptr<ov::Node> newTrans(new ov::opset1::Transpose());
+        // NodePtr newTranspose(new node::Transpose(newTrans, graph.getGraphContext()));
     }
 }
 

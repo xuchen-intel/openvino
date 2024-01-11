@@ -31,6 +31,7 @@ public:
 private:
     template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
     void emit_isa(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const;
+    size_t get_aux_gprs_count() const override;
 
     std::string name_;
     int v_len_elt_; // the element number that a vector register can hold maximumly
@@ -57,6 +58,7 @@ public:
 private:
     template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
     void emit_isa(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const;
+    size_t get_aux_gprs_count() const override;
 
     std::string name_;
     int v_len_elt_;  // the element number that a vector register can hold maximumly

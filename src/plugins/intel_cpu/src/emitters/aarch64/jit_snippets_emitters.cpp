@@ -429,8 +429,11 @@ void LoopEndEmitter::emit_isa(const std::vector<size_t>& in,
     XReg reg_work_amount = XReg(in.back());
     if (!evaluate_once) {
         for (size_t idx = 0; idx < data_ptr_regs.size(); idx++) {
-            if (ptr_increments[idx] != 0)
+            if (ptr_increments[idx] > 0) {
                 h->add(data_ptr_regs[idx], data_ptr_regs[idx], ptr_increments[idx] * wa_increment * io_data_size[idx]);
+            } else if (ptr_increments[idx] < 0) {
+                h->sub(data_ptr_regs[idx], data_ptr_regs[idx], - ptr_increments[idx] * wa_increment * io_data_size[idx]);
+            }
         }
         h->sub(reg_work_amount, reg_work_amount, wa_increment);
         h->cmp(reg_work_amount, wa_increment);

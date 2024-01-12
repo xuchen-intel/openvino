@@ -484,6 +484,41 @@ void LoadEmitter::emit_data() const {
     load_emitter->emit_data();
 }
 
+BroadcastLoadEmitter::BroadcastLoadEmitter(jit_generator* h, cpu_isa_t isa, const ExpressionPtr& expr)
+    : MemoryEmitter(h, isa, expr) {
+    if (src_prc != dst_prc)
+        OPENVINO_THROW("BroadcastEmitters support only equal input and output types but gets: ",
+                       src_prc.get_type_name(),
+                       " and ",
+                       dst_prc.get_type_name());
+
+    const auto broadcast_load = std::dynamic_pointer_cast<snippets::op::BroadcastLoad>(expr->get_node());
+    byte_offset = broadcast_load->get_offset();
+    in_out_type_ = emitter_in_out_map::gpr_to_vec;
+}
+
+void BroadcastLoadEmitter::emit_impl(const std::vector<size_t>& in,
+                                     const std::vector<size_t>& out) const {
+    if (host_isa_ == dnnl::impl::cpu::aarch64::asimd) {
+        emit_isa<dnnl::impl::cpu::aarch64::asimd>(in, out);
+    } else {
+        OPENVINO_THROW("BroadcastLoad emitter doesn't support ", host_isa_);
+    }
+}
+
+template <cpu_isa_t isa>
+void BroadcastLoadEmitter::emit_isa(const std::vector<size_t> &in, const std::vector<size_t> &out) const {
+    auto in_u32 = convert_to_u32<size_t>(in);
+    auto out_u32 = convert_to_u32<size_t>(out);
+
+    using TReg = typename dnnl::impl::cpu::aarch64::cpu_isa_traits<isa>::TReg;
+    XReg src = XReg(in_u32[0]);
+    TReg dst = TReg(out_u32[0]);
+
+    // todo: support more data type
+    h->uni_ld1rw(dst.s, src, byte_offset);
+}
+
 StoreEmitter::StoreEmitter(jit_generator* h, cpu_isa_t isa, const ExpressionPtr& expr) : MemoryEmitter(h, isa, expr) {
     if (src_prc != dst_prc)
         OPENVINO_THROW("StoreEmitter supports only equal input and output types but gets: ",

@@ -9,6 +9,16 @@ namespace ov {
 namespace test {
 namespace snippets {
 namespace {
+
+INSTANTIATE_TEST_SUITE_P(smoke_Snippets_Eltwise_TwoResults, EltwiseTwoResults,
+                        ::testing::Combine(
+                             ::testing::Values(InputShape {{}, {{1, 64, 10, 10}}}),
+                             ::testing::Values(InputShape {{}, {{1, 64, 10,  1}}}),
+                             ::testing::Values(2),
+                             ::testing::Values(2),
+                             ::testing::Values(ov::test::utils::DEVICE_CPU)),
+                         EltwiseTwoResults::getTestCaseName);
+
 #if 0
 INSTANTIATE_TEST_SUITE_P(smoke_Snippets_Eltwise_TwoResults, EltwiseTwoResults,
                         ::testing::Combine(

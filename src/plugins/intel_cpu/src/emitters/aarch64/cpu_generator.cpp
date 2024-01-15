@@ -6,6 +6,7 @@
 #include "cpu_generator.hpp"
 #include "jit_snippets_emitters.hpp"
 #include "jit_eltwise_emitters.hpp"
+#include "jit_dnnl_ext_emitters.hpp"
 
 #include <openvino/opsets/opset13.hpp>
 
@@ -73,6 +74,9 @@ CPUTargetMachine::CPUTargetMachine(dnnl::impl::cpu::aarch64::cpu_isa_t host_isa)
 
     // binary
     jitters[op::v1::Add::get_type_info_static()] = CREATE_CPU_EMITTER(jit_add_emitter);
+
+    // unary
+    jitters[ov::op::v4::HSwish::get_type_info_static()] = CREATE_CPU_EMITTER(jit_hswish_emitter);
 
     // control flow
     jitters[snippets::op::Kernel::get_type_info_static()] = CREATE_SNIPPETS_EMITTER(KernelEmitter);

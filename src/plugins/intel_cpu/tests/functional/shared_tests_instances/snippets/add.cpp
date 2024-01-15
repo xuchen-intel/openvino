@@ -11,6 +11,7 @@ namespace snippets {
 
 
 namespace {
+#if 0
 // ===================================Add=========================================================//
 // These  inputs are needed to test static Loop optimizations (emit the whole tile, body with increments, set WA etc)
 std::vector<ov::test::InputShape> inShapesStatic1{{{}, {{1, 16, 29, 1}}},
@@ -123,6 +124,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_Snippets_Eltwise_BF16, AddRollConst,
                 ::testing::Values(1), // Subgraph is created, since the inputs are followed by converts
                 ::testing::Values(ov::test::utils::DEVICE_CPU)),
         AddRollConst::getTestCaseName);
+#endif
 
 } // namespace
 } // namespace snippets

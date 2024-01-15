@@ -244,6 +244,28 @@ private:
     std::unique_ptr<jit_store_emitter> store_emitter = nullptr;
 };
 
+class ScalarEmitter : public jit_emitter {
+public:
+    ScalarEmitter(dnnl::impl::cpu::aarch64::jit_generator* h,
+                  dnnl::impl::cpu::aarch64::cpu_isa_t isa,
+                  const ov::snippets::lowered::ExpressionPtr& expr);
+
+    size_t get_inputs_count() const override {return 0;}
+
+protected:
+    size_t get_aux_gprs_count() const override {return 1;}
+
+private:
+    void emit_impl(const std::vector<size_t>& in,
+              const std::vector<size_t>& out) const override;
+
+    template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
+    void emit_isa(const std::vector<size_t> &in, const std::vector<size_t> &out) const;
+
+private:
+    int32_t value;
+};
+
 }   // namespace aarch64
 }   // namespace intel_cpu
 }   // namespace ov

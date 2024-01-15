@@ -557,6 +557,46 @@ void StoreEmitter::emit_data() const {
     store_emitter->emit_data();
 }
 
+ScalarEmitter::ScalarEmitter(jit_generator* h, cpu_isa_t isa, const ExpressionPtr& expr) : jit_emitter(h, isa) {
+    const auto n = expr->get_node();
+    const auto& precision = n->get_output_element_type(0);
+    switch (precision) {
+        case element::i32: {
+            value = ov::as_type_ptr<ov::op::v0::Constant>(n)->cast_vector<int32_t>()[0];
+            break;
+        }
+        case element::f32: {
+            value = dnnl::impl::float2int(ov::as_type_ptr<ov::op::v0::Constant>(n)->cast_vector<float>()[0]);
+            break;
+        }
+        default: {
+            OPENVINO_THROW("Scalar emitter doesn't support ", precision);
+        }
+    }
+    push_arg_entry_of("scalar", value, true);
+    prepare_table();
+}
+
+void ScalarEmitter::emit_impl(const std::vector<size_t>& in,
+                              const std::vector<size_t>& out) const {
+    if (host_isa_ == dnnl::impl::cpu::aarch64::asimd) {
+        emit_isa<dnnl::impl::cpu::aarch64::asimd>(in, out);
+    } else {
+        OPENVINO_THROW("Scalar emitter doesn't support ", host_isa_);
+    }
+}
+
+template <cpu_isa_t isa>
+void ScalarEmitter::emit_isa(const std::vector<size_t> &in, const std::vector<size_t> &out) const {
+    auto out_u32 = convert_to_u32<size_t>(out);
+
+    using TReg = typename dnnl::impl::cpu::aarch64::cpu_isa_traits<isa>::TReg;
+    TReg dst = TReg(out_u32[0]);
+    AdrImm src = table_val("scalar");
+
+    h->uni_ld1rw(dst.s, src.getXn(), src.getImm());
+}
+
 }   // namespace aarch64
 }   // namespace intel_cpu
 }   // namespace ov

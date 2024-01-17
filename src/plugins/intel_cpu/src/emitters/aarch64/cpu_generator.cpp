@@ -86,6 +86,7 @@ CPUTargetMachine::CPUTargetMachine(dnnl::impl::cpu::aarch64::cpu_isa_t host_isa)
 
     // others
     jitters[snippets::op::Scalar::get_type_info_static()] = CREATE_SNIPPETS_EMITTER(ScalarEmitter);
+    jitters[snippets::op::Fill::get_type_info_static()] = CREATE_SNIPPETS_EMITTER(FillEmitter);
 }
 
 bool CPUTargetMachine::is_supported() const {

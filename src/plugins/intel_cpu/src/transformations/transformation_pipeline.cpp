@@ -683,7 +683,7 @@ void Transformations::MainSnippets(void) {
         return false;
     };
 
-    if (snippetsMode == Config::SnippetsMode::Disable || !is_supported_platform) // snippets are implemented only for relevant platforms
+    if (snippetsMode == Config::SnippetsMode::Disable || !is_supported_platform()) // snippets are implemented only for relevant platforms
         return;
 
     ov::snippets::pass::SnippetsTokenization::Config tokenization_config;

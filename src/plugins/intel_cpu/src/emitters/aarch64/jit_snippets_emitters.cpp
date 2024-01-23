@@ -458,6 +458,8 @@ LoadEmitter::LoadEmitter(jit_generator* h, cpu_isa_t isa, const ExpressionPtr& e
                        src_prc.get_type_name(),
                        " and ",
                        dst_prc.get_type_name());
+    if (src_prc != ov::element::f32)
+        OPENVINO_THROW("LoadEmitter only supports FP32 precision.");
 
     const auto load = std::dynamic_pointer_cast<snippets::op::Load>(expr->get_node());
     count = load->get_count();
@@ -494,6 +496,8 @@ BroadcastLoadEmitter::BroadcastLoadEmitter(jit_generator* h, cpu_isa_t isa, cons
                        src_prc.get_type_name(),
                        " and ",
                        dst_prc.get_type_name());
+    if (src_prc != ov::element::f32)
+        OPENVINO_THROW("BroadcastLoadEmitter only supports FP32 precision.");
 
     const auto broadcast_load = std::dynamic_pointer_cast<snippets::op::BroadcastLoad>(expr->get_node());
     byte_offset = broadcast_load->get_offset();
@@ -518,7 +522,6 @@ void BroadcastLoadEmitter::emit_isa(const std::vector<size_t> &in, const std::ve
     XReg src = XReg(in_u32[0]);
     TReg dst = TReg(out_u32[0]);
 
-    // todo: support more data type
     h->uni_ld1rw(dst.s, src, byte_offset);
 }
 
@@ -528,6 +531,8 @@ StoreEmitter::StoreEmitter(jit_generator* h, cpu_isa_t isa, const ExpressionPtr&
                        src_prc.get_type_name(),
                        " and ",
                        dst_prc.get_type_name());
+    if (src_prc != ov::element::f32)
+        OPENVINO_THROW("StoreEmitter only supports FP32 precision.");
 
     const auto store = ov::as_type_ptr<snippets::op::Store>(expr->get_node());
     count = store->get_count();
@@ -565,6 +570,9 @@ BroadcastMoveEmitter::BroadcastMoveEmitter(jit_generator* h, cpu_isa_t isa, cons
                        n->get_input_element_type(0),
                        " and ",
                        n->get_output_element_type(0));
+    if (n->get_input_element_type(0) != ov::element::f32)
+        OPENVINO_THROW("BroadcastMoveEmitter only supports FP32 precision.");
+
     byte_size = n->get_input_element_type(0).size();
 }
 

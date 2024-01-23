@@ -557,6 +557,44 @@ void StoreEmitter::emit_data() const {
     store_emitter->emit_data();
 }
 
+BroadcastMoveEmitter::BroadcastMoveEmitter(jit_generator* h, cpu_isa_t isa, const ExpressionPtr& expr)
+    : jit_emitter(h, isa) {
+    const auto n = expr->get_node();
+    if (n->get_input_element_type(0) != n->get_output_element_type(0))
+        OPENVINO_THROW("BroadcastMoveEmitter supports only equal input and output types but gets: ",
+                       n->get_input_element_type(0),
+                       " and ",
+                       n->get_output_element_type(0));
+    byte_size = n->get_input_element_type(0).size();
+}
+
+void BroadcastMoveEmitter::emit_impl(const std::vector<size_t>& in,
+          const std::vector<size_t>& out) const {
+    if (host_isa_ == dnnl::impl::cpu::aarch64::asimd) {
+        emit_isa<dnnl::impl::cpu::aarch64::asimd>(in, out);
+    } else {
+        OPENVINO_THROW("BroadcastMove emitter doesn't support ", host_isa_);
+    }
+}
+
+template <cpu_isa_t isa>
+void BroadcastMoveEmitter::emit_isa(const std::vector<size_t> &in, const std::vector<size_t> &out) const {
+    auto in_u32 = convert_to_u32<size_t>(in);
+    auto out_u32 = convert_to_u32<size_t>(out);
+
+    using TReg = typename dnnl::impl::cpu::aarch64::cpu_isa_traits<isa>::TReg;
+    TReg src = TReg(in_u32[0]);
+    TReg dst = TReg(out_u32[0]);
+
+    switch (byte_size) {
+        case 4:
+            h->dup(dst.s, src.s[0]);
+            break;
+        default:
+            OPENVINO_THROW("unsupported data size ", byte_size);
+    }
+}
+
 ScalarEmitter::ScalarEmitter(jit_generator* h, cpu_isa_t isa, const ExpressionPtr& expr) : jit_emitter(h, isa) {
     const auto n = expr->get_node();
     const auto& precision = n->get_output_element_type(0);

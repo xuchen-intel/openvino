@@ -91,6 +91,8 @@ void jit_emitter::emitter_preamble(const std::vector<size_t>& in_idxs,
                                    const std::vector<size_t>& out_idxs,
                                    const std::vector<size_t>& pool_aux_vec_idxs,
                                    const std::vector<size_t>& pool_aux_gpr_idxs) const {
+    // todo: like on x64, push back preserved_vec_idxs/preserved_gpr_idxs and preserve correspoding registers,
+    // if and only if the caller provided aux_vec_idxs/aux_gpr_idxs are not enough.
     if (pool_aux_vec_idxs.size() < get_aux_vecs_count()) {
         IE_THROW() << "Failed to allocate required number of vector registers";
     }
@@ -105,7 +107,6 @@ void jit_emitter::emitter_preamble(const std::vector<size_t>& in_idxs,
 
     for (auto idx : pool_aux_gpr_idxs) {
         aux_gpr_idxs.push_back(static_cast<uint32_t>(idx));
-        preserved_gpr_idxs.push_back(static_cast<uint32_t>(idx));
     }
 
     if (!entry_map_.empty()) {
@@ -114,21 +115,12 @@ void jit_emitter::emitter_preamble(const std::vector<size_t>& in_idxs,
         aux_gpr_idxs.erase(aux_gpr_idxs.end() - 1);
     }
 
-    for (size_t i = 0; i < preserved_gpr_idxs.size(); ++i) {
-        h->str(Xbyak_aarch64::XReg(preserved_gpr_idxs[i]), pre_ptr(h->sp, -16));
-    }
-
     if (!entry_map_.empty()) {
         load_table_addr();
     }
 }
 
 void jit_emitter::emitter_postamble() const {
-    for (size_t i = 0; i < preserved_gpr_idxs.size(); ++i) {
-        h->ldr(Xbyak_aarch64::XReg(preserved_gpr_idxs[i]), post_ptr(h->sp, 16));
-    }
-    preserved_gpr_idxs.clear();
-
     aux_vec_idxs.clear();
     aux_gpr_idxs.clear();
 }

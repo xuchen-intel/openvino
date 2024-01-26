@@ -674,6 +674,8 @@ void Transformations::PostLpt() {
 }
 
 void Transformations::MainSnippets(void) {
+    return;
+
     auto isSnippetsSupported = [](const ov::element::Type &inferencePrecision){
 #if defined(OPENVINO_ARCH_X86_64)
         return dnnl::impl::cpu::x64::mayiuse(dnnl::impl::cpu::x64::avx2);

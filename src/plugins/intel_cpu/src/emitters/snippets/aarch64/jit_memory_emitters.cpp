@@ -38,6 +38,7 @@ jit_load_memory_emitter::jit_load_memory_emitter(jit_generator* h, cpu_isa_t isa
         OPENVINO_THROW("jit_load_memory_emitter only supports FP32 precision.");
 
     const auto load = std::dynamic_pointer_cast<snippets::op::Load>(expr->get_node());
+    OV_CPU_JIT_EMITTER_ASSERT(load != nullptr, "expects Load expression");
     count = load->get_count();
     byte_offset = load->get_offset();
     in_out_type_ = emitter_in_out_map::gpr_to_vec;
@@ -76,6 +77,7 @@ jit_load_broadcast_emitter::jit_load_broadcast_emitter(jit_generator* h, cpu_isa
         OPENVINO_THROW("jit_load_broadcast_emitter only supports FP32 precision.");
 
     const auto broadcast_load = std::dynamic_pointer_cast<snippets::op::BroadcastLoad>(expr->get_node());
+    OV_CPU_JIT_EMITTER_ASSERT(broadcast_load != nullptr, "expects BroadcastLoad expression");
     byte_offset = broadcast_load->get_offset();
     in_out_type_ = emitter_in_out_map::gpr_to_vec;
 }
@@ -108,6 +110,7 @@ jit_store_memory_emitter::jit_store_memory_emitter(jit_generator* h, cpu_isa_t i
         OPENVINO_THROW("jit_store_memory_emitter only supports FP32 precision.");
 
     const auto store = ov::as_type_ptr<snippets::op::Store>(expr->get_node());
+    OV_CPU_JIT_EMITTER_ASSERT(store != nullptr, "expects Store expression");
     count = store->get_count();
     byte_offset = store->get_offset();
     in_out_type_ = emitter_in_out_map::vec_to_gpr;

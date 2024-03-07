@@ -232,7 +232,7 @@ void jit_loop_end_dynamic_emitter::emit_impl(const std::vector<size_t>& in, cons
     XReg reg_aux = XReg(aux_gpr_idxs[1]);
     const auto id_offset = loop_id * sizeof(jit_snippets_call_args::loop_args_t);
 
-    std::vector<XReg> data_ptr_regs = transform_idxs_to_regs(std::vector<size_t>(in.begin(), in.end() - 2));
+    std::vector<XReg> data_ptr_regs = transform_idxs_to_regs(std::vector<size_t>(in.begin(), in.end() - 1));
 
     // todo: Note that we can pre-save reg_loop_args_ptr in jit_loop_begin_dynamic_emitter and pass it here like work_amount_reg
     //        this would save us one dereferencing here and in finalization offsets

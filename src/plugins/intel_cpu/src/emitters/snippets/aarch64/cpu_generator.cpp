@@ -68,11 +68,11 @@ bool CompiledSnippetCPU::empty() const {
 CPUTargetMachine::CPUTargetMachine(dnnl::impl::cpu::aarch64::cpu_isa_t host_isa)
     : TargetMachine(), h(new jit_snippet()), isa(host_isa) {
     // data movement
-    jitters[op::v0::Parameter::get_type_info_static()] = CREATE_SNIPPETS_EMITTER(NopEmitter);
-    jitters[op::v0::Result::get_type_info_static()] = CREATE_SNIPPETS_EMITTER(NopEmitter);
-    jitters[snippets::op::VectorBuffer::get_type_info_static()] = CREATE_SNIPPETS_EMITTER(NopEmitter);
-    jitters[snippets::op::RankNormalization::get_type_info_static()] = CREATE_SNIPPETS_EMITTER(NopEmitter);
-    jitters[snippets::op::BroadcastMove::get_type_info_static()] = CREATE_SNIPPETS_EMITTER(BroadcastMoveEmitter);
+    jitters[op::v0::Parameter::get_type_info_static()] = CREATE_SNIPPETS_EMITTER(jit_nop_emitter);
+    jitters[op::v0::Result::get_type_info_static()] = CREATE_SNIPPETS_EMITTER(jit_nop_emitter);
+    jitters[snippets::op::VectorBuffer::get_type_info_static()] = CREATE_SNIPPETS_EMITTER(jit_nop_emitter);
+    jitters[snippets::op::RankNormalization::get_type_info_static()] = CREATE_SNIPPETS_EMITTER(jit_nop_emitter);
+    jitters[snippets::op::BroadcastMove::get_type_info_static()] = CREATE_SNIPPETS_EMITTER(jit_broadcast_move_emitter);
 
     // memory access
     jitters[snippets::op::Load::get_type_info_static()] = CREATE_SNIPPETS_EMITTER(jit_load_memory_emitter);
@@ -98,8 +98,8 @@ CPUTargetMachine::CPUTargetMachine(dnnl::impl::cpu::aarch64::cpu_isa_t host_isa)
     jitters[snippets::op::LoopEndDynamic::get_type_info_static()] = CREATE_SNIPPETS_EMITTER(jit_loop_end_dynamic_emitter);
 
     // others
-    jitters[snippets::op::Scalar::get_type_info_static()] = CREATE_SNIPPETS_EMITTER(ScalarEmitter);
-    jitters[snippets::op::Fill::get_type_info_static()] = CREATE_SNIPPETS_EMITTER(FillEmitter);
+    jitters[snippets::op::Scalar::get_type_info_static()] = CREATE_SNIPPETS_EMITTER(jit_scalar_emitter);
+    jitters[snippets::op::Fill::get_type_info_static()] = CREATE_SNIPPETS_EMITTER(jit_fill_emitter);
 }
 
 bool CPUTargetMachine::is_supported() const {

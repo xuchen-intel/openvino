@@ -10,11 +10,11 @@ namespace ov {
 namespace intel_cpu {
 namespace aarch64 {
 
-class FillEmitter : public jit_emitter {
+class jit_fill_emitter : public jit_emitter {
 public:
-    FillEmitter(dnnl::impl::cpu::aarch64::jit_generator* h,
-                dnnl::impl::cpu::aarch64::cpu_isa_t isa,
-                const ov::snippets::lowered::ExpressionPtr& expr);
+    jit_fill_emitter(dnnl::impl::cpu::aarch64::jit_generator* h,
+                     dnnl::impl::cpu::aarch64::cpu_isa_t isa,
+                     const ov::snippets::lowered::ExpressionPtr& expr);
 
     size_t get_inputs_count() const override {return 1;}
 

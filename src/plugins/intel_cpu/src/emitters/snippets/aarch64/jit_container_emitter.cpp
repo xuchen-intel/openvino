@@ -3,6 +3,7 @@
 //
 
 #include "jit_container_emitter.hpp"
+#include "emitters/utils.hpp"
 
 using namespace Xbyak_aarch64;
 

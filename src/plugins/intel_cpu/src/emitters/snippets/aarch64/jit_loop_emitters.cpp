@@ -3,8 +3,8 @@
 //
 
 #include "jit_loop_emitters.hpp"
-
 #include "jit_kernel_emitter.hpp"
+#include "emitters/utils.hpp"
 
 using namespace Xbyak_aarch64;
 

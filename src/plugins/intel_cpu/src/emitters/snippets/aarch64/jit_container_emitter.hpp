@@ -27,8 +27,6 @@ public:
 protected:
     // maps gpr and vec abstract registers to physical ones.
     void map_abstract_registers(mapping_info& gpr_map_pool, mapping_info& vec_map_pool, snippets::lowered::LinearIR::container& expressions) const;
-
-    snippets::lowered::LinearIR body;
 };
 
 }   // namespace aarch64

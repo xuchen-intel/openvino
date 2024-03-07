@@ -225,7 +225,7 @@ jit_kernel_static_emitter::jit_kernel_static_emitter(dnnl::impl::cpu::aarch64::j
                 etype = expr->get_node()->get_input_element_type(0);
                 break;
             } default : {
-                OPENVINO_THROW("Kernel detected unsupported io_type");
+                OV_CPU_JIT_EMITTER_THROW("Kernel detected unsupported io_type");
             }
         }
         const auto& shape = desc->get_shape();

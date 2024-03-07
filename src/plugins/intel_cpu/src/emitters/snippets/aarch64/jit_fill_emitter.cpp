@@ -4,6 +4,7 @@
 
 #include "jit_fill_emitter.hpp"
 #include "cpu/aarch64/xbyak_aarch64/xbyak_aarch64/xbyak_aarch64_adr.h"
+#include "emitters/utils.hpp"
 
 using namespace Xbyak_aarch64;
 
@@ -20,7 +21,7 @@ jit_fill_emitter::jit_fill_emitter(jit_generator* h, cpu_isa_t isa, const Expres
     const auto fill = ov::as_type_ptr<snippets::op::Fill>(expr->get_node());
     OV_CPU_JIT_EMITTER_ASSERT(fill != nullptr, "expects Fill expression");
     if (fill->get_element_type().size() != 4) {
-        OPENVINO_THROW("Fill emitter supports only 4 Byte element types but gets: ", fill->get_element_type());
+        OV_CPU_JIT_EMITTER_THROW("Fill emitter supports only 4 Byte element types but gets ", fill->get_element_type());
     }
 
     offset = fill->get_offset();
@@ -43,7 +44,7 @@ void jit_fill_emitter::emit_impl(const std::vector<size_t>& in,
     if (host_isa_ == dnnl::impl::cpu::aarch64::asimd) {
         emit_isa<dnnl::impl::cpu::aarch64::asimd>(in, out);
     } else {
-        OPENVINO_THROW("Fill emitter doesn't support ", host_isa_);
+        OV_CPU_JIT_EMITTER_THROW("Fill emitter doesn't support ", host_isa_);
     }
 }
 
@@ -89,7 +90,7 @@ void jit_fill_emitter::fill_tail(const std::vector<size_t> &in, const std::vecto
         case 4:
             break;
         default:
-            OPENVINO_THROW("Fill emitter has unexpected offset: ", offset);
+            OV_CPU_JIT_EMITTER_THROW("Fill emitter has unexpected offset ", offset);
     }
 }
 

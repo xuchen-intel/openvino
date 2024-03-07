@@ -5,6 +5,7 @@
 #include "snippets/snippets_isa.hpp"
 #include "cpu_generator.hpp"
 #include "jit_snippets_emitters.hpp"
+#include "emitters/utils.hpp"
 #include "emitters/plugin/aarch64/jit_eltwise_emitters.hpp"
 #include "emitters/snippets/aarch64/jit_kernel_emitter.hpp"
 #include "emitters/snippets/aarch64/jit_loop_emitters.hpp"
@@ -50,7 +51,7 @@ namespace intel_cpu {
 namespace aarch64 {
 
 CompiledSnippetCPU::CompiledSnippetCPU(std::unique_ptr<dnnl::impl::cpu::aarch64::jit_generator> h) : h_compiled(std::move(h)) {
-    OPENVINO_ASSERT(h_compiled && h_compiled->jit_ker(), "Got invalid jit generator or kernel was nopt compiled");
+    OV_CPU_JIT_EMITTER_ASSERT(h_compiled && h_compiled->jit_ker(), "Got invalid jit generator or kernel was nopt compiled");
 }
 
 const uint8_t* CompiledSnippetCPU::get_code() const {
@@ -108,7 +109,7 @@ bool CPUTargetMachine::is_supported() const {
 
 snippets::CompiledSnippetPtr CPUTargetMachine::get_snippet() {
     if (h->create_kernel() != dnnl::impl::status::success) {
-        OPENVINO_THROW("Failed to create jit_kernel in get_snippet()");
+        OV_CPU_JIT_EMITTER_THROW("Failed to create jit_kernel in get_snippet()");
     }
     const auto& result = std::make_shared<CompiledSnippetCPU>(std::unique_ptr<dnnl::impl::cpu::aarch64::jit_generator>(h.release()));
     // Note that we reset all the generated code, since it was copied into CompiledSnippetCPU
@@ -119,7 +120,7 @@ snippets::CompiledSnippetPtr CPUTargetMachine::get_snippet() {
 size_t CPUTargetMachine::get_lanes() const {
     switch (isa) {
         case dnnl::impl::cpu::aarch64::asimd : return dnnl::impl::cpu::aarch64::cpu_isa_traits<dnnl::impl::cpu::aarch64::asimd>::vlen / sizeof(float);
-        default : OPENVINO_THROW("unknown isa ", isa);
+        default : OV_CPU_JIT_EMITTER_THROW("unknown isa ", isa);
     }
 }
 
@@ -131,14 +132,14 @@ CPUGenerator::CPUGenerator(dnnl::impl::cpu::aarch64::cpu_isa_t isa_) : Generator
 
 std::shared_ptr<snippets::Generator> CPUGenerator::clone() const {
     const auto& cpu_target_machine = std::dynamic_pointer_cast<CPUTargetMachine>(target);
-    OPENVINO_ASSERT(cpu_target_machine, "Failed to clone CPUGenerator: the instance contains incompatible TargetMachine type");
+    OV_CPU_JIT_EMITTER_ASSERT(cpu_target_machine, "Failed to clone CPUGenerator: the instance contains incompatible TargetMachine type");
     return std::make_shared<CPUGenerator>(cpu_target_machine->get_isa());
 }
 
 ov::snippets::RegType CPUGenerator::get_specific_op_out_reg_type(const ov::Output<ov::Node>& out) const {
     const auto op = out.get_node_shared_ptr();
     // todo: add implementation
-    OPENVINO_THROW("Register type of the operation " + std::string(op->get_type_name()) + " isn't determined!");
+    OV_CPU_JIT_EMITTER_THROW("Register type of the operation " + std::string(op->get_type_name()) + " isn't determined!");
     return ov::snippets::RegType::gpr;
 }
 

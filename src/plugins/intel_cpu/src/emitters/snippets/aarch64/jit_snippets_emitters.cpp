@@ -5,6 +5,7 @@
 #include "jit_snippets_emitters.hpp"
 #include "cpu/aarch64/jit_generator.hpp"
 #include "cpu/aarch64/xbyak_aarch64/xbyak_aarch64/xbyak_aarch64_adr.h"
+#include "emitters/utils.hpp"
 
 using namespace Xbyak_aarch64;
 
@@ -24,12 +25,12 @@ jit_broadcast_move_emitter::jit_broadcast_move_emitter(jit_generator* h, cpu_isa
     : jit_emitter(h, isa) {
     const auto n = expr->get_node();
     if (n->get_input_element_type(0) != n->get_output_element_type(0))
-        OPENVINO_THROW("jit_broadcast_move_emitter supports only equal input and output types but gets: ",
-                       n->get_input_element_type(0),
-                       " and ",
-                       n->get_output_element_type(0));
+        OV_CPU_JIT_EMITTER_THROW("jit_broadcast_move_emitter supports only equal input and output types but gets ",
+                                 n->get_input_element_type(0),
+                                 " and ",
+                                 n->get_output_element_type(0));
     if (n->get_input_element_type(0) != ov::element::f32)
-        OPENVINO_THROW("jit_broadcast_move_emitter only supports FP32 precision.");
+        OV_CPU_JIT_EMITTER_THROW("jit_broadcast_move_emitter only supports FP32 precision.");
 
     byte_size = n->get_input_element_type(0).size();
 }
@@ -39,7 +40,7 @@ void jit_broadcast_move_emitter::emit_impl(const std::vector<size_t>& in,
     if (host_isa_ == dnnl::impl::cpu::aarch64::asimd) {
         emit_isa<dnnl::impl::cpu::aarch64::asimd>(in, out);
     } else {
-        OPENVINO_THROW("jit_broadcast_move_emitter doesn't support ", host_isa_);
+        OV_CPU_JIT_EMITTER_THROW("jit_broadcast_move_emitter doesn't support ", host_isa_);
     }
 }
 
@@ -54,7 +55,7 @@ void jit_broadcast_move_emitter::emit_isa(const std::vector<size_t> &in, const s
             h->dup(dst.s, src.s[0]);
             break;
         default:
-            OPENVINO_THROW("unsupported data size ", byte_size);
+            OV_CPU_JIT_EMITTER_THROW("unsupported data size ", byte_size);
     }
 }
 
@@ -71,7 +72,7 @@ jit_scalar_emitter::jit_scalar_emitter(jit_generator* h, cpu_isa_t isa, const Ex
             break;
         }
         default: {
-            OPENVINO_THROW("Scalar emitter doesn't support ", precision);
+            OV_CPU_JIT_EMITTER_THROW("Scalar emitter doesn't support ", precision);
         }
     }
     push_arg_entry_of("scalar", value, true);
@@ -83,7 +84,7 @@ void jit_scalar_emitter::emit_impl(const std::vector<size_t>& in,
     if (host_isa_ == dnnl::impl::cpu::aarch64::asimd) {
         emit_isa<dnnl::impl::cpu::aarch64::asimd>(in, out);
     } else {
-        OPENVINO_THROW("Scalar emitter doesn't support ", host_isa_);
+        OV_CPU_JIT_EMITTER_THROW("Scalar emitter doesn't support ", host_isa_);
     }
 }
 

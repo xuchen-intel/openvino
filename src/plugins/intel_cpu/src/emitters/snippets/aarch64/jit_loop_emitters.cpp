@@ -227,7 +227,7 @@ void jit_loop_end_dynamic_emitter::emit_code(const std::vector<size_t> &in, cons
 
 void jit_loop_end_dynamic_emitter::emit_impl(const std::vector<size_t>& in, const std::vector<size_t>& out) const {
     XReg reg_runtime_params = XReg(Operand::X0);  // defined by jit_kernel_emitter
-    XReg reg_work_amount = XReg(in[in.size() - 2]);
+    XReg reg_work_amount = XReg(in.back());
     XReg reg_increments = XReg(aux_gpr_idxs[0]);
     XReg reg_aux = XReg(aux_gpr_idxs[1]);
     const auto id_offset = loop_id * sizeof(jit_snippets_call_args::loop_args_t);

@@ -723,16 +723,16 @@ void Transformations::PostLpt() {
 }
 
 void Transformations::MainSnippets(void) {
-    auto isSnippetsSupported = [](const ov::element::Type &inferencePrecision){
+    auto is_supported_isa = [](){
 #if defined(OPENVINO_ARCH_X86_64)
         return dnnl::impl::cpu::x64::mayiuse(dnnl::impl::cpu::x64::avx2);
 #elif defined(OPENVINO_ARCH_ARM64)
-        return dnnl::impl::cpu::aarch64::mayiuse(dnnl::impl::cpu::aarch64::asimd) && inferencePrecision == ov::element::f32;
+        return dnnl::impl::cpu::aarch64::mayiuse(dnnl::impl::cpu::aarch64::asimd);
 #endif
         return false;
     };
 
-    if (snippetsMode == Config::SnippetsMode::Disable || !isSnippetsSupported(inferencePrecision))
+    if (snippetsMode == Config::SnippetsMode::Disable || !is_supported_isa())
         return;
 
     ov::snippets::pass::SnippetsTokenization::Config tokenization_config;

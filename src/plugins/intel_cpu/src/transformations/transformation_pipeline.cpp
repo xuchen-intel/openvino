@@ -883,6 +883,12 @@ void Transformations::MainSnippets(void) {
                 return false;
             },
             snippets::pass::TokenizeSnippets);
+            CPU_SET_CALLBACK_ARM(snippetsManager, [&](const std::shared_ptr<const ov::Node>& n) -> bool {
+                const bool is_support_op = ov::is_type<const ov::op::v1::Add>(n) ||
+                                           ov::is_type<const ov::op::v1::Multiply>(n) ||
+                                           ov::is_type<const ov::op::v0::Relu>(n);
+                return !is_support_op;
+            }, snippets::pass::TokenizeSnippets);
     }
     snippetsManager.run_passes(model);
 }

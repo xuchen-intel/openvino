@@ -4,7 +4,6 @@
 
 #include "shape_inference.hpp"
 #include "snippets/shape_inference/shape_infer_instances.hpp"
-#include "transformations/cpu_opset/common/op/swish_cpu.hpp"
 
 namespace ov {
 namespace snippets {

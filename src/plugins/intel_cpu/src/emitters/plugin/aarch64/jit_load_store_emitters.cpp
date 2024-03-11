@@ -4,6 +4,7 @@
 
 #include "jit_load_store_emitters.hpp"
 #include "cpu/aarch64/cpu_isa_traits.hpp"
+#include "emitters/utils.hpp"
 
 using namespace Xbyak_aarch64;
 
@@ -32,9 +33,8 @@ void jit_load_emitter::emit_impl(const std::vector<size_t> &in_idxs, const std::
 
 template <cpu_isa_t isa>
 void jit_load_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {
-    bool matched_prc = src_prc_ == ov::element::f32 && dst_prc_ == ov::element::f32;
-    if (!matched_prc)
-        OPENVINO_THROW("Load emitter in ", name_, " only support both input and output precisions of being FP32.");
+    OV_CPU_JIT_EMITTER_ASSERT(src_prc_ == ov::element::f32 && dst_prc_ == ov::element::f32,
+                              " only supports both input and output precisions of being FP32");
     if (load_num_ > static_cast<int>((get_vec_length() / dst_prc_.size())))
         OPENVINO_THROW("Load emitter in ", name_, " have unexpected number of elements to load.");
 
@@ -91,9 +91,8 @@ void jit_store_emitter::emit_impl(const std::vector<size_t> &in_idxs, const std:
 
 template <cpu_isa_t isa>
 void jit_store_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {
-    bool matched_prc = src_prc_ == ov::element::f32 && dst_prc_ == ov::element::f32;
-    if (!matched_prc)
-        OPENVINO_THROW("Store emitter in ", name_, " only support both input and output precisions of being FP32.");
+    OV_CPU_JIT_EMITTER_ASSERT(src_prc_ == ov::element::f32 && dst_prc_ == ov::element::f32,
+                              " only supports both input and output precisions of being FP32");
     if (store_num_ > static_cast<int>((get_vec_length() / dst_prc_.size())))
         OPENVINO_THROW("Store emitter in ", name_, " have unexpected number of elements to store.");
 

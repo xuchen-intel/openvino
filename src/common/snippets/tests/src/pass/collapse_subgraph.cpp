@@ -100,15 +100,12 @@ TEST_F(CollapseSubgraphTests, smoke_Snippets_EltwiseTwoResultsFunction) {
     run();
 }
 
-// todo: Remove the architecture constraint after data type u8 for ARM Snippets being supported
-#if defined(OPENVINO_ARCH_X86_64)
 TEST_F(CollapseSubgraphTests, smoke_Snippets_ThreeFQFunction) {
     const auto& f = ThreeFQFunction(std::vector<PartialShape>{});
     model = f.getOriginal();
     model_ref = f.getReference();
     run();
 }
-#endif
 
 }  // namespace snippets
 }  // namespace test

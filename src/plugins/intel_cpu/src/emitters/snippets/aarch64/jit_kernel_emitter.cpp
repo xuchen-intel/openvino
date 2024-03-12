@@ -28,14 +28,6 @@ inline static std::vector<size_t> transform_snippets_regs_to_idxs(const std::vec
     return idxs;
 }
 
-inline static void push_XReg(dnnl::impl::cpu::aarch64::jit_generator *h, uint32_t xreg_idx) {
-    h->str(Xbyak_aarch64::XReg(xreg_idx), pre_ptr(h->sp, -16));
-}
-
-inline void pop_XReg(dnnl::impl::cpu::aarch64::jit_generator *h, uint32_t xreg_idx) {
-    h->ldr(Xbyak_aarch64::XReg(xreg_idx), post_ptr(h->sp, 16));
-}
-
 jit_snippets_call_args::~jit_snippets_call_args() {
     delete[] loop_args;
 }
@@ -249,8 +241,8 @@ jit_kernel_static_emitter::jit_kernel_static_emitter(dnnl::impl::cpu::aarch64::j
 
 void jit_kernel_static_emitter::init_data_pointers(const std::vector<XReg>& data_ptr_regs) const {
     // X19~X28 are Callee-saved registers. Their contents must be saved before usage and restored afterwards.
-    push_XReg(h, 19);
-    push_XReg(h, 20);
+    push_XReg(19);
+    push_XReg(20);
     XReg reg_tmp = XReg(19);
     XReg reg_aux = XReg(20);
 
@@ -325,8 +317,8 @@ void jit_kernel_static_emitter::init_data_pointers(const std::vector<XReg>& data
         init_ptr_with_offset(data_ptr_regs[i], data_offsets[i]);
     }
 
-    pop_XReg(h, 20);
-    pop_XReg(h, 19);
+    pop_XReg(20);
+    pop_XReg(19);
 }
 
 jit_kernel_dynamic_emitter::jit_kernel_dynamic_emitter(dnnl::impl::cpu::aarch64::jit_generator* h, dnnl::impl::cpu::aarch64::cpu_isa_t isa,

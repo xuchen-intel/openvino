@@ -25,16 +25,16 @@ void jit_load_emitter::emit_impl(const std::vector<size_t> &in_idxs, const std::
     if (host_isa_ == dnnl::impl::cpu::aarch64::asimd) {
         emit_isa<dnnl::impl::cpu::aarch64::asimd>(in_idxs, out_idxs);
     } else {
-        OPENVINO_THROW("Load emitter in ", name_, " is performed on unsupported isa.");
+        OV_CPU_JIT_EMITTER_THROW("Unsupported isa.");
     }
 }
 
 template <cpu_isa_t isa>
 void jit_load_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {
     OV_CPU_JIT_EMITTER_ASSERT(src_prc_ == ov::element::f32 && dst_prc_ == ov::element::f32,
-                              " only supports both input and output precisions of being FP32");
-    if (load_num_ > static_cast<int>((get_vec_length() / dst_prc_.size())))
-        OPENVINO_THROW("Load emitter in ", name_, " have unexpected number of elements to load.");
+                              "Only supports both input and output precisions of being FP32");
+    OV_CPU_JIT_EMITTER_ASSERT(load_num_ <= static_cast<int>((get_vec_length() / dst_prc_.size())),
+                              "Unexpected number of elements to load.");
 
     using TReg = typename dnnl::impl::cpu::aarch64::cpu_isa_traits<isa>::TReg;
     XReg src = XReg(in_idxs[0]);
@@ -61,7 +61,7 @@ void jit_load_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::v
             h->uni_ldr(dst, src, byte_offset_);
             break;
         default:
-            OPENVINO_THROW("Load emitter in ", name_, " has unexpected number of elements to load.");
+            OV_CPU_JIT_EMITTER_THROW("Unexpected number of elements to load.");
     }
 }
 
@@ -79,16 +79,16 @@ void jit_store_emitter::emit_impl(const std::vector<size_t> &in_idxs, const std:
     if (host_isa_ == dnnl::impl::cpu::aarch64::asimd) {
         emit_isa<dnnl::impl::cpu::aarch64::asimd>(in_idxs, out_idxs);
     } else {
-        OPENVINO_THROW("Store emitter in ", name_, " is performed on unsupported isa.");
+        OV_CPU_JIT_EMITTER_THROW("Unsupported isa.");
     }
 }
 
 template <cpu_isa_t isa>
 void jit_store_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {
     OV_CPU_JIT_EMITTER_ASSERT(src_prc_ == ov::element::f32 && dst_prc_ == ov::element::f32,
-                              " only supports both input and output precisions of being FP32");
-    if (store_num_ > static_cast<int>((get_vec_length() / dst_prc_.size())))
-        OPENVINO_THROW("Store emitter in ", name_, " have unexpected number of elements to store.");
+                            "Only supports both input and output precisions of being FP32");
+    OV_CPU_JIT_EMITTER_ASSERT(store_num_ <= static_cast<int>((get_vec_length() / dst_prc_.size())),
+                              "Unexpected number of elements to store.");
 
     using TReg = typename dnnl::impl::cpu::aarch64::cpu_isa_traits<isa>::TReg;
     TReg src = TReg(in_idxs[0]);
@@ -115,7 +115,7 @@ void jit_store_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::
             h->str(QReg(src.getIdx()), post_ptr(dst, byte_offset_));
             break;
         default:
-            OPENVINO_THROW("Store emitter in ", name_, " has unexpected number of elements to store.");
+            OV_CPU_JIT_EMITTER_THROW("Unexpected number of elements to store.");
     }
 }
 

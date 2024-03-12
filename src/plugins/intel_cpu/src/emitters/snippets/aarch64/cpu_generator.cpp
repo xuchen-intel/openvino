@@ -108,9 +108,8 @@ bool CPUTargetMachine::is_supported() const {
 }
 
 snippets::CompiledSnippetPtr CPUTargetMachine::get_snippet() {
-    if (h->create_kernel() != dnnl::impl::status::success) {
-        OV_CPU_JIT_EMITTER_THROW("Failed to create jit_kernel in get_snippet()");
-    }
+    OV_CPU_JIT_EMITTER_ASSERT(h->create_kernel() == dnnl::impl::status::success, "Failed to create jit_kernel in get_snippet()");
+
     const auto& result = std::make_shared<CompiledSnippetCPU>(std::unique_ptr<dnnl::impl::cpu::aarch64::jit_generator>(h.release()));
     // Note that we reset all the generated code, since it was copied into CompiledSnippetCPU
     h.reset(new jit_snippet());
@@ -120,7 +119,7 @@ snippets::CompiledSnippetPtr CPUTargetMachine::get_snippet() {
 size_t CPUTargetMachine::get_lanes() const {
     switch (isa) {
         case dnnl::impl::cpu::aarch64::asimd : return dnnl::impl::cpu::aarch64::cpu_isa_traits<dnnl::impl::cpu::aarch64::asimd>::vlen / sizeof(float);
-        default : OV_CPU_JIT_EMITTER_THROW("unknown isa ", isa);
+        default : OV_CPU_JIT_EMITTER_THROW("Unknown isa ", isa);
     }
 }
 

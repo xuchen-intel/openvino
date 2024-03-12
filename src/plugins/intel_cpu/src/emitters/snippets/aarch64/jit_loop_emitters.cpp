@@ -32,11 +32,11 @@ jit_loop_begin_emitter::jit_loop_begin_emitter(dnnl::impl::cpu::aarch64::jit_gen
 }
 
 std::shared_ptr<ov::snippets::op::LoopEnd> jit_loop_begin_emitter::get_loop_end(const ov::snippets::lowered::ExpressionPtr& expr) {
-    OV_CPU_JIT_EMITTER_ASSERT(expr->get_output_port_connectors().size() == 1, "has invalid LoopBegin expression configuration");
+    OV_CPU_JIT_EMITTER_ASSERT(expr->get_output_port_connectors().size() == 1, "Has invalid LoopBegin expression configuration");
     const auto& consumers = expr->get_output_port_connector(0)->get_consumers();
-    OV_CPU_JIT_EMITTER_ASSERT(consumers.size() == 1, "has invalid LoopBegin expression configuration");
+    OV_CPU_JIT_EMITTER_ASSERT(consumers.size() == 1, "Has invalid LoopBegin expression configuration");
     const auto loop_end = ov::as_type_ptr<snippets::op::LoopEnd>(consumers.cbegin()->get_expr()->get_node());
-    OV_CPU_JIT_EMITTER_ASSERT(loop_end != nullptr, "has invalid LoopBegin expression configuration");
+    OV_CPU_JIT_EMITTER_ASSERT(loop_end != nullptr, "Has invalid LoopBegin expression configuration");
     return loop_end;
 }
 
@@ -44,7 +44,7 @@ jit_loop_begin_static_emitter::jit_loop_begin_static_emitter(dnnl::impl::cpu::aa
                                                              const ov::snippets::lowered::ExpressionPtr& expr)
     : jit_loop_begin_emitter(h, isa, expr) {
     OV_CPU_JIT_EMITTER_ASSERT(ov::is_type<snippets::op::LoopBeginStatic>(expr->get_node()),
-                              "expects LoopBeginStatic expression");
+                              "Expects LoopBeginStatic expression");
     const auto loop_end = ov::as_type_ptr<snippets::op::LoopEndStatic>(get_loop_end(expr));
     work_amount = loop_end->get_work_amount();
     wa_increment = loop_end->get_increment();
@@ -74,7 +74,7 @@ void jit_loop_begin_static_emitter::emit_code(const std::vector<size_t> &in, con
 jit_loop_begin_dynamic_emitter::jit_loop_begin_dynamic_emitter(dnnl::impl::cpu::aarch64::jit_generator* h, dnnl::impl::cpu::aarch64::cpu_isa_t isa,
                                                                const ov::snippets::lowered::ExpressionPtr& expr)
     : jit_loop_begin_emitter(h, isa, expr), loop_end_label(nullptr) {
-    OV_CPU_JIT_EMITTER_ASSERT(ov::is_type<snippets::op::LoopBeginDynamic>(expr->get_node()), "expects LoopBeginDynamic expression");
+    OV_CPU_JIT_EMITTER_ASSERT(ov::is_type<snippets::op::LoopBeginDynamic>(expr->get_node()), "Expects LoopBeginDynamic expression");
     const auto loop_end = get_loop_end(expr);
     wa_increment = loop_end->get_increment();
     loop_id = loop_end->get_id();
@@ -85,7 +85,7 @@ void jit_loop_begin_dynamic_emitter::validate_arguments(const std::vector<size_t
     OV_CPU_JIT_EMITTER_ASSERT(in.empty(), "Invalid inputs size: expected 0 got " + std::to_string(in.size()));
     // Note: the only expected output is work amount register (communicated to jit_loop_end_emitter)
     OV_CPU_JIT_EMITTER_ASSERT(out.size() == 1, "Invalid outputs size: expected 1 got " + std::to_string(out.size()));
-    OV_CPU_JIT_EMITTER_ASSERT(loop_end_label != nullptr && loop_begin_label != nullptr, "has not inited labels!");
+    OV_CPU_JIT_EMITTER_ASSERT(loop_end_label != nullptr && loop_begin_label != nullptr, "Has not inited labels!");
 }
 
 void jit_loop_begin_dynamic_emitter::emit_code(const std::vector<size_t> &in, const std::vector<size_t> &out,
@@ -118,7 +118,7 @@ jit_loop_end_emitter::jit_loop_end_emitter(dnnl::impl::cpu::aarch64::jit_generat
     : jit_emitter(h, isa), loop_begin_label{nullptr} {
     in_out_type_ = emitter_in_out_map::gpr_to_gpr;
     const auto loop_end = ov::as_type_ptr<snippets::op::LoopEnd>(expr->get_node());
-    OV_CPU_JIT_EMITTER_ASSERT(loop_end != nullptr, "expected LoopEnd expr");
+    OV_CPU_JIT_EMITTER_ASSERT(loop_end != nullptr, "Expected LoopEnd expr");
     // Note that 1 edge connects LoopBegin and LoopEnd
     num_inputs = loop_end->get_input_num();
     num_outputs = loop_end->get_output_num();
@@ -142,7 +142,7 @@ jit_loop_end_static_emitter::jit_loop_end_static_emitter(dnnl::impl::cpu::aarch6
                                                          const ov::snippets::lowered::ExpressionPtr& expr)
     : jit_loop_end_emitter(h, isa, expr) {
     const auto loop_end = ov::as_type_ptr<snippets::op::LoopEndStatic>(expr->get_node());
-    OV_CPU_JIT_EMITTER_ASSERT(loop_end != nullptr, "expected LoopEndStatic expr");
+    OV_CPU_JIT_EMITTER_ASSERT(loop_end != nullptr, "Expected LoopEndStatic expr");
     work_amount = static_cast<int64_t>(loop_end->get_work_amount());
     is_incremented = loop_end->get_is_incremented();
     ptr_increments = loop_end->get_ptr_increments();
@@ -202,7 +202,7 @@ jit_loop_end_dynamic_emitter::jit_loop_end_dynamic_emitter(dnnl::impl::cpu::aarc
                                                            const ov::snippets::lowered::ExpressionPtr& expr)
     : jit_loop_end_emitter(h, isa, expr), loop_end_label{new Xbyak_aarch64::Label()} {
     const auto loop_end = ov::as_type_ptr<snippets::op::LoopEndDynamic>(expr->get_node());
-    OV_CPU_JIT_EMITTER_ASSERT(loop_end != nullptr, "expected LoopEndDynamic expr");
+    OV_CPU_JIT_EMITTER_ASSERT(loop_end != nullptr, "Expected LoopEndDynamic expr");
     loop_id = loop_end->get_id();
 
     const auto begin_expr = get_loop_begin_expr(expr);
@@ -212,7 +212,7 @@ jit_loop_end_dynamic_emitter::jit_loop_end_dynamic_emitter(dnnl::impl::cpu::aarc
 }
 
 void jit_loop_end_dynamic_emitter::validate_arguments(const std::vector<size_t> &in, const std::vector<size_t> &out) const {
-    OV_CPU_JIT_EMITTER_ASSERT(loop_end_label != nullptr && loop_begin_label != nullptr, "has not inited labels!");
+    OV_CPU_JIT_EMITTER_ASSERT(loop_end_label != nullptr && loop_begin_label != nullptr, "Has not inited labels!");
     // Note: there must be additional input argument for runtime parameters
     const auto io_size = num_inputs + num_outputs;
     OV_CPU_JIT_EMITTER_ASSERT(in.size() == io_size + 1, "Invalid number of in arguments: expected ", io_size + 1, " got ", in.size());

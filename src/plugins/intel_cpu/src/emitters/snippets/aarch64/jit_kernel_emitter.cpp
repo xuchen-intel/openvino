@@ -80,8 +80,8 @@ void swap(jit_snippets_call_args::loop_args_t& first, jit_snippets_call_args::lo
 jit_kernel_emitter::jit_kernel_emitter(jit_generator* h, cpu_isa_t isa, const ov::snippets::lowered::ExpressionPtr& expr)
     : jit_container_emitter(h, isa), reg_runtime_params_idx(Operand::X0) {
     const auto kernel = ov::as_type_ptr<snippets::op::Kernel>(expr->get_node());
-    OV_CPU_JIT_EMITTER_ASSERT(kernel != nullptr, "invoked with invalid op argument");
-    OV_CPU_JIT_EMITTER_ASSERT(!kernel->region.empty(), "invoked with empty body");
+    OV_CPU_JIT_EMITTER_ASSERT(kernel != nullptr, "Invoked with invalid op argument");
+    OV_CPU_JIT_EMITTER_ASSERT(!kernel->region.empty(), "Invoked with empty body");
     body = kernel->region;
     jcp = *reinterpret_cast<const jit_snippets_compile_args*>(kernel->compile_params);
     num_inputs = 0;
@@ -97,7 +97,7 @@ jit_kernel_emitter::jit_kernel_emitter(jit_generator* h, cpu_isa_t isa, const ov
                 num_outputs++;
                 break;
             } default : {
-                OV_CPU_JIT_EMITTER_THROW("detected unsupported io_type");
+                OV_CPU_JIT_EMITTER_THROW("Detected unsupported io_type");
             }
         }
         mem_access_exprs.push_back(expr);
@@ -143,11 +143,11 @@ void jit_kernel_emitter::emit_code(const std::vector<size_t> &in, const std::vec
 }
 
 void jit_kernel_emitter::validate_arguments(const std::vector<size_t> &in, const std::vector<size_t> &out) const {
-    OV_CPU_JIT_EMITTER_ASSERT(in.empty() && out.empty(), ": expects 0 registers on input and output");
+    OV_CPU_JIT_EMITTER_ASSERT(in.empty() && out.empty(), ": Expects 0 registers on input and output");
     const auto num_params = num_inputs + num_outputs + num_unique_buffers;
     // The number of used gpr may be >= num_params since LoopBegin+LoopEnd could also use gpr to store work_amount
     OV_CPU_JIT_EMITTER_ASSERT(data_ptr_regs_idx.size() == num_params,
-                              "number of inputs and outputs is inconsistent with the number of allocated registers ", num_params,
+                              "Number of inputs and outputs is inconsistent with the number of allocated registers ", num_params,
                               " data_ptr_regs_idx.size() = ", data_ptr_regs_idx.size());
 }
 
@@ -192,7 +192,7 @@ jit_kernel_static_emitter::jit_kernel_static_emitter(dnnl::impl::cpu::aarch64::j
                                                      const ov::snippets::lowered::ExpressionPtr& expr)
     : jit_kernel_emitter(h, isa, expr), reg_indexes_idx(Operand::X1) {
     const auto kernel = ov::as_type_ptr<snippets::op::KernelStatic>(expr->get_node());
-    OV_CPU_JIT_EMITTER_ASSERT(kernel != nullptr, "jit_kernel_static_emitter expectes KernelStatic expression");
+    OV_CPU_JIT_EMITTER_ASSERT(kernel != nullptr, "Expectes KernelStatic expression");
     master_shape = body.get_master_shape();
     io_shapes.reserve(num_inputs + num_outputs);
     io_data_layouts.reserve(num_inputs + num_outputs);
@@ -217,7 +217,7 @@ jit_kernel_static_emitter::jit_kernel_static_emitter(dnnl::impl::cpu::aarch64::j
                 etype = expr->get_node()->get_input_element_type(0);
                 break;
             } default : {
-                OV_CPU_JIT_EMITTER_THROW("Kernel detected unsupported io_type");
+                OV_CPU_JIT_EMITTER_THROW("Detected unsupported io_type");
             }
         }
         const auto& shape = desc->get_shape();
@@ -325,7 +325,7 @@ jit_kernel_dynamic_emitter::jit_kernel_dynamic_emitter(dnnl::impl::cpu::aarch64:
                                                        const ov::snippets::lowered::ExpressionPtr& expr)
     : jit_kernel_emitter(h, isa, expr) {
     const auto kernel = ov::as_type_ptr<snippets::op::KernelDynamic>(expr->get_node());
-    OV_CPU_JIT_EMITTER_ASSERT(kernel, "expectes KernelDynamic expression");
+    OV_CPU_JIT_EMITTER_ASSERT(kernel, "Expectes KernelDynamic expression");
 
     // - Reserve reg_runtime_params_idx, since it wll be used to pass runtime call args to all dynamic emitters that needs runtime args
     // - We cannot assign this register to the body emitters since runtime params MUST be valid during whole execution

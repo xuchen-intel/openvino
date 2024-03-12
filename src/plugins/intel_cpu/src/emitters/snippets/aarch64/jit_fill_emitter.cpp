@@ -51,6 +51,14 @@ void jit_fill_emitter::emit_impl(const std::vector<size_t>& in,
 template <cpu_isa_t isa>
 void jit_fill_emitter::emit_isa(const std::vector<size_t> &in, const std::vector<size_t> &out) const {
     if (is_full_reg())
+        fill_full<isa>(out);
+    else
+        fill_tail<isa>(in, out);
+}
+
+template <>
+void jit_fill_emitter::emit_isa<dnnl::impl::cpu::aarch64::asimd>(const std::vector<size_t> &in, const std::vector<size_t> &out) const {
+    if (is_full_reg())
         fill_full<dnnl::impl::cpu::aarch64::asimd>(out);
     else
         fill_tail<dnnl::impl::cpu::aarch64::asimd>(in, out);

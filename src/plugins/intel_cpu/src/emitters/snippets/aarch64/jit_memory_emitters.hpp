@@ -11,13 +11,6 @@ namespace ov {
 namespace intel_cpu {
 namespace aarch64 {
 
-/// \brief MemoryEmitter is the base class for emitters with load/store functionality.
-/// *Note*: post increment is embedded into Load/Store operation which means that
-/// it's illigal to load/store to the same address multiple times
-/// Typical application can be if Load and BroadcastLoad are performed from the same pointer.
-/// If Load goes before BroadcastLoad topologicaly the resilt will be incorrect
-/// For scalar loads we can use different loops. Tiling indeed can be arbitrary and post increment should be somehow coded into ISA.
-/// Blocked parameter to tell if input is actually blocked. Broadcast means broadcast by W in other cases no need to substitute load.
 class MemoryEmitter : public jit_emitter  {
 public:
     MemoryEmitter(dnnl::impl::cpu::aarch64::jit_generator* h,

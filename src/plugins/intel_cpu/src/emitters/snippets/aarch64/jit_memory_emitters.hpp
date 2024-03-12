@@ -38,7 +38,7 @@ public:
                 dnnl::impl::cpu::aarch64::cpu_isa_t isa,
                 const ov::snippets::lowered::ExpressionPtr& expr);
 
-    size_t get_inputs_count() const override {return 0;}
+    size_t get_inputs_count() const override {return 1;}
 
 private:
     void emit_impl(const std::vector<size_t>& in,
@@ -58,7 +58,7 @@ public:
                          dnnl::impl::cpu::aarch64::cpu_isa_t isa,
                          const ov::snippets::lowered::ExpressionPtr& expr);
 
-    size_t get_inputs_count() const override {return 0;}
+    size_t get_inputs_count() const override {return 1;}
 
 private:
     void emit_impl(const std::vector<size_t>& in,

@@ -300,7 +300,9 @@ void Snippet::initSupportedPrimitiveDescriptors() {
             impl_type = impl_desc_type::jit_avx2;
         }
 #else
-        impl_type = impl_desc_type::jit_asimd;
+        if (mayiuse(dnnl::impl::cpu::aarch64::asimd)) {
+            impl_type = impl_desc_type::jit_asimd;
+        }
 #endif
         return {config, impl_type};
     };

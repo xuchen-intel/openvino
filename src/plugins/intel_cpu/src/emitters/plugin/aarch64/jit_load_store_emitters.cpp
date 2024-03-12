@@ -43,24 +43,22 @@ void jit_load_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::v
     SReg dst_s = SReg(out_idxs[0]);
     DReg dst_d = DReg(out_idxs[0]);
 
-    h->add(prc, src, byte_offset_);
-
     switch (load_num_) {
         case 0:
             break;
         case 1:
-            h->ldr(dst_s, ptr(prc));
+            h->ldr(dst_s, post_ptr(src, byte_offset_));
             break;
         case 2:
-            h->ldr(dst_d, ptr(prc));
+            h->ldr(dst_d, post_ptr(src, byte_offset_));
             break;
         case 3:
-            h->ldr(dst_d, ptr(prc));
-            h->add(prc, prc, 2 * sizeof(float));
+            h->ldr(dst_d, post_ptr(src, byte_offset_));
+            h->add_imm(prc, src, byte_offset_ + 2 * sizeof(float), h->X_DEFAULT_ADDR);
             h->ld1(dst.s[2], ptr(prc));
             break;
         case 4:
-            h->uni_ldr(dst, prc);
+            h->uni_ldr(dst, src, byte_offset_);
             break;
         default:
             OPENVINO_THROW("Load emitter in ", name_, " has unexpected number of elements to load.");
@@ -99,24 +97,22 @@ void jit_store_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::
     XReg dst = XReg(out_idxs[0]);
     XReg prc = XReg(aux_gpr_idxs[0]);
 
-    h->add(prc, dst, byte_offset_);
-
     switch (store_num_) {
         case 0:
             break;
         case 1:
-            h->str(src_s, ptr(prc));
+            h->str(src_s, post_ptr(dst, byte_offset_));
             break;
         case 2:
-            h->str(src_d, ptr(prc));
+            h->str(src_d, post_ptr(dst, byte_offset_));
             break;
         case 3:
-            h->str(src_d, ptr(prc));
-            h->add(prc, prc, 2 * sizeof(float));
+            h->str(src_d, post_ptr(dst, byte_offset_));
+            h->add_imm(prc, dst, byte_offset_ + 2 * sizeof(float), h->X_DEFAULT_ADDR);
             h->st1(src.s[2], ptr(prc));
             break;
         case 4:
-            h->str(QReg(src.getIdx()), ptr(prc));
+            h->str(QReg(src.getIdx()), post_ptr(dst, byte_offset_));
             break;
         default:
             OPENVINO_THROW("Store emitter in ", name_, " has unexpected number of elements to store.");

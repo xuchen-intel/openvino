@@ -15,14 +15,6 @@ using jit_generator = dnnl::impl::cpu::aarch64::jit_generator;
 using cpu_isa_t = dnnl::impl::cpu::aarch64::cpu_isa_t;
 using ExpressionPtr = ov::snippets::lowered::ExpressionPtr;
 
-static std::vector<size_t> convert_to_size_t(const std::vector<uint32_t>& vec_in) {
-    std::vector<size_t> vec_out;
-    for (const auto& in : vec_in) {
-        vec_out.push_back(static_cast<size_t>(in));
-    }
-    return vec_out;
-}
-
 MemoryEmitter::MemoryEmitter(jit_generator* h, cpu_isa_t isa, const ExpressionPtr& expr) : jit_emitter(h, isa) {
     const auto n = expr->get_node();
     src_prc = n->get_input_element_type(0);
@@ -60,7 +52,7 @@ void jit_load_memory_emitter::emit_isa(const std::vector<size_t> &in, const std:
     if (!load_emitter)
         OV_CPU_JIT_EMITTER_THROW("Load CPU emitter isn't initialized for jit_load_memory_emitter!");
 
-    load_emitter->emit_code(in, out, convert_to_size_t(aux_vec_idxs), convert_to_size_t(aux_gpr_idxs));
+    load_emitter->emit_code(in, out, aux_vec_idxs, aux_gpr_idxs);
 }
 
 void jit_load_memory_emitter::emit_data() const {
@@ -132,7 +124,7 @@ void jit_store_memory_emitter::emit_isa(const std::vector<size_t> &in, const std
     if (!store_emitter)
         OV_CPU_JIT_EMITTER_THROW("Store CPU emitter isn't initialized for jit_store_memory_emitter!");
 
-    store_emitter->emit_code(in, out, convert_to_size_t(aux_vec_idxs), convert_to_size_t(aux_gpr_idxs));
+    store_emitter->emit_code(in, out, aux_vec_idxs, aux_gpr_idxs);
 }
 
 void jit_store_memory_emitter::emit_data() const {

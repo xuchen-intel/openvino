@@ -12,7 +12,7 @@
 #include "emitters/snippets/aarch64/jit_memory_emitters.hpp"
 #include "emitters/snippets/aarch64/jit_fill_emitter.hpp"
 
-#include "transformations/snippets/aarch64/op/fused_mul_add.hpp"
+#include "transformations/snippets/common/op/fused_mul_add.hpp"
 
 #include "openvino/opsets/opset13.hpp"
 

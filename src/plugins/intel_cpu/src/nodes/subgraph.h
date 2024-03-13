@@ -103,10 +103,6 @@ private:
             bool schedule_created();
 
         private:
-#if defined(OPENVINO_ARCH_ARM64)
-            using jit_snippets_compile_args = aarch64::jit_snippets_compile_args;
-            using jit_snippets_call_args = aarch64::jit_snippets_call_args;
-#endif
             static const size_t rank6D {6};
 
             typedef void (*kernel)(const void *, const void *);

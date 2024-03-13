@@ -140,14 +140,6 @@ protected:
         }
     }
 
-    inline void push_XReg(uint32_t xreg_idx) const {
-        h->str(Xbyak_aarch64::XReg(xreg_idx), pre_ptr(h->sp, -16));
-    }
-
-    inline void pop_XReg(uint32_t xreg_idx) const {
-        h->ldr(Xbyak_aarch64::XReg(xreg_idx), post_ptr(h->sp, 16));
-    }
-
 private:
     mutable std::vector<size_t> preserved_gpr_idxs;
 

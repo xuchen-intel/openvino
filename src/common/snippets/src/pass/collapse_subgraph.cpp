@@ -591,7 +591,15 @@ TokenizeSnippets::TokenizeSnippets() {
         // This limitation will be resolved once generator supports gprs spills [75622].
         // TODO [75567]: move this plugin-specific constraint to the plugin callback
         const auto unique_buffer_count = op::Subgraph::get_estimated_buffer_count(ops_for_buffer_count);
-        if (body_parameters.size() + body_results.size() + hidden_data_count + unique_buffer_count > 12) {
+#if defined(OPENVINO_ARCH_ARM64)
+        // ARM has 32 gprs. After excluding 2 registers for work amounts, 1 platform register, 3 registers for temporary use,
+        // and two stack related registers, it has 24 remaining registers.
+        const size_t max_data_ptr_count = 24;
+#else
+        // X64 has 16 gprs. After excluding 2 registers for work amounts, and 2 stack related registers, it has 12 remaining registers.
+        const size_t max_data_ptr_count = 12;
+#endif
+        if (body_parameters.size() + body_results.size() + hidden_data_count + unique_buffer_count > max_data_ptr_count) {
             const std::string message_reset = "new subgraph is created. Impossible to schedule subgraph with " +
             std::to_string(body_parameters.size()) + " inputs, " + std::to_string(body_results.size()) + " outputs and " +
             std::to_string(hidden_data_count) + " non-scalar constants and " + std::to_string(unique_buffer_count) + "buffers.";

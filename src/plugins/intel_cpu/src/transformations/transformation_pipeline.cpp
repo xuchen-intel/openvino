@@ -136,10 +136,10 @@
 #include "nodes/rnn.h"
 #include "nodes/scaled_attn.h"
 #include "dnnl.hpp"
-#if !defined(OPENVINO_ARCH_ARM64)
-#include "cpu/x64/cpu_isa_traits.hpp"
-#else
+#if defined(OPENVINO_ARCH_ARM64)
 #include "cpu/aarch64/cpu_isa_traits.hpp"
+#else
+#include "cpu/x64/cpu_isa_traits.hpp"
 #endif
 
 namespace ov {

@@ -817,6 +817,188 @@ void Transformations::MainSnippets(void) {
     };
 #endif // OPENVINO_ARCH_X86_64
 
+    const bool is_support_op = [](const std::shared_ptr<const ov::Node> &n) -> bool {
+        auto is_supported_matmul = [](const std::shared_ptr<const ov::Node>& n) -> bool {
+#if defined(OPENVINO_ARCH_ARM64)
+            return false;
+#else
+            const auto& matmul = ov::as_type_ptr<const opset1::MatMul>(n);
+            const auto& out_shape = n->get_output_partial_shape(0);
+            if (!matmul || out_shape.is_dynamic() || out_shape.size() != 4)
+                return false;
+            const auto intype_0 = matmul->get_input_element_type(0);
+            const auto intype_1 = matmul->get_input_element_type(1);
+            const bool is_f32 = intype_0 == element::f32 && intype_1 == element::f32;
+            const bool is_int8 = (intype_0 == element::i8 || intype_0 == element::u8) && (intype_1 == element::i8);
+            const bool is_bf16 = intype_0 == element::bf16 && intype_1 == element::bf16;
+            return is_f32 || is_bf16 || is_int8;
+#endif
+        };
+        auto is_supported_transpose = [](const std::shared_ptr<const ov::Node>& n) -> bool {
+#if defined(OPENVINO_ARCH_ARM64)
+            return false;
+#else
+            const auto& transpose = as_type_ptr<const opset1::Transpose>(n);
+            const auto& out_shape = n->get_output_partial_shape(0);
+            if (transpose && out_shape.is_static()) {
+                const auto parent = transpose->get_input_node_shared_ptr(0);
+                const auto child = transpose->get_output_target_inputs(0).begin()->get_node()->shared_from_this();
+                auto is_brgemm_case = ov::is_type<opset1::MatMul>(parent) || ov::is_type<opset1::MatMul>(child);
+                // Check for Transpose parent is MatMul inside Subgraph
+                if (const auto subgraph = ov::as_type_ptr<const op::Subgraph>(parent)) {
+                    if (GetSnippetsSubgraphType(subgraph) != SnippetsSubgraphType::Completed) {
+                        const auto body = subgraph->body_ptr();
+                        const auto subgraph_output = body->get_results()[transpose->input_value(0).get_index()]->get_input_node_shared_ptr(0);
+                        is_brgemm_case = is_brgemm_case || ov::is_type<opset1::MatMul>(subgraph_output);
+                    }
+                }
+
+                const auto& order = as_type_ptr<const opset1::Constant>(n->get_input_node_shared_ptr(1));
+                if (order) {
+                    const auto order_value = order->cast_vector<int>();
+                    return (TransposeDecomposition::is_supported_transpose_order(order_value)) ||
+                        (is_brgemm_case && FuseTransposeBrgemm::is_supported_transpose_order(order_value));
+                }
+            }
+            return false;
+#endif
+        };
+
+        auto is_supported_fq_op = [](const std::shared_ptr<const ov::Node>& n) -> bool {
+#if defined(OPENVINO_ARCH_ARM64)
+            return false;
+#else
+            return CommonFakeQuantizeDecomposition::is_supported_fq(ov::as_type_ptr<const opset1::FakeQuantize>(n));
+#endif
+        };
+
+        auto is_supported_ternary_eltwise_op = [](const std::shared_ptr<const ov::Node> &n) -> bool {
+#if defined(OPENVINO_ARCH_ARM64)
+            return false;
+#else
+            return ov::is_type<ov::op::v1::Select>(n);
+#endif
+        };
+
+        auto is_supported_binary_eltwise_op = [](const std::shared_ptr<const ov::Node> &n) -> bool {
+#if defined(OPENVINO_ARCH_ARM64)
+            return ov::is_type<ov::op::v1::Add>(n)
+                || ov::is_type<ov::op::v1::Multiply>(n);
+#else
+            return ov::is_type<ov::op::v1::Add>(n)
+                || ov::is_type<ov::op::v1::Divide>(n)
+                || ov::is_type<ov::op::v1::Equal>(n)
+                || ov::is_type<ov::op::v1::FloorMod>(n)
+                || ov::is_type<ov::op::v1::Greater>(n)
+                || ov::is_type<ov::op::v1::GreaterEqual>(n)
+                || ov::is_type<ov::op::v1::Less>(n)
+                || ov::is_type<ov::op::v1::LessEqual>(n)
+                || ov::is_type<ov::op::v1::LogicalAnd>(n)
+                || ov::is_type<ov::op::v1::LogicalOr>(n)
+                || ov::is_type<ov::op::v1::LogicalXor>(n)
+                || ov::is_type<ov::op::v1::Maximum>(n)
+                || ov::is_type<ov::op::v1::Minimum>(n)
+                || ov::is_type<ov::op::v1::Mod>(n)
+                || ov::is_type<ov::op::v1::Multiply>(n)
+                || ov::is_type<ov::op::v1::NotEqual>(n)
+                || ov::is_type<ov::op::v0::PRelu>(n)
+                || ov::is_type<ov::op::v1::Power>(n)
+                || ov::is_type<ov::op::v0::SquaredDifference>(n)
+                || ov::is_type<ov::op::v1::Subtract>(n)
+                || ov::is_type<ov::op::v0::Xor>(n)
+                || ov::is_type<ov::op::v0::Convert>(n);
+#endif
+        };
+
+        auto is_supported_unary_eltwise_op = [](const std::shared_ptr<const ov::Node> &n) -> bool {
+#if defined(OPENVINO_ARCH_ARM64)
+            return ov::is_type<ov::op::v0::Relu>(n);
+#else
+            return ov::is_type<ov::op::v0::Abs>(n)
+                || ov::is_type<ov::op::v0::Clamp>(n)
+                || ov::is_type<ov::op::v0::Floor>(n)
+                || ov::is_type<ov::op::v0::Ceiling>(n)
+                || ov::is_type<ov::op::v0::Elu>(n)
+                || ov::is_type<ov::op::v0::Erf>(n)
+                || ov::is_type<ov::op::v0::Exp>(n)
+                || ov::is_type<ov::op::v1::LogicalNot>(n)
+                || ov::is_type<ov::op::v0::Negative>(n)
+                || ov::is_type<ov::op::v0::Relu>(n)
+                || ov::is_type<ov::op::v5::Round>(n)
+                || ov::is_type<ov::op::v0::Sigmoid>(n)
+                || ov::is_type<ov::op::v0::Sqrt>(n)
+                || ov::is_type<ov::op::v0::Tanh>(n)
+                || ov::is_type<ov::op::v0::Gelu>(n)
+                || ov::is_type<ov::op::v7::Gelu>(n)
+                || ov::is_type<ov::op::v4::Swish>(n)
+                || ov::is_type<ov::op::v4::HSwish>(n);
+#endif
+        };
+
+        auto is_supported_softmax = [](const std::shared_ptr<const ov::Node> &n) -> bool {
+#if defined(OPENVINO_ARCH_ARM64)
+            return false;
+#else
+            if (n->get_input_size() != 1 || n->get_input_partial_shape(0).rank().is_dynamic())
+                return false;
+            int64_t axis = -1;
+            const auto rank = n->get_input_partial_shape(0).rank();
+            if (const auto softmax_v8 = ov::as_type_ptr<const ov::op::v8::Softmax>(n)) {
+                axis = ov::util::normalize_axis(n->get_friendly_name(), softmax_v8->get_axis(), rank);
+            } else if (const auto softmax_v1 = ov::as_type_ptr<const ov::op::v1::Softmax>(n)) {
+                axis = softmax_v1->get_axis();
+            } else {
+                return false;
+            }
+            return axis >= 0 && axis == (rank.get_length() - 1);
+#endif
+        };
+
+        auto is_supported_broadcast_op = [](const std::shared_ptr<const ov::Node> &n) -> bool {
+#if defined(OPENVINO_ARCH_ARM64)
+            return false;
+#else
+            // Broadcast is supported only for MHA tokenization where there are needed and special checks
+            if (auto broadcast_v1 = ov::as_type_ptr<const ov::op::v1::Broadcast>(n)) {
+                return broadcast_v1->get_broadcast_spec().m_type == ov::op::AutoBroadcastType::NUMPY;
+            } else if (auto broadcast_v3 = ov::as_type_ptr<const ov::op::v3::Broadcast>(n)) {
+                return broadcast_v3->get_broadcast_spec().m_type == ov::op::BroadcastType::NUMPY;
+            }
+            return false;
+#endif
+        };
+
+        auto is_supported_reduce_op = [](const std::shared_ptr<const ov::Node> &n) -> bool {
+#if defined(OPENVINO_ARCH_ARM64)
+            return false;
+#else
+            if (ov::is_type<const ov::op::v1::ReduceMax>(n) || ov::is_type<const ov::op::v1::ReduceSum>(n)) {
+                const auto& reduce_base = ov::as_type_ptr<const ov::op::util::ArithmeticReductionKeepDims>(n);
+                const auto& axis_constant = ov::as_type_ptr<const ov::op::v0::Constant>(n->get_input_node_shared_ptr(1));
+                const auto rank = n->get_input_partial_shape(0).rank();
+                if (rank.is_dynamic() || !reduce_base->get_keep_dims() || !axis_constant || shape_size(axis_constant->get_shape()) != 1)
+                    return false;
+
+                const auto axis_value = axis_constant->cast_vector<int32_t>(1)[0];
+                const auto normalized_axis = ov::util::normalize_axis(n->get_friendly_name(), axis_value, rank);
+                // Note: Reduction only over the last dimension is currently supported
+                return normalized_axis == rank.get_length() - 1;
+            }
+            return false;
+#endif
+        };
+
+        return is_supported_fq_op(n) ||
+            is_supported_unary_eltwise_op(n) ||
+            is_supported_binary_eltwise_op(n) ||
+            is_supported_ternary_eltwise_op(n) ||
+            is_supported_transpose(n) ||
+            is_supported_softmax(n) ||
+            is_supported_matmul(n) ||
+            is_supported_broadcast_op(n) ||
+            is_supported_reduce_op(n);
+    };
+
     auto has_supported_in_out = [](const std::shared_ptr<const ov::Node> &n) -> bool {
         auto supported = [&n](descriptor::Tensor& t) -> bool {
             auto get_supported_element_types = []() {
@@ -867,6 +1049,10 @@ void Transformations::MainSnippets(void) {
             [](const std::shared_ptr<const ov::Node>& n) -> bool {
                 if (n->is_dynamic())
                     return true;
+                if (!is_support_op(n))
+                    return true;
+                if (!has_supported_in_out(n))
+                    return true;
                 // CPU Plugin support Swish in Subgraph via conversion to SwichCPU which assumes second input to be constant
                 const bool is_unsupported_swish =
                         ov::is_type<const ov::op::v4::Swish>(n) && n->inputs().size() > 1 &&
@@ -916,12 +1102,6 @@ void Transformations::MainSnippets(void) {
                 return false;
             },
             snippets::pass::TokenizeSnippets);
-            CPU_SET_CALLBACK_ARM(snippetsManager, [&](const std::shared_ptr<const ov::Node>& n) -> bool {
-                const bool is_support_op = ov::is_type<const ov::op::v1::Add>(n) ||
-                                           ov::is_type<const ov::op::v1::Multiply>(n) ||
-                                           ov::is_type<const ov::op::v0::Relu>(n);
-                return !is_support_op || !has_supported_in_out(n);
-            }, snippets::pass::TokenizeSnippets);
     }
     snippetsManager.run_passes(model);
 }

@@ -16,8 +16,7 @@ using cpu_isa_t = dnnl::impl::cpu::aarch64::cpu_isa_t;
 using ExpressionPtr = ov::snippets::lowered::ExpressionPtr;
 
 inline static std::vector<XReg> transform_idxs_to_regs(const std::vector<size_t>& idxs) {
-    std::vector<XReg> regs;
-    regs.resize(idxs.size(), XReg(0));
+    std::vector<XReg> regs(idxs.size(), XReg(0));
     std::transform(idxs.begin(), idxs.end(), regs.begin(), [](size_t idx){return XReg(idx);});
     return regs;
 }

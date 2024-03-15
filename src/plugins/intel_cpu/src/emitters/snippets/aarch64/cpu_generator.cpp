@@ -137,9 +137,10 @@ std::shared_ptr<snippets::Generator> CPUGenerator::clone() const {
 
 ov::snippets::RegType CPUGenerator::get_specific_op_out_reg_type(const ov::Output<ov::Node>& out) const {
     const auto op = out.get_node_shared_ptr();
-    // todo: add implementation
-    OV_CPU_JIT_EMITTER_THROW("Register type of the operation " + std::string(op->get_type_name()) + " isn't determined!");
-    return ov::snippets::RegType::gpr;
+    if (std::dynamic_pointer_cast<intel_cpu::FusedMulAdd>(op))
+        return ov::snippets::RegType::vec;
+    else
+        OV_CPU_JIT_EMITTER_THROW("Register type of the operation " + std::string(op->get_type_name()) + " isn't determined!");
 }
 
 bool CPUGenerator::uses_precompiled_kernel(const std::shared_ptr<snippets::Emitter>& e) const {

@@ -746,6 +746,15 @@ void Transformations::MainSnippets(void) {
     tokenization_config.concurrency = config.streamExecutorConfig.get_threads_per_stream();
     if (tokenization_config.concurrency == 0)
         tokenization_config.concurrency = parallel_get_max_threads();
+#if defined(OPENVINO_ARCH_ARM64)
+    // ARM has 32 gprs. After excluding 2 registers for work amounts, 1 platform register, 3 registers for temporary use,
+    // and 2 stack related registers, it has 24 remaining registers.
+    tokenization_config.data_ptr_grp_count = 24;
+#else
+    // X64 has 16 gprs. After excluding 2 registers for work amounts, 1 register for runtime parameters,
+    // and 2 stack related registers, it has 11 remaining registers.
+    tokenization_config.data_ptr_grp_count = 11;
+#endif
     // The optimization "SplitDimensionM" depends on target machine (thread count).
     // To avoid uncontrolled behavior in tests, we disabled the optimization when there is Config::SnippetsMode::IgnoreCallback
     tokenization_config.split_m_dimension = snippetsMode != Config::SnippetsMode::IgnoreCallback;

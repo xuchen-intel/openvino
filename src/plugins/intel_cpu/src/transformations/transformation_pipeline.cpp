@@ -747,9 +747,9 @@ void Transformations::MainSnippets(void) {
     if (tokenization_config.concurrency == 0)
         tokenization_config.concurrency = parallel_get_max_threads();
 #if defined(OPENVINO_ARCH_ARM64)
-    // ARM has 32 gprs. After excluding 2 registers for work amounts, 1 platform register, 3 registers for temporary use,
-    // and 2 stack related registers, it has 24 remaining registers.
-    tokenization_config.data_ptr_grp_count = 24;
+    // ARM has 32 gprs. After excluding 2 registers for work amounts, 1 register for runtime parameters, 1 platform register,
+    // 3 registers for temporary use, and 2 stack related registers, it has 23 remaining registers.
+    tokenization_config.data_ptr_grp_count = 23;
 #else
     // X64 has 16 gprs. After excluding 2 registers for work amounts, 1 register for runtime parameters,
     // and 2 stack related registers, it has 11 remaining registers.

@@ -28,7 +28,7 @@ inline static std::vector<size_t> transform_snippets_regs_to_idxs(const std::vec
 }
 
 jit_kernel_emitter::jit_kernel_emitter(jit_generator* h, cpu_isa_t isa, const ov::snippets::lowered::ExpressionPtr& expr)
-    : jit_container_emitter(h, isa), reg_runtime_params_idx(Operand::X0) {
+    : jit_emitter(h, isa), reg_runtime_params_idx(Operand::X0) {
     const auto kernel = ov::as_type_ptr<snippets::op::Kernel>(expr->get_node());
     OV_CPU_JIT_EMITTER_ASSERT(kernel != nullptr, "Invoked with invalid op argument");
     OV_CPU_JIT_EMITTER_ASSERT(!kernel->region.empty(), "Invoked with empty body");

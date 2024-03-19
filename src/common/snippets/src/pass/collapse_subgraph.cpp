@@ -192,12 +192,7 @@ auto is_supported_op(const std::shared_ptr<const Node> &n) -> bool {
 auto has_supported_in_out(const std::shared_ptr<const Node> &n) -> bool {
     auto supported = [&n](descriptor::Tensor& t) -> bool {
         // TODO [122585] Need to add dynamic rank support
-        if (t.get_partial_shape().rank().is_dynamic())
-            return false;
-        // If Convert node has unsupported data type, it should not be tokenized.
-        if (ov::is_type<const opset1::Convert>(n))
-               return TokenizeSnippets::get_supported_element_types().count(t.get_element_type()) != 0;
-        return true;
+        return t.get_partial_shape().rank().is_static();
     };
     const auto&  inputs = n->inputs();
     const auto&  outputs = n->outputs();

@@ -850,7 +850,8 @@ void Transformations::MainSnippets(void) {
 #endif
     };
 
-    auto has_supported_element_types = [](const std::shared_ptr<const ov::Node> &n) -> bool {
+    auto has_supported_tensors = [](const std::shared_ptr<const ov::Node> &n) -> bool {
+        // Check for supported precision
         auto supported = [&n](descriptor::Tensor& t) -> bool {
             auto get_supported_element_types = []() {
 #if defined(OPENVINO_ARCH_ARM64)
@@ -868,10 +869,34 @@ void Transformations::MainSnippets(void) {
                    (t.get_element_type() == ov::element::i32 &&
                    (ov::is_type<const opset1::Transpose>(n) || ov::is_type<const opset1::Broadcast>(n)));
         };
-        const auto&  inputs = n->inputs();
-        const auto&  outputs = n->outputs();
-        return std::all_of(inputs.begin(), inputs.end(), [&](const Input<const ov::Node>& in) {return  supported(in.get_tensor());}) &&
-               std::all_of(outputs.begin(), outputs.end(), [&](const Output<const ov::Node>& out) {return  supported(out.get_tensor());});
+        const auto& inputs = n->inputs();
+        const auto& outputs = n->outputs();
+        bool supported_precison =
+                std::all_of(inputs.begin(), inputs.end(), [&](const Input<const ov::Node>& in) {return  supported(in.get_tensor());}) &&
+                std::all_of(outputs.begin(), outputs.end(), [&](const Output<const ov::Node>& out) {return  supported(out.get_tensor());});
+        if (!supported_precison)
+            return false;
+
+        // Check for supported ranks
+        // todo: clarify whether we can evaluate snippets on inputs with larger ranks
+        auto rank_is_too_large = [](const ov::descriptor::Tensor& t) {
+            // callback is called has_supported_in_out(), so it's safe to assume that the shapes are static
+            return t.get_partial_shape().rank().get_length() > 6;
+        };
+        const bool bad_input_rank = std::any_of(inputs.begin(), inputs.end(),
+                                                [&](const ov::Input<const ov::Node>& in) {
+                                                    return rank_is_too_large(in.get_tensor());
+                                                });
+        if (bad_input_rank)
+            return false;
+        const bool bad_output_rank = std::any_of(outputs.begin(), outputs.end(),
+                                                [&](const ov::Output<const ov::Node>& out) {
+                                                    return rank_is_too_large(out.get_tensor());
+                                                });
+        if (bad_output_rank)
+            return false;
+
+        return true;
     };
 
     if (snippetsMode != Config::SnippetsMode::IgnoreCallback) {
@@ -899,8 +924,6 @@ void Transformations::MainSnippets(void) {
                     return true;
                 if (!is_support_op(n))
                     return true;
-                if (!has_supported_element_types(n))
-                    return true;
                 const auto& inputs = n->inputs();
                 // todo: clarify whether we can evaluate snippets on const paths
                 const bool has_only_const_inputs = std::all_of(inputs.begin(), inputs.end(),
@@ -910,25 +933,8 @@ void Transformations::MainSnippets(void) {
                                                                });
                 if (has_only_const_inputs)
                     return true;
-                // todo: clarify whether we can evaluate snippets on inputs with larger ranks
-                auto rank_is_too_large = [](const ov::descriptor::Tensor& t) {
-                    // callback is called has_supported_in_out(), so it's safe to assume that the shapes are static
-                    return t.get_partial_shape().rank().get_length() > 6;
-                };
-                const bool bad_input_rank = std::any_of(inputs.begin(), inputs.end(),
-                                                        [&](const ov::Input<const ov::Node>& in) {
-                                                            return rank_is_too_large(in.get_tensor());
-                                                        });
-                if (bad_input_rank)
+                if (!has_supported_tensors(n))
                     return true;
-                const auto& outputs = n->outputs();
-                const bool bad_output_rank = std::any_of(outputs.begin(), outputs.end(),
-                                                        [&](const ov::Output<const ov::Node>& out) {
-                                                            return rank_is_too_large(out.get_tensor());
-                                                        });
-                if (bad_output_rank)
-                    return true;
-
                 return false;
             },
             snippets::pass::TokenizeSnippets);

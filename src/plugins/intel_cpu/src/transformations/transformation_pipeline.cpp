@@ -846,7 +846,7 @@ void Transformations::MainSnippets(void) {
                     ov::is_type<const ov::op::v1::ReduceMax>(n) ||
                     ov::is_type<const ov::op::v1::ReduceSum>(n));
         };
-        return !is_unsupported_swish(n) && !is_unsupported_by_common_tokenization (n);
+        return !is_unsupported_swish(n) && !is_unsupported_by_common_tokenization(n);
 #endif
     };
 

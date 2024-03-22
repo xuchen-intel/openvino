@@ -770,7 +770,7 @@ void Transformations::MainSnippets(void) {
     ov::pass::Manager snippetsManager;
     snippetsManager.set_per_pass_validation(false);
     if (!ignoreCallback)
-        CPU_REGISTER_PASS_COMMON(snippetsManager, SnippetsMarkSkipped, inferencePrecision != ov::element::f32);
+        CPU_REGISTER_PASS_X64(snippetsManager, SnippetsMarkSkipped, inferencePrecision != ov::element::f32);
     CPU_REGISTER_PASS_X64(snippetsManager, snippets::pass::SnippetsTokenization, tokenization_config);
     if (inferencePrecision == ov::element::f32)
         CPU_REGISTER_PASS_ARM(snippetsManager, snippets::pass::SnippetsTokenization, tokenization_config);

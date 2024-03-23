@@ -21,17 +21,16 @@
 #include "snippets/lowered/pass/mark_loops.hpp"
 #include "transformations/defs.hpp"
 #include "transformations/cpu_opset/common/pass/convert_to_swish_cpu.hpp"
+#include "transformations/snippets/common/pass/mul_add_to_fma.hpp"
 
 #if defined(OPENVINO_ARCH_ARM64)
 #include "emitters/snippets/aarch64/cpu_generator.hpp"
-#include "transformations/snippets/common/pass/mul_add_to_fma.hpp"
 #include "transformations/snippets/aarch64/shape_inference.hpp"
 #else
 #include "emitters/snippets/x64/cpu_generator.hpp"
 #include "transformations/snippets/x64/pass/lowered/brgemm_blocking.hpp"
 #include "transformations/snippets/x64/pass/lowered/fuse_load_store_and_convert.hpp"
 #include "transformations/snippets/x64/pass/lowered/set_brgemm_copy_b_buffers_shape.hpp"
-#include "transformations/snippets/common/pass/mul_add_to_fma.hpp"
 #include "transformations/snippets/x64/pass/remove_converts.hpp"
 #include "transformations/snippets/x64/pass/set_brgemm_cpu_blocking_params.hpp"
 #include "transformations/snippets/x64/pass/brgemm_to_brgemm_cpu.hpp"

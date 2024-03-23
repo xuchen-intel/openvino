@@ -54,14 +54,6 @@ std::mutex err_print_lock;
 using namespace dnnl::impl::utils;
 using namespace dnnl::impl::cpu;
 
-#if defined(OPENVINO_ARCH_ARM64)
-using namespace dnnl::impl::cpu::aarch64;
-using namespace Xbyak_aarch64;
-#else
-using namespace dnnl::impl::cpu::x64;
-using namespace Xbyak;
-#endif
-
 namespace ov {
 namespace intel_cpu {
 namespace node {
@@ -229,7 +221,7 @@ void Snippet::initSupportedPrimitiveDescriptors() {
 #if defined(OPENVINO_ARCH_ARM64)
                 size_t blockSize = 16;
 #else
-                size_t blockSize = mayiuse(dnnl::impl::cpu::x64::avx512_core) ? 16 : 8;
+                size_t blockSize = dnnl::impl::cpu::x64::mayiuse(dnnl::impl::cpu::x64::avx512_core) ? 16 : 8;
 #endif
 
                 VectorDims blocks = dims;
@@ -295,13 +287,13 @@ void Snippet::initSupportedPrimitiveDescriptors() {
 
         impl_desc_type impl_type = impl_desc_type::unknown;
 #if defined(OPENVINO_ARCH_ARM64)
-        if (mayiuse(dnnl::impl::cpu::aarch64::asimd)) {
+        if (dnnl::impl::cpu::aarch64::mayiuse(dnnl::impl::cpu::aarch64::asimd)) {
             impl_type = impl_desc_type::jit_asimd;
         }
 #else
-        if (mayiuse(x64::avx512_core)) {
+        if (dnnl::impl::cpu::x64::mayiuse(x64::avx512_core)) {
             impl_type = impl_desc_type::jit_avx512;
-        } else if (mayiuse(x64::avx2)) {
+        } else if (dnnl::impl::cpu::x64::mayiuse(x64::avx2)) {
             impl_type = impl_desc_type::jit_avx2;
         }
 #endif

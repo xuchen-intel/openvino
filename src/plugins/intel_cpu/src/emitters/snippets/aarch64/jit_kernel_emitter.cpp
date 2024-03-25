@@ -303,33 +303,6 @@ void jit_kernel_static_emitter::init_data_pointers(const std::vector<XReg>& data
     }
 }
 
-jit_kernel_dynamic_emitter::jit_kernel_dynamic_emitter(dnnl::impl::cpu::aarch64::jit_generator* h, dnnl::impl::cpu::aarch64::cpu_isa_t isa,
-                                                       const ov::snippets::lowered::ExpressionPtr& expr)
-    : jit_kernel_emitter(h, isa, expr) {
-    const auto kernel = ov::as_type_ptr<snippets::op::KernelDynamic>(expr->get_node());
-    OV_CPU_JIT_EMITTER_ASSERT(kernel, "Expectes KernelDynamic expression");
-
-    // - Reserve reg_runtime_params_idx, since it wll be used to pass runtime call args to all dynamic emitters that needs runtime args
-    // - We cannot assign this register to the body emitters since runtime params MUST be valid during whole execution
-    //   for all dynamic emitters
-    init_body_regs({reg_runtime_params_idx});
-}
-
-void jit_kernel_dynamic_emitter::init_data_pointers(const std::vector<XReg>& data_ptr_regs) const {
-    XReg reg_runtime_params = XReg(static_cast<int>(reg_runtime_params_idx));
-
-    const auto num_params = num_inputs + num_outputs;
-    for (size_t i = 0; i < num_unique_buffers; ++i) {
-        h->ldr(data_ptr_regs[num_params + i], ptr(reg_runtime_params, static_cast<int32_t>(GET_OFF(buffer_scratchpad_ptr))));
-    }
-    for (size_t i = 0; i < num_params; i++) {
-        if (i < num_inputs)
-            h->ldr(data_ptr_regs[i], ptr(reg_runtime_params, static_cast<int32_t>(GET_OFF(src_ptrs) + i * sizeof(void*))));
-        else
-            h->ldr(data_ptr_regs[i], ptr(reg_runtime_params, static_cast<int32_t>(GET_OFF(dst_ptrs) + (i - num_inputs) * sizeof(void*))));
-    }
-}
-
 }   // namespace aarch64
 }   // namespace intel_cpu
 }   // namespace ov

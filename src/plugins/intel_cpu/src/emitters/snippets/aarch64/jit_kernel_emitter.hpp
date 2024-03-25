@@ -96,19 +96,6 @@ private:
 #endif
 };
 
-class jit_kernel_dynamic_emitter : public jit_kernel_emitter {
-public:
-    jit_kernel_dynamic_emitter(dnnl::impl::cpu::aarch64::jit_generator* h,
-                               dnnl::impl::cpu::aarch64::cpu_isa_t isa, const ov::snippets::lowered::ExpressionPtr& expr);
-
-private:
-    void init_data_pointers(const std::vector<Xbyak_aarch64::XReg>& data_ptr_regs) const override;
-
-#ifdef SNIPPETS_DEBUG_CAPS
-    friend std::string init_info_jit_kernel_dynamic_emitter(const jit_kernel_dynamic_emitter *emitter);
-#endif
-};
-
 }   // namespace aarch64
 }   // namespace intel_cpu
 }   // namespace ov

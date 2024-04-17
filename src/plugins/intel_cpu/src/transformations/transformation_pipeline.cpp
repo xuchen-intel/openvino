@@ -965,7 +965,7 @@ void Transformations::Snippets(void) {
         return;
 
     CPU_DEBUG_CAP_TRANSFORMATION_SCOPE(this, Snippets);
-    MainSnippets();
+    // MainSnippets();
     PostSnippets();
 }
 

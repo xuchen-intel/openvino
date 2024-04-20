@@ -1322,6 +1322,7 @@ Node* Node::NodesFactory::create(const std::shared_ptr<ov::Node>& op, const Grap
 }
 
 bool Node::canBePerformedAsScaleShift(const Node *parentNode) const {
+#if defined(OPENVINO_ARCH_X86_64)
     OPENVINO_ASSERT(parentNode);
 
     size_t fusingPort = 0;
@@ -1365,19 +1366,12 @@ bool Node::canBePerformedAsScaleShift(const Node *parentNode) const {
         return false;
     };
 
-#if defined(OPENVINO_ARCH_X86_64)
     return (one_of(getAlgorithm(), Algorithm::EltwiseAdd,
                                    Algorithm::EltwiseMultiply,
                                    Algorithm::EltwiseSubtract,
                                    Algorithm::EltwiseDivide,
                                    Algorithm::EltwisePrelu,
                                    Algorithm::EltwiseMulAdd) && isBroadcastableToDataInput())
-            || isConvertablePowerStatic();
-#elif defined(OPENVINO_ARCH_ARM64)
-    return (one_of(getAlgorithm(), Algorithm::EltwiseAdd,
-                                   Algorithm::EltwiseMultiply,
-                                   Algorithm::EltwiseSubtract,
-                                   Algorithm::EltwiseDivide) && isBroadcastableToDataInput())
             || isConvertablePowerStatic();
 #else
     // TODO: provide correct list of operations for other backends

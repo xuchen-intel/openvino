@@ -72,20 +72,6 @@ bool isFullyConnected(const std::shared_ptr<const ov::Node>& node) {
            rank_w.get_length() <= 3 &&
            ov::op::util::is_on_constant_path(out_weights);
 }
-bool SupportsFusingWithConvolution_SumActivation(const std::shared_ptr<const Node> &node) {
-    // todo: Do all PReLUs are fused? Not sure about round and softRelu
-    // EltwiseRoundHalfToEven, EltwiseRoundHalfAwayFromZero, EltwiseSoftRelu
-    return  ov::is_type<ov::op::v0::Relu>(node) ||
-            ov::is_type<ov::op::v0::PRelu>(node) ||
-            ov::is_type<ov::op::v0::Elu>(node) ||
-            ov::is_type<ov::op::v0::Sigmoid>(node) ||
-            ov::is_type<ov::op::v5::HSigmoid>(node) ||
-            ov::is_type<ov::op::v0::Clamp>(node) ||
-            ov::is_type<ov::op::v4::Swish>(node) ||
-            ov::is_type<ov::op::v4::HSwish>(node) ||
-            ov::is_type<ov::op::v4::Mish>(node) ||
-            ov::is_type<ov::op::v5::Round>(node);
-}
 
 bool canBePerformedAsScaleShift(const std::shared_ptr<const Node> &node, const int channelAxis) {
     size_t fusingPort = 0;
@@ -133,8 +119,7 @@ inline bool canBeMatMulExecutedInInt8(const ov::element::Type& firstType, const 
 }
 
 bool SupportsFusingWithConvolution_Simple(const std::shared_ptr<const Node> &node, const int channelAxis = DEFAULT_AXIS) {
-    return SupportsFusingWithConvolution_SumActivation(node) ||
-           ov::is_type<ov::op::v0::Tanh>(node) ||
+    return ov::is_type<ov::op::v0::Tanh>(node) ||
            ov::is_type<ov::op::v0::Gelu>(node) ||
            ov::is_type<ov::op::v7::Gelu>(node) ||
            ov::is_type<ov::op::v0::Abs>(node) ||
@@ -353,12 +338,6 @@ bool isSuitableChildForFusingMatMul(const std::shared_ptr<const Node> &node, con
 
     return false;
 }
-bool isSuitableParentForFusingSumActivation(const std::shared_ptr<const Node> &node) {
-    return false;
-}
-bool isSuitableChildForFusingSumActivation(const std::shared_ptr<const Node> &node) {
-    return SupportsFusingWithConvolution_SumActivation(node);
-}
 bool isSuitableReduceChild(const std::shared_ptr<const Node> &node, const int channelAxis = DEFAULT_AXIS) {
     return node->get_output_element_type(0) == ov::element::f32 && isSuitableChildForFusingSimple(node, channelAxis);
 }
@@ -491,17 +470,9 @@ bool SnippetsMarkSkipped::run_on_model(const std::shared_ptr<ov::Model> &m) {
                     PropagateIfHasOnlyChild(node, fusingChainType);
                 } else if (fusingChainType == NodeFusingType::FusedWithConvolution ||
                            fusingChainType == NodeFusingType::FusedWithBinaryConvolution) {
-                    if (isSuitableParentForFusingSumActivation(node)) {
-                        PropagateIfHasOnlyChild(node, NodeFusingType::FusedWithConvolutionSumActivation);
-                        // Mimic FuseConvolutionAndSimpleOperationThroughMaxPool
-                    } else if (isSuitablePoolChild(node)) {
+                    if (isSuitablePoolChild(node)) {
                         PropagateIfHasOnlyChild(node, fusingChainType);
                     }
-                } else if (fusingChainType == NodeFusingType::FusedWithConvolutionSumActivation &&
-                           isSuitableChildForFusingSumActivation(node)) {
-                    // Todo: Chain could be converted from FusedWithBinaryConvolution to FusedWithConvolution at this point
-                    // Set FusedWithConvolution, so the fusing chain could be propagated
-                    PropagateIfHasOnlyChild(node, NodeFusingType::FusedWithConvolution);
                 } else if (one_of(fusingChainType, NodeFusingType::FusedWithMatMul, NodeFusingType::FusedWithMatMulI8,
                                                    NodeFusingType::FusedWithFC, NodeFusingType::FusedWithFCI8)) {
                     const bool isExecutedInINT8 = one_of(fusingChainType, NodeFusingType::FusedWithMatMulI8, NodeFusingType::FusedWithFCI8);

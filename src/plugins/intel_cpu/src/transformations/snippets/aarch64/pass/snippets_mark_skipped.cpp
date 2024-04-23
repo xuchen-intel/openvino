@@ -143,21 +143,6 @@ bool isSuitableBinaryConvolutionParent(const std::shared_ptr<const Node> &node) 
     const bool has_only_child = (out.size() == 1) && (out[0].get_target_inputs().size() == 1);
     return is_suitable_node && has_only_child;
 }
-int getChannelAxis(const ov::AxisSet &axes, bool keep_dims) {
-    int channelAxis = DEFAULT_AXIS;
-    if (!keep_dims) {
-        for (auto &axis : axes) {
-            if (axis == 1) {
-                // channel axis has been reduced and doesn't exist any more
-                channelAxis = -1;
-                break;
-            } else if (axis == 0) {
-                channelAxis = 0;
-            }
-        }
-    }
-    return channelAxis;
-}
 bool isSuitableMiscParent(const std::shared_ptr<const Node> &node) {
     const bool is_suitable_node = ov::is_type<ov::op::v0::MVN>(node) ||
                                   ov::is_type<ov::op::v6::MVN>(node) ||
@@ -167,7 +152,6 @@ bool isSuitableMiscParent(const std::shared_ptr<const Node> &node) {
                                   ov::is_type<ov::op::v0::LSTMCell>(node) ||
                                   ov::is_type<ov::op::v4::LSTMCell>(node) ||
                                   ov::is_type<ov::opset1::ConvolutionBackpropData>(node) ||
-                                  ov::is_type<ov::op::util::ArithmeticReductionKeepDims>(node) ||
                                   ov::is_type<ov::opset1::GroupConvolutionBackpropData>(node) ||
                                   ov::is_type<ov::opset1::AvgPool>(node);
     // has a single output, connected to a single child
@@ -182,13 +166,6 @@ bool isSuitableMatMulParent(const std::shared_ptr<const Node> &node) {
     const auto out = node->outputs();
     const bool has_only_child = (out.size() == 1) && (out[0].get_target_inputs().size() == 1);
     return is_suitable_node && has_only_child;
-}
-// From Reduce::canFuse() corner case. CanFuseSimpleOperation is covered by Misc
-inline bool isSuitableReduceParent(const std::shared_ptr<const Node> &node) {
-    bool is_suitable_reduce = ov::is_type<ov::op::util::ArithmeticReductionKeepDims>(node) && isSuitableMiscParent(node);
-    bool is_not_min_max = !ov::is_type<ov::op::v1::ReduceMax>(node) && !ov::is_type<ov::op::v1::ReduceMin>(node);
-    bool out_is_f32 = node->get_output_element_type(0) == ov::element::f32;
-    return is_suitable_reduce && is_not_min_max && out_is_f32;
 }
 // Subtract as ZeroPoints for Convolution
 bool isSuitableSubtractAsZeroPointsParent(const std::shared_ptr<const Node> &node) {
@@ -338,9 +315,6 @@ bool isSuitableChildForFusingMatMul(const std::shared_ptr<const Node> &node, con
 
     return false;
 }
-bool isSuitableReduceChild(const std::shared_ptr<const Node> &node, const int channelAxis = DEFAULT_AXIS) {
-    return node->get_output_element_type(0) == ov::element::f32 && isSuitableChildForFusingSimple(node, channelAxis);
-}
 bool isSuitableMatMulWithConstantPath(const std::shared_ptr<Node>& node) {
     return ov::is_type<ov::opset1::MatMul>(node) &&
            !ov::is_type<ov::opset1::Constant>(node->get_input_node_shared_ptr(1)) &&
@@ -430,16 +404,8 @@ bool SnippetsMarkSkipped::run_on_model(const std::shared_ptr<ov::Model> &m) {
         } else if (isSuitableBinaryConvolutionParent(node)) {
             SetNodeFusingType(node, NodeFusingType::FusedWithBinaryConvolution);
             channelAxis = DEFAULT_AXIS;
-        } else if (isSuitableReduceParent(node)) {
-            const auto reduce = std::dynamic_pointer_cast<const ov::op::util::ArithmeticReductionKeepDims>(node);
-            channelAxis = getChannelAxis(reduce->get_reduction_axes(), reduce->get_keep_dims());
-            SetNodeFusingType(node, NodeFusingType::FusedWithReduce);
         } else if (isSuitableMiscParent(node)) {
-            if (const auto reduce = std::dynamic_pointer_cast<const ov::op::util::ArithmeticReductionKeepDims>(node)) {
-                channelAxis = getChannelAxis(reduce->get_reduction_axes(), reduce->get_keep_dims());
-            } else {
-                channelAxis = DEFAULT_AXIS;
-            }
+            channelAxis = DEFAULT_AXIS;
             SetNodeFusingType(node, NodeFusingType::FusedWithMisc);
         } else if (isSuitableMatMulParent(node)) {
             const bool is_fc = isFullyConnected(node);
@@ -463,10 +429,7 @@ bool SnippetsMarkSkipped::run_on_model(const std::shared_ptr<ov::Model> &m) {
             channelAxis = DEFAULT_AXIS;
         } else {
             for (const auto fusingChainType : getContinuableChains(node)) {
-                if (fusingChainType == NodeFusingType::FusedWithReduce) {
-                    if (isSuitableReduceChild(node, channelAxis))
-                        PropagateIfHasOnlyChild(node, fusingChainType);
-                } else if (isSuitableChildForFusingSimple(node, channelAxis)) {
+                if (isSuitableChildForFusingSimple(node, channelAxis)) {
                     PropagateIfHasOnlyChild(node, fusingChainType);
                 } else if (fusingChainType == NodeFusingType::FusedWithConvolution ||
                            fusingChainType == NodeFusingType::FusedWithBinaryConvolution) {

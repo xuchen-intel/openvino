@@ -584,13 +584,23 @@ void Snippet::SnippetJitExecutor::schedule_6d(const std::vector<MemoryPtr>& inMe
 #if defined(__linux__) && defined(OPENVINO_ARCH_X86_64) && defined(SNIPPETS_DEBUG_CAPS)
     segfault_detector();
 #endif
-    jit_snippets_call_args call_args;
-    update_ptrs(call_args, inMemPtrs, outMemPtrs);
-    parallel_for5d(dom[0], dom[1], dom[2], dom[3], dom[4],
-        [&](int64_t d0, int64_t d1, int64_t d2, int64_t d3, int64_t d4) {
-            int64_t indexes[] = {d0, d1, d2, d3, d4};
+    parallel_nt(0, [&](const int ithr, const int nthr) {
+        jit_snippets_call_args call_args;
+        update_ptrs(call_args, inMemPtrs, outMemPtrs);
+
+        size_t start = 0, end = 0;
+        splitter(harnessWorkAmount, nthr, ithr, start, end);
+
+        int64_t indexes[] = {0, 0, 0, 0, 0};
+        for (size_t iwork = start; iwork < end; ++iwork) {
+            size_t tmp = iwork;
+            for (int j = 4; j >= 0; j--) {
+                indexes[j] = static_cast<int64_t>(tmp % dom[j]);
+                tmp /= dom[j];
+            }
             callable(&call_args, indexes);
-        });
+        }
+    });
 }
 
 void Snippet::SnippetJitExecutor::schedule_nt(const std::vector<MemoryPtr>& inMemPtrs, const std::vector<MemoryPtr>& outMemPtrs) {

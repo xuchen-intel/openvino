@@ -209,11 +209,21 @@ bool isSuitableSubtractAsZeroPointsParent(const std::shared_ptr<const Node> &nod
     return first_conv_input_is_suitable && second_conv_input_is_suitable;
 }
 bool isSuitablePoolChild(const std::shared_ptr<const Node> &node) {
+    auto is_conv_node = [](const std::shared_ptr<const Node> &node) {
+        return ov::is_type<ov::op::v1::Convolution>(node) ||
+               ov::is_type<ov::op::v1::GroupConvolution>(node) ||
+               ov::is_type<ov::op::v1::BinaryConvolution>(node);
+    };
+
     const bool is_suitable_node = ov::is_type<ov::op::v1::MaxPool>(node);
     // has a single output, connected to a single child
     const auto out = node->outputs();
     const bool has_only_child = (out.size() == 1) && (out[0].get_target_inputs().size() == 1);
-    return is_suitable_node && has_only_child;
+    const auto in = node->inputs();
+    // Pool child can only be fused, if the Conv parent haven't already fused other nodes
+    const bool has_conv_parent = (in.size() == 1) && is_conv_node(in[0].get_source_output().get_node_shared_ptr());
+
+    return is_suitable_node && has_only_child && has_conv_parent;
 }
 bool isSuitableChildForFusingSimple(const std::shared_ptr<const Node> &node, const int channelAxis = DEFAULT_AXIS) {
     // Note: Fusing child is allowed to have several users, but that must be the end of the chain

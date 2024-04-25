@@ -830,8 +830,13 @@ void Transformations::MainSnippets(void) {
 
     ov::pass::Manager snippetsManager;
     snippetsManager.set_per_pass_validation(false);
-    if (!ignoreCallback)
-        CPU_REGISTER_PASS_COMMON(snippetsManager, SnippetsMarkSkipped, inferencePrecision != ov::element::f32);
+    if (!ignoreCallback) {
+#if defined(OPENVINO_ARCH_ARM64)
+        CPU_REGISTER_PASS_ARM(snippetsManager, SnippetsMarkSkipped);
+#else
+        CPU_REGISTER_PASS_X64(snippetsManager, SnippetsMarkSkipped, inferencePrecision != ov::element::f32);
+#endif
+    }
     CPU_REGISTER_PASS_X64(snippetsManager, snippets::pass::SnippetsTokenization, tokenization_config);
     // [126738] Remove precision constraint when Convert emitters are implemented on arm platform
     // The redundant "if defined", used to WA error of "empty controlled statement found" should also be removed then.

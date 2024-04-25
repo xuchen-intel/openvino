@@ -11,7 +11,6 @@
 #include "transformations/utils.hpp"
 #include "utils/general_utils.h"
 #include "utils/cpu_utils.hpp"
-#include "cpu/x64/cpu_isa_traits.hpp"
 
 #include "itt.hpp"
 
@@ -270,28 +269,6 @@ bool isSuitableChildForFusingMatMul(const std::shared_ptr<const Node> &node, con
 
     // MatMul specific checks from ::canFuse()
     if (one_of(updatedChainType, NodeFusingType::FusedWithMatMul, NodeFusingType::FusedWithMatMulI8)) {
-        const auto is_binary_eltwise =
-            ov::is_type<ov::op::v1::Add>(node) || ov::is_type<ov::op::v1::Multiply>(node) || ov::is_type<ov::op::v1::Subtract>(node) ||
-            ov::is_type<ov::op::v1::Divide>(node) || ov::is_type<ov::op::v0::PRelu>(node);
-        const auto rank = node->get_output_partial_shape(0).rank();
-        if (dnnl::impl::cpu::x64::mayiuse(dnnl::impl::cpu::x64::avx512_core) && rank.is_static() && is_binary_eltwise) {
-            const auto const1 = ov::is_type<ov::op::v0::Constant>(node->get_input_node_shared_ptr(0));
-            const auto const2 = ov::is_type<ov::op::v0::Constant>(node->get_input_node_shared_ptr(1));
-            int constPort = -1;
-            if (const2) {
-                constPort = 1;
-            } else if (const1) {
-                constPort = 0;
-            }
-
-            if (constPort != -1) {
-                auto const_shape = node->get_input_shape(constPort);
-                if (ov::shape_size(const_shape) != 1 && rank.get_length() > 4) {
-                    return false;
-                }
-            }
-        }
-
         if (ov::is_type<ov::op::v0::FakeQuantize>(node)) {
             if (one_of(node->get_output_element_type(0), ov::element::i8, ov::element::u8) && !canMatMulBeExecutedInI8)
                 return false;

@@ -204,11 +204,6 @@ bool isSuitableChildForFusingMatMul(const std::shared_ptr<const Node> &node, Nod
 
     return false;
 }
-bool isSuitableMatMulWithConstantPath(const std::shared_ptr<Node>& node) {
-    return ov::is_type<ov::opset1::MatMul>(node) &&
-           !ov::is_type<ov::opset1::Constant>(node->get_input_node_shared_ptr(1)) &&
-           ov::op::util::is_on_constant_path(node->input_value(1));
-}
 // Continue fusing chain of the passed type if the node has one child
 // Otherwise mark node as FusedTerminator (Fused, but fusing chain is interrupted)
 void PropagateIfHasOnlyChild(const std::shared_ptr<Node> &node, NodeFusingType nodeType) {
@@ -251,15 +246,6 @@ bool SnippetsMarkSkipped::run_on_model(const std::shared_ptr<ov::Model> &m) {
     for (auto &node : m->get_ordered_ops()) {
         if (is_skipped_op(node))
             continue;
-        // We perform this check separately because we mark here only weights path
-        // Matmul itself will be checked further
-        if (isSuitableMatMulWithConstantPath(node)) {
-            auto markup_func = [](Node* node) {
-                SetSnippetsNodeType(node->shared_from_this(), snippets::pass::SnippetsNodeType::SkippedByPlugin);
-            };
-            std::unordered_set<Node*> visited;
-            ov::op::util::visit_constant_path(node->get_input_node_ptr(1), visited, markup_func);
-        }
         if (isSuitableConvolutionParent(node)) {
             // Initiate fusing chain
             SetNodeFusingType(node, NodeFusingType::FusedWithConvolution);

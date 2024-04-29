@@ -129,19 +129,6 @@ bool isSuitablePoolChild(const std::shared_ptr<const Node> &node) {
     return is_suitable_node && has_only_child && has_conv_parent;
 }
 bool isSuitableChildForFusingSimple(const std::shared_ptr<const Node> &node, NodeFusingType fusingChainType) {
-    auto is_conv_node = [](const std::shared_ptr<const Node> &node) {
-        return ov::is_type<ov::op::v1::Convolution>(node) ||
-               ov::is_type<ov::op::v1::GroupConvolution>(node);
-    };
-
-    if (fusingChainType == NodeFusingType::FusedWithConvolution) {
-        const auto in = node->inputs();
-        // Simple child can only be fused, if the Conv parent haven't already fused other nodes
-        const bool has_conv_parent = (in.size() == 1) && is_conv_node(in[0].get_source_output().get_node_shared_ptr());
-        if (!has_conv_parent)
-            return false;
-    }
-
     // Note: Fusing child is allowed to have several users, but that must be the end of the chain
     return SupportsFusingWithConvolution_Simple(node) && getNumNonConstInputs(node) == 1;
 }
@@ -209,7 +196,8 @@ bool isSuitableChildForFusingMatMul(const std::shared_ptr<const Node> &node, Nod
 void PropagateIfHasOnlyChild(const std::shared_ptr<Node> &node, NodeFusingType nodeType) {
     const auto out = node->outputs();
     const bool has_only_child = out.size() == 1 && out[0].get_target_inputs().size() == 1;
-    SetNodeFusingType(node, has_only_child ? nodeType : NodeFusingType::FusedTerminator);
+    const bool can_continue = has_only_child && nodeType != NodeFusingType::FusedWithConvolution;
+    SetNodeFusingType(node, can_continue ? nodeType : NodeFusingType::FusedTerminator);
 }
 // todo: Skipping MultiSubGraphOp such as TensorIterator, Loop and If. Snippets might tokenize their bodies in the future.
 //  Note that the function is recurrent, since there might be multi-level MultiSubGraphOp, if(){if(){}}else{} for example.

@@ -111,98 +111,14 @@ bool isSuitableMatMulParent(const std::shared_ptr<const Node> &node) {
     const bool has_only_child = (out.size() == 1) && (out[0].get_target_inputs().size() == 1);
     return is_suitable_node && has_only_child;
 }
-bool canBeExecutedInInt8(const std::shared_ptr<const Node> &node) {
-    const auto in = node->inputs();
-    const auto wei_out = in[1].get_source_output();
-    const auto wei = wei_out.get_node_shared_ptr();
-    const auto& wei_shape = wei_out.get_partial_shape();
-    const bool has_suitable_wei = ov::is_type<ov::op::v0::Parameter>(wei) ||
-                                     ov::is_type<ov::op::v0::Constant>(wei) ||
-                                     ov::is_type<ov::op::v0::Result>(wei) ||
-                                     ov::is_type<ov::op::v3::ReadValue>(wei) ||
-                                     ov::is_type<ov::op::v6::ReadValue>(wei);
-
-    if (!has_suitable_wei)
-        return false;
-
-    if (!one_of(wei_shape.rank(), 3ul, 4ul, 5ul))
-        return false;
-
-    const auto& weightDims = wei_shape.get_shape();
-    size_t groupNum = 1;
-    size_t IC = weightDims[0];
-    size_t OC = weightDims[1];
-    bool withGroups = false;
-    bool isDW = false;
-    const auto inPrecision = in[0].get_source_output().get_node_shared_ptr()->get_element_type();
-
-    auto is_valid_attrs = [&](const ov::Strides& stride, const ov::Strides& dilation){
-        if (stride.back() > 3)
-            return false;
-        for (size_t i = 0; i < stride.size(); i++) {
-            if (weightDims[withGroups + 2 + i] < stride[i])
-                return false;
-        }
-        if (isDW && (inPrecision == ov::element::i8 || dilation.size() == 3))
-            return false;
-        return true;
-    };
-
-    if (auto convBackprop = std::dynamic_pointer_cast<const ov::op::v1::ConvolutionBackpropData>(node)) {
-        const auto& stride = convBackprop->get_strides();
-        const auto& dilate = convBackprop->get_dilations();
-        if (!is_valid_attrs(stride, dilate))
-            return false;
-    } else if (auto groupConvBackprop = std::dynamic_pointer_cast<const ov::op::v1::GroupConvolutionBackpropData>(node)) {
-        const auto& stride = groupConvBackprop->get_strides();
-        const auto& dilate = groupConvBackprop->get_dilations();
-        if (!is_valid_attrs(stride, dilate))
-            return false;
-        groupNum = weightDims[0];
-        IC = groupNum * weightDims[1];
-        OC = groupNum * weightDims[2];
-        withGroups = groupNum > 1;
-        isDW = withGroups && groupNum == OC && groupNum == IC;
-    }
-
-    const auto out = node->outputs();
-    const auto& inMaxDims = out[0].get_target_inputs().begin()->get_partial_shape().get_max_shape();
-    if (std::any_of(inMaxDims.begin(), inMaxDims.end(), [](Dim dim) { return dim == Shape::UNDEFINED_DIM; })) {
-        return false;
-    }
-    // heuristicConst = 2^26
-    // heuristicParam = IC^2 * SP
-    size_t heuristicConst = 67108864;
-    auto heuristicParam = IC * IC;
-    for (size_t i = 2; i < inMaxDims.size(); i++)
-        heuristicParam *= inMaxDims[i];
-    if (heuristicParam > heuristicConst)
-        return false;
-
-    int channelBlock = 4;
-    if (withGroups && !isDW && (IC % channelBlock != 0 || OC % channelBlock != 0))
-        return false;
-
-    const auto weiPrecision = wei->get_element_type();
-    return (inPrecision == ov::element::i8 || inPrecision == ov::element::u8) && weiPrecision == ov::element::i8;
-}
 bool isSuitableParentForFusingBias(const std::shared_ptr<const Node> &node) {
     const bool is_suitable_node = ov::is_type<ov::op::v1::Convolution>(node) ||
                                   ov::is_type<ov::op::v1::GroupConvolution>(node) ||
-                                  ov::is_type<ov::op::v0::MatMul>(node) ||
-                                  ov::is_type<ov::opset1::ConvolutionBackpropData>(node) ||
-                                  ov::is_type<ov::opset1::GroupConvolutionBackpropData>(node);
+                                  ov::is_type<ov::op::v0::MatMul>(node);
     const auto out = node->outputs();
     const bool has_only_child = (out.size() == 1) && (out[0].get_target_inputs().size() == 1);
-    if (!is_suitable_node || !has_only_child)
-        return false;
-
-    if (ov::is_type<ov::op::v1::Convolution>(node) || ov::is_type<ov::op::v0::MatMul>(node)) {
-        return node->inputs().size() == 2;
-    } else {
-        bool externOutShape = node->get_input_size() == 3;
-        return canBeExecutedInInt8(node) && externOutShape ? node->inputs().size() == 3 : node->inputs().size() == 2;
-    }
+    const bool has_two_parents = node->inputs().size() == 2;
+    return is_suitable_node && has_only_child && has_two_parents;
 }
 bool isSuitablePoolChild(const std::shared_ptr<const Node> &node) {
     auto is_conv_node = [](const std::shared_ptr<const Node> &node) {

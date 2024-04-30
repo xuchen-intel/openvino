@@ -102,11 +102,8 @@ bool isSuitableBinaryConvolutionParent(const std::shared_ptr<const Node> &node) 
 }
 bool isSuitableMiscParent(const std::shared_ptr<const Node> &node) {
     const bool is_suitable_node = ov::is_type<ov::op::v0::NormalizeL2>(node) ||
-                                  ov::is_type<ov::op::v0::LSTMCell>(node) ||
-                                  ov::is_type<ov::op::v4::LSTMCell>(node) ||
                                   ov::is_type<ov::opset1::ConvolutionBackpropData>(node) ||
-                                  ov::is_type<ov::opset1::GroupConvolutionBackpropData>(node) ||
-                                  ov::is_type<ov::opset1::AvgPool>(node);
+                                  ov::is_type<ov::opset1::GroupConvolutionBackpropData>(node);
     // has a single output, connected to a single child
     const auto out = node->outputs();
     const bool has_only_child = (out.size() == 1) && (out[0].get_target_inputs().size() == 1);

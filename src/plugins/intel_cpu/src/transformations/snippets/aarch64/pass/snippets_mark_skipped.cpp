@@ -189,29 +189,6 @@ bool isSuitableChildForFusingBias(const std::shared_ptr<const Node> &node, int f
     }
     return false;
 }
-bool isSuitableChildForFusingMatMul(const std::shared_ptr<const Node> &node, NodeFusingType &updatedChainType, int& fusingAxis) {
-    // FuseMatMulAndSimpleOperation or FuseFullyConnectedAndSimpleOperation
-    // Invoke SupportsFusingWithConvolution_Simple directly instead of isSuitableChildForFusingSimple to
-    // eliminate getNumNonConstInputs() check
-    if (SupportsFusingWithConvolution_Simple(node)) {
-        size_t num_non_const_inputs = 0;
-        size_t num_mm_inputs = 0;
-        for (const auto &parent_out : node->input_values()) {
-            // To avoid endless check `is_on_constant_path` for MatMul branch
-            if (one_of(GetNodeFusingType(parent_out.get_node_shared_ptr()), NodeFusingType::FusedWithMatMul, NodeFusingType::FusedWithFC))
-                num_mm_inputs++;
-            else if (!ov::op::util::is_on_constant_path(parent_out))
-                num_non_const_inputs++;
-        }
-        if (num_non_const_inputs + num_mm_inputs != 1)
-            return false;
-
-        updatedChainType = NodeFusingType::FusedWithMisc;
-        return true;
-    }
-
-    return false;
-}
 // Continue fusing chain of the passed type if the node has one child
 // Otherwise mark node as FusedTerminator (Fused, but fusing chain is interrupted)
 void PropagateIfHasOnlyChild(const std::shared_ptr<Node> &node, NodeFusingType nodeType) {
@@ -290,11 +267,6 @@ bool SnippetsMarkSkipped::run_on_model(const std::shared_ptr<ov::Model> &m) {
                     if (isSuitablePoolChild(node)) {
                         PropagateIfHasOnlyChild(node, fusingChainType);
                     }
-                } else if (one_of(fusingChainType, NodeFusingType::FusedWithMatMul, NodeFusingType::FusedWithFC)) {
-                    // Handle fusings for both MatMul and FullyConnected
-                    NodeFusingType updatedChainType = fusingChainType;
-                    if (isSuitableChildForFusingMatMul(node, updatedChainType, channelAxis))
-                        PropagateIfHasOnlyChild(node, updatedChainType);
                 }
             }
         }

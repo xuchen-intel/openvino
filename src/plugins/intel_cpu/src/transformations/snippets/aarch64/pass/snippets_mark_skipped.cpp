@@ -102,8 +102,8 @@ bool isSuitableBinaryConvolutionParent(const std::shared_ptr<const Node> &node) 
 }
 bool isSuitableMiscParent(const std::shared_ptr<const Node> &node) {
     const bool is_suitable_node = ov::is_type<ov::op::v0::NormalizeL2>(node) ||
-                                  ov::is_type<ov::opset1::ConvolutionBackpropData>(node) ||
-                                  ov::is_type<ov::opset1::GroupConvolutionBackpropData>(node);
+                                  ov::is_type<ov::op::v1::ConvolutionBackpropData>(node) ||
+                                  ov::is_type<ov::op::v1::GroupConvolutionBackpropData>(node);
     // has a single output, connected to a single child
     const auto out = node->outputs();
     const bool has_only_child = (out.size() == 1) && (out[0].get_target_inputs().size() == 1);
@@ -135,7 +135,7 @@ bool isSuitableChildForFusingBias(const std::shared_ptr<const Node> &node, int f
                  ov::is_type<ov::op::v0::MatMul>(node)) &&
                  node->inputs().size() == 2;
     };
-    const bool is_bias = ov::is_type<ov::opset1::Add>(node);
+    const bool is_bias = ov::is_type<ov::op::v1::Add>(node);
     if (!is_bias)
         return false;
     const auto in = node->inputs();
@@ -185,7 +185,8 @@ bool isSuitableChildForFusingBias(const std::shared_ptr<const Node> &node, int f
             if (bias_shape_norm[i] != 1 && static_cast<int>(i) != fusingAxis)
                 break;
         }
-        return i == bias_shape_norm.size();
+        if (i == bias_shape_norm.size())
+            return true;
     }
     return false;
 }

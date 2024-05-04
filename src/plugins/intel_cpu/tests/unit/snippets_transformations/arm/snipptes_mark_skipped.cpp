@@ -95,7 +95,7 @@ TEST_F(SnippetsMarkSkippedTests, smoke_Snippets_SkipMatMulFused_MatMulBiasReluDi
     std::vector<PartialShape> inputShapes {{1, 2, 2, 16}, {16, 4}, {1, 1, 1, 4}, {1, 2, 2, 4}};
     const auto &f = MatMulBiasActivationBinaryFunction(inputShapes, eltwiseOps);
     model = f.getOriginal();
-    // Partially tokenizable, since Bias and first Relu can be fused into Convolution
+    // There will one Subgraph with Divide since Bias and Relu can be fused into MatMul
     model_ref = f.getReference();
     run();
 }

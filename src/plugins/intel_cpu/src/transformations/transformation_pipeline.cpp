@@ -918,6 +918,7 @@ void Transformations::MainSnippets(void) {
                 ov::is_type<ov::op::v1::Add>(n) ||
                 ov::is_type<ov::op::v0::Clamp>(n) ||
                 ov::is_type<ov::op::v1::Divide>(n) ||
+                ov::is_type<ov::op::v1::Equal>(n) ||
                 ov::is_type<ov::op::v0::Elu>(n) ||
                 ov::is_type<ov::op::v0::Exp>(n) ||
                 ov::is_type<ov::op::v4::HSwish>(n) ||
@@ -967,12 +968,14 @@ void Transformations::MainSnippets(void) {
                     return false;
             }
 
-            return supported_element_types.count(t.get_element_type()) != 0 || (is_input &&
-                   t.get_element_type() == ov::element::i32 &&
+            return supported_element_types.count(t.get_element_type()) != 0 ||
+                   (is_input && t.get_element_type() == ov::element::i32 &&
                    (ov::is_type<const opset1::Transpose>(n) ||
                     ov::is_type<const opset1::Broadcast>(n) ||
                     ov::is_type<const opset1::ReduceMax>(n) ||
-                    ov::is_type<const opset1::ReduceSum>(n)));
+                    ov::is_type<const opset1::ReduceSum>(n))) ||
+                   (!is_input && t.get_element_type() == ov::element::u8 &&
+                    ov::is_type<const opset1::Equal>(n));
         };
 
         const auto& inputs = n->inputs();

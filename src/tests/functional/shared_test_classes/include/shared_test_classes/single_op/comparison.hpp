@@ -14,6 +14,19 @@
 
 namespace ov {
 namespace test {
+using ov::test::utils::ComparisonTypes;
+
+static std::map<ComparisonTypes, std::string> comparisonNames = {
+        {ComparisonTypes::EQUAL,         "EQUAL"},
+        {ComparisonTypes::NOT_EQUAL,     "NOT_EQUAL"},
+        {ComparisonTypes::IS_FINITE,     "IS_FINITE"},
+        {ComparisonTypes::IS_INF,        "IS_INF"},
+        {ComparisonTypes::IS_NAN,        "IS_NAN"},
+        {ComparisonTypes::LESS,          "LESS"},
+        {ComparisonTypes::LESS_EQUAL,    "LESS_EQUAL"},
+        {ComparisonTypes::GREATER,       "GREATER"},
+        {ComparisonTypes::GREATER_EQUAL, "GREATER_EQUAL"},
+};
 
 typedef std::tuple<
     std::vector<InputShape>,             // Input shapes tuple

@@ -1903,6 +1903,21 @@ void Reduce::initSupportedPrimitiveDescriptors() {
     input_prec = getOriginalInputPrecisionAtPort(REDUCE_DATA);
     output_prec = getOriginalOutputPrecisionAtPort(0);
 
+    auto is_precision_sensitive_reduce = [](const Algorithm &algorithm) {
+        return algorithm != Algorithm::ReduceAnd && algorithm != Algorithm::ReduceOr &&
+               algorithm != Algorithm::ReduceMin && algorithm != Algorithm::ReduceMax;
+    };
+
+    // Since in jit mode we use the output memory as an intermediate accumulator for certain reduce modes, we can't use BF16/FP16 output precision due to
+    // the possible accuracy loss. Therefore, for such mods, we will change the output precision to FP32.
+    if (ov::element::bf16 == output_prec) {
+        if (!mayiuse(avx512_core) || is_precision_sensitive_reduce(algorithm))
+            output_prec = ov::element::f32;
+    } else if (ov::element::f16 == output_prec) {
+        if (!mayiuse(cpu::x64::avx2) || is_precision_sensitive_reduce(algorithm))
+            output_prec = ov::element::f32;
+    }
+
     if (!fusedWith.empty()) {
         // In jit mode we use the output memory as an intermediate accumulator for certain reduce modes.
         // If the post ops node has a lower precision for such modes, working buffer with original precision is needed,
@@ -1918,23 +1933,6 @@ void Reduce::initSupportedPrimitiveDescriptors() {
     }
 
     jit_mode = canApplyJIT(input_prec, output_prec);
-
-    auto is_precision_sensitive_reduce = [](const Algorithm &algorithm) {
-        return algorithm != Algorithm::ReduceAnd && algorithm != Algorithm::ReduceOr &&
-               algorithm != Algorithm::ReduceMin && algorithm != Algorithm::ReduceMax;
-    };
-
-    if (jit_mode) {
-        // Since in jit mode we use the output memory as an intermediate accumulator for certain reduce modes, we can't use BF16/FP16 output precision due to
-        // the possible accuracy loss. Therefore, for such mods, we will change the output precision to FP32.
-        if (ov::element::bf16 == output_prec) {
-            if (!mayiuse(avx512_core) || is_precision_sensitive_reduce(algorithm))
-                output_prec = ov::element::f32;
-        } else if (ov::element::f16 == output_prec) {
-            if (!mayiuse(cpu::x64::avx2) || is_precision_sensitive_reduce(algorithm))
-                output_prec = ov::element::f32;
-        }
-    }
 
     intermediate_prec = fuse_low_precision ? ov::element::f32 : output_prec;
     precision_change = input_prec != intermediate_prec;

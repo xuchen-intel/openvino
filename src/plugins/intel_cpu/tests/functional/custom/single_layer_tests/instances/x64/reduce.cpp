@@ -19,6 +19,10 @@ std::vector<std::vector<ov::test::InputShape>> inputShapes_dyn = {
     {{{{1, 5}, 19, {1, 5}, {1, 10}}, {{2, 19, 2, 2}, {2, 19, 2, 9}}}},
 };
 
+std::vector<std::vector<ov::test::InputShape>> inputShapes_fuse_dyn = {
+    {{{{1, 5}, 2, {1, 10}, {1, 10}}, {{2, 2, 9, 9}, {2, 2, 9, 10}}}},
+};
+
 std::vector<std::vector<ov::test::InputShape>> inputShapes_3D_fuse_dyn = {
     {{{{1, 5}, 19, {1, 10}}, {{1, 19, 2}, {1, 19, 9}, {1, 19, 2}}}},
 };
@@ -120,7 +124,7 @@ const auto fusingFakeQuantizeTranspose = fusingSpecificParams{std::make_shared<p
         {[](postNodeConfig& cfg){
             auto localPrc = cfg.input->get_element_type();
             ov::Shape newShape(cfg.input->get_output_partial_shape(0).size(), 1);
-            const auto fakeQuantize = ov::test::utils::make_fake_quantize(cfg.input, localPrc, 256, newShape);
+            const auto fakeQuantize = ov::test::utils::make_fake_quantize(cfg.input, localPrc, 256, newShape, {0}, {9}, {0}, {255});
             std::vector<size_t> order(newShape.size());
             std::iota(order.begin(), order.end(), 0);
             auto last = order[order.size() - 1];
@@ -544,6 +548,20 @@ const auto params_LowPrecision_fusing = testing::Combine(
         testing::ValuesIn(fusingParamsSet_LowPrecision),
         testing::ValuesIn(additionalConfig()));
 
+const auto params_LowPrecision_fusing_large_accumulation = testing::Combine(
+        testing::Combine(
+                testing::Values(axesNDFusing[5]),
+                testing::Values(ov::test::utils::OpType::VECTOR),
+                testing::Values(true),
+                testing::Values(reductionTypesFusing[0]),
+                testing::ValuesIn(inpOutPrc()),
+                testing::Values(ElementType::undefined),
+                testing::Values(ElementType::undefined),
+                testing::ValuesIn(inputShapes_fuse_dyn)),
+        testing::ValuesIn(filterCPUSpecificParams(cpuParams_NHWC_4D)),
+        testing::ValuesIn(fusingParamsSet_LowPrecision),
+        testing::Values(additionalConfig()[1]));
+
 INSTANTIATE_TEST_SUITE_P(
         smoke_Reduce_OneAxis_fusing_CPU,
         ReduceCPULayerTest,
@@ -576,6 +594,13 @@ INSTANTIATE_TEST_SUITE_P(
         smoke_Reduce_LowPrecision_fusing_CPU,
         ReduceCPULayerTest,
         params_LowPrecision_fusing,
+        ReduceCPULayerTest::getTestCaseName
+);
+
+INSTANTIATE_TEST_SUITE_P(
+        smoke_Reduce_LowPrecision_fusing_large_accumulation_CPU,
+        ReduceCPULayerTest,
+        params_LowPrecision_fusing_large_accumulation,
         ReduceCPULayerTest::getTestCaseName
 );
 

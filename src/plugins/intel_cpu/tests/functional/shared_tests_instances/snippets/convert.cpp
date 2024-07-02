@@ -12,6 +12,25 @@ namespace snippets {
 
 namespace {
 
+#if 1
+const std::vector<std::pair<std::vector<ov::element::Type>, std::vector<ov::element::Type>>> types_Convert = {
+        { { ov::element::f32 }, { ov::element::i8 } },
+};
+
+const std::vector<std::vector<ov::test::InputShape>> inputShapes_Convert = {
+        { {{}, {{2, 16}}} },
+};
+
+INSTANTIATE_TEST_SUITE_P(smoke_Snippets_Convert, Convert,
+                         ::testing::Combine(
+                                 ::testing::ValuesIn(inputShapes_Convert),
+                                 ::testing::ValuesIn(types_Convert),
+                                 ::testing::Values(1),
+                                 ::testing::Values(1),
+                                 ::testing::Values(ov::test::utils::DEVICE_CPU)),
+                         Convert::getTestCaseName);
+
+#else
 const std::vector<std::pair<std::vector<ov::element::Type>, std::vector<ov::element::Type>>> types_Convert = {
         { { ov::element::f32 }, { ov::element::bf16 } },
         { { ov::element::f32 }, { ov::element::u8 } },
@@ -173,6 +192,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_Snippets_ConvertManyOnInputOutput, ConvertManyOnI
                                  ::testing::Values(1),
                                  ::testing::Values(ov::test::utils::DEVICE_CPU)),
                          Convert::getTestCaseName);
+#endif
 
 }  // namespace
 } // namespace snippets

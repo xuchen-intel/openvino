@@ -37,6 +37,47 @@ protected:
     };
 };
 
+// This emitter is covered by specification of "Convert" operation. The implementation uses a "warp-around" conversion.
+// Example:
+//  int32_t -> int8_t
+//   129   -> -127
+class jit_convert_truncation_emitter : public jit_convert_emitter {
+public:
+    jit_convert_truncation_emitter(dnnl::impl::cpu::aarch64::jit_generator *host, dnnl::impl::cpu::aarch64::cpu_isa_t host_isa,
+                                   const std::shared_ptr<ov::Node>& n, ov::element::Type exec_prc = ov::element::f32);
+
+private:
+    void emit_impl(const std::vector<size_t>& in, const std::vector<size_t>& out) const override;
+    template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
+    void emit_isa(const std::vector<size_t> &in_vec_idxs, const std::vector<size_t> &out_vec_idxs) const;
+
+    template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
+    void dword2int8(const std::vector<size_t> &in_vec_idxs, const std::vector<size_t> &out_vec_idxs) const;
+
+    bool is_i8_and_u8_case() const;
+    void register_table_entries() override;
+};
+
+// This emitter is covered by the common dnnl behavior. The implementation uses a "saturation" conversion.
+// Example:
+//  int32_t -> int8_t
+//   129   -> 127
+class jit_convert_saturation_emitter : public jit_convert_emitter {
+public:
+    jit_convert_saturation_emitter(dnnl::impl::cpu::aarch64::jit_generator *host, dnnl::impl::cpu::aarch64::cpu_isa_t host_isa,
+                                   const std::shared_ptr<ov::Node>& n, ov::element::Type exec_prc = ov::element::f32);
+
+private:
+    void emit_impl(const std::vector<size_t>& in, const std::vector<size_t>& out) const override;
+    template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
+    void emit_isa(const std::vector<size_t> &in_vec_idxs, const std::vector<size_t> &out_vec_idxs) const;
+
+    template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
+    void dword2int8(const std::vector<size_t> &in_vec_idxs, const std::vector<size_t> &out_vec_idxs, bool is_signed) const;
+
+    size_t get_aux_vecs_count() const override;
+};
+
 }   // namespace aarch64
 }   // namespace intel_cpu
 }   // namespace ov

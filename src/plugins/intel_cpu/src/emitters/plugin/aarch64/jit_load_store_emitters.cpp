@@ -31,8 +31,8 @@ void jit_load_emitter::emit_impl(const std::vector<size_t> &in_idxs, const std::
 
 template <cpu_isa_t isa>
 void jit_load_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {
-    OV_CPU_JIT_EMITTER_ASSERT(src_prc_ == ov::element::f32 && dst_prc_ == ov::element::f32,
-                              "Only supports both input and output precisions of being FP32");
+    OV_CPU_JIT_EMITTER_ASSERT(one_of(src_prc_, ov::element::f32, ov::element::i8), "Input precision only supports f32 and i8.");
+    OV_CPU_JIT_EMITTER_ASSERT(one_of(dst_prc_, ov::element::f32, ov::element::i8), "Output precision only supports f32 and i8.");
     OV_CPU_JIT_EMITTER_ASSERT(load_num_ <= static_cast<int>((get_vec_length() / dst_prc_.size())),
                               "Unexpected number of elements to load.");
 
@@ -88,8 +88,8 @@ void jit_store_emitter::emit_impl(const std::vector<size_t> &in_idxs, const std:
 
 template <cpu_isa_t isa>
 void jit_store_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {
-    OV_CPU_JIT_EMITTER_ASSERT(src_prc_ == ov::element::f32 && dst_prc_ == ov::element::f32,
-                            "Only supports both input and output precisions of being FP32");
+    OV_CPU_JIT_EMITTER_ASSERT(one_of(src_prc_, ov::element::f32, ov::element::i8), "Input precision only supports f32 and i8.");
+    OV_CPU_JIT_EMITTER_ASSERT(one_of(dst_prc_, ov::element::f32, ov::element::i8), "Output precision only supports f32 and i8.");
     OV_CPU_JIT_EMITTER_ASSERT(store_num_ <= static_cast<int>((get_vec_length() / dst_prc_.size())),
                               "Unexpected number of elements to store.");
 

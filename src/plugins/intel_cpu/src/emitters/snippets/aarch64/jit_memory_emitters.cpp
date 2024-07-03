@@ -22,11 +22,8 @@ jit_memory_emitter::jit_memory_emitter(jit_generator* h, cpu_isa_t isa, const Ex
 }
 
 jit_load_memory_emitter::jit_load_memory_emitter(jit_generator* h, cpu_isa_t isa, const ExpressionPtr& expr) : jit_memory_emitter(h, isa, expr) {
-    OV_CPU_JIT_EMITTER_ASSERT(src_prc == dst_prc, "Only Supports equal input and output types but gets ",
-                              src_prc.get_type_name(),
-                              " and ",
-                              dst_prc.get_type_name());
-    OV_CPU_JIT_EMITTER_ASSERT(src_prc == ov::element::f32, "Only supports FP32 precision.");
+    OV_CPU_JIT_EMITTER_ASSERT(one_of(src_prc, ov::element::f32, ov::element::i8), "Input precision only supports f32 and i8.");
+    OV_CPU_JIT_EMITTER_ASSERT(one_of(dst_prc, ov::element::f32, ov::element::i8), "Output precision only supports f32 and i8.");
 
     const auto load = std::dynamic_pointer_cast<snippets::op::Load>(expr->get_node());
     OV_CPU_JIT_EMITTER_ASSERT(load != nullptr, "Expects Load expression");
@@ -89,11 +86,8 @@ void jit_load_broadcast_emitter::emit_isa(const std::vector<size_t> &in, const s
 }
 
 jit_store_memory_emitter::jit_store_memory_emitter(jit_generator* h, cpu_isa_t isa, const ExpressionPtr& expr) : jit_memory_emitter(h, isa, expr) {
-    OV_CPU_JIT_EMITTER_ASSERT(src_prc == dst_prc, "Only supports equal input and output types but gets ",
-                              src_prc.get_type_name(),
-                              " and ",
-                              dst_prc.get_type_name());
-    OV_CPU_JIT_EMITTER_ASSERT(src_prc == ov::element::f32, "Only supports FP32 precision.");
+    OV_CPU_JIT_EMITTER_ASSERT(one_of(src_prc, ov::element::f32, ov::element::i8), "Input precision only supports f32 and i8.");
+    OV_CPU_JIT_EMITTER_ASSERT(one_of(dst_prc, ov::element::f32, ov::element::i8), "Output precision only supports f32 and i8.");
 
     const auto store = ov::as_type_ptr<snippets::op::Store>(expr->get_node());
     OV_CPU_JIT_EMITTER_ASSERT(store != nullptr, "Expects Store expression");

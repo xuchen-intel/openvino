@@ -29,6 +29,7 @@ void jit_convert_emitter::float2bfloat(const std::vector<size_t> &in_vec_idxs, c
 jit_convert_truncation_emitter::jit_convert_truncation_emitter(jit_generator *host, cpu_isa_t host_isa,
                                                                const std::shared_ptr<ov::Node>& node, ov::element::Type exec_prc)
         : jit_convert_emitter(host, host_isa, node, exec_prc) {
+    std::cout << "###### jit_convert_truncation_emitter" << std::endl;
 }
 
 bool jit_convert_truncation_emitter::is_i8_and_u8_case() const {
@@ -52,6 +53,7 @@ void jit_convert_truncation_emitter::dword2int8(const std::vector<size_t> &in_ve
 jit_convert_saturation_emitter::jit_convert_saturation_emitter(jit_generator *host, cpu_isa_t host_isa,
                                                                const std::shared_ptr<ov::Node>& node, ov::element::Type exec_prc)
     : jit_convert_emitter(host, host_isa, node, exec_prc) {
+    std::cout << "###### jit_convert_saturation_emitter" << std::endl;
 }
 
 void jit_convert_saturation_emitter::emit_impl(const std::vector<size_t> &in_vec_idxs, const std::vector<size_t> &out_vec_idxs) const {

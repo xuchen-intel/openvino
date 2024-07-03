@@ -138,6 +138,10 @@ void jit_store_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::
             case 3:
                 break;
             case 4:
+                h->fcvtzs(src.s, src.s);
+                h->xtn(src.h4, src.s4);
+                h->xtn(src.b8, src.h8);
+                h->str(src_s, post_ptr(dst, byte_offset_));
                 break;
             default:
                 OV_CPU_JIT_EMITTER_THROW("Unsupported output type: ", dst_prc_.get_type_name());

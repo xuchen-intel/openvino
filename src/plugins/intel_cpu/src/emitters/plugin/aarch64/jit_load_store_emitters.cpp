@@ -31,8 +31,10 @@ void jit_load_emitter::emit_impl(const std::vector<size_t> &in_idxs, const std::
 
 template <cpu_isa_t isa>
 void jit_load_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {
-    OV_CPU_JIT_EMITTER_ASSERT(one_of(src_prc_, ov::element::f32, ov::element::i8), "Input precision only supports f32 and i8.");
-    OV_CPU_JIT_EMITTER_ASSERT(one_of(dst_prc_, ov::element::f32, ov::element::i8), "Output precision only supports f32 and i8.");
+    OV_CPU_JIT_EMITTER_ASSERT(one_of(src_prc_, ov::element::f32, ov::element::i8),
+                              "Unsupported input type: ", src_prc_.get_type_name());
+    OV_CPU_JIT_EMITTER_ASSERT(one_of(dst_prc_, ov::element::f32, ov::element::i8),
+                              "Unsupported output type: ", dst_prc_.get_type_name());
     OV_CPU_JIT_EMITTER_ASSERT(load_num_ <= static_cast<int>((get_vec_length() / dst_prc_.size())),
                               "Unexpected number of elements to load.");
 
@@ -88,8 +90,10 @@ void jit_store_emitter::emit_impl(const std::vector<size_t> &in_idxs, const std:
 
 template <cpu_isa_t isa>
 void jit_store_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {
-    OV_CPU_JIT_EMITTER_ASSERT(one_of(src_prc_, ov::element::f32, ov::element::i8), "Input precision only supports f32 and i8.");
-    OV_CPU_JIT_EMITTER_ASSERT(one_of(dst_prc_, ov::element::f32, ov::element::i8), "Output precision only supports f32 and i8.");
+    OV_CPU_JIT_EMITTER_ASSERT(one_of(src_prc_, ov::element::f32, ov::element::i8),
+                              "Unsupported input type: ", src_prc_.get_type_name());
+    OV_CPU_JIT_EMITTER_ASSERT(one_of(dst_prc_, ov::element::f32, ov::element::i8),
+                              "Unsupported output type: ", dst_prc_.get_type_name());
     OV_CPU_JIT_EMITTER_ASSERT(store_num_ <= static_cast<int>((get_vec_length() / dst_prc_.size())),
                               "Unexpected number of elements to store.");
 
@@ -100,25 +104,55 @@ void jit_store_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::
     XReg dst = XReg(out_idxs[0]);
     XReg prc = XReg(aux_gpr_idxs[0]);
 
-    switch (store_num_) {
-        case 0:
+    auto store_f32 = [&](int num){
+        switch (num) {
+            case 0:
+                break;
+            case 1:
+                h->str(src_s, post_ptr(dst, byte_offset_));
+                break;
+            case 2:
+                h->str(src_d, post_ptr(dst, byte_offset_));
+                break;
+            case 3:
+                h->str(src_d, post_ptr(dst, byte_offset_));
+                h->add_imm(prc, dst, byte_offset_ + 2 * sizeof(float), h->X_DEFAULT_ADDR);
+                h->st1(src.s[2], ptr(prc));
+                break;
+            case 4:
+                h->str(QReg(src.getIdx()), post_ptr(dst, byte_offset_));
+                break;
+            default:
+                OV_CPU_JIT_EMITTER_THROW("Unsupported output type: ", dst_prc_.get_type_name());
+        }
+    };
+
+    auto store_i8 = [&](int num){
+        switch (num) {
+            case 0:
+                break;
+            case 1:
+                break;
+            case 2:
+                break;
+            case 3:
+                break;
+            case 4:
+                break;
+            default:
+                OV_CPU_JIT_EMITTER_THROW("Unsupported output type: ", dst_prc_.get_type_name());
+        }
+    };
+
+    switch (dst_prc_) {
+        case ov::element::f32:
+            store_f32(store_num_);
             break;
-        case 1:
-            h->str(src_s, post_ptr(dst, byte_offset_));
-            break;
-        case 2:
-            h->str(src_d, post_ptr(dst, byte_offset_));
-            break;
-        case 3:
-            h->str(src_d, post_ptr(dst, byte_offset_));
-            h->add_imm(prc, dst, byte_offset_ + 2 * sizeof(float), h->X_DEFAULT_ADDR);
-            h->st1(src.s[2], ptr(prc));
-            break;
-        case 4:
-            h->str(QReg(src.getIdx()), post_ptr(dst, byte_offset_));
+        case ov::element::i8:
+            store_i8(store_num_);
             break;
         default:
-            OV_CPU_JIT_EMITTER_THROW("Unexpected number of elements to store.");
+            OV_CPU_JIT_EMITTER_THROW("has unsupported dst precision to store.");
     }
 }
 

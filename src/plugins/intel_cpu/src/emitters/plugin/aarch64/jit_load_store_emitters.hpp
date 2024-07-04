@@ -46,6 +46,14 @@ public:
 private:
     template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
     void emit_isa(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const;
+    template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
+    void store_f32(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const;
+    template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
+    void store_i32(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const;
+    template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
+    void store_f16(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const;
+    template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
+    void store_byte(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const;
     size_t get_aux_gprs_count() const override;
 
     std::string name_;

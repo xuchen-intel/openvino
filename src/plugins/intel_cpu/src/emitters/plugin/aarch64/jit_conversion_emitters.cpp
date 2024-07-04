@@ -12,6 +12,55 @@ namespace ov {
 namespace intel_cpu {
 namespace aarch64 {
 
+template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
+static void cvt_f16_to_f32(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs,
+                           dnnl::impl::cpu::aarch64::jit_generator* h) {
+}
+
+template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
+static void cvt_f32_to_f16(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs,
+                           dnnl::impl::cpu::aarch64::jit_generator* h) {
+}
+
+template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
+static void cvt_f32_to_i32(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs,
+                           dnnl::impl::cpu::aarch64::jit_generator* h) {
+    using TReg = typename dnnl::impl::cpu::aarch64::cpu_isa_traits<isa>::TReg;
+    TReg src = TReg(in_idxs[0]);
+    TReg dst = TReg(out_idxs[0]);
+    h->fcvtzs(dst.s, src.s);
+}
+
+template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
+static void cvt_i32_to_f32(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs,
+                           dnnl::impl::cpu::aarch64::jit_generator* h) {
+}
+
+template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
+static void cvt_i32_to_i8(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs,
+                           dnnl::impl::cpu::aarch64::jit_generator* h) {
+    using TReg = typename dnnl::impl::cpu::aarch64::cpu_isa_traits<isa>::TReg;
+    TReg src = TReg(in_idxs[0]);
+    TReg dst = TReg(out_idxs[0]);
+    h->xtn(dst.h4, src.s4);
+    h->xtn(dst.b8, dst.h8);
+}
+
+template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
+static void cvt_i8_to_i32(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs,
+                           dnnl::impl::cpu::aarch64::jit_generator* h) {
+}
+
+template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
+static void cvt_i32_to_u8(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs,
+                           dnnl::impl::cpu::aarch64::jit_generator* h) {
+}
+
+template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
+static void cvt_u8_to_i32(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs,
+                           dnnl::impl::cpu::aarch64::jit_generator* h) {
+}
+
 jit_convert_emitter::jit_convert_emitter(jit_generator *host, cpu_isa_t host_isa, const std::shared_ptr<ov::Node>& node, ov::element::Type exec_prc)
 : jit_emitter(host, host_isa, exec_prc) {
     input_type = node->get_input_element_type(0);
@@ -48,21 +97,122 @@ void jit_convert_truncation_emitter::emit_impl(const std::vector<size_t> &in_idx
 
 template <cpu_isa_t isa>
 void jit_convert_truncation_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {
-    using TReg = typename dnnl::impl::cpu::aarch64::cpu_isa_traits<isa>::TReg;
-    TReg src = TReg(in_idxs[0]);
-    SReg src_s = SReg(in_idxs[0]);
-    DReg src_d = DReg(in_idxs[0]);
-    XReg dst = XReg(out_idxs[0]);
-
-    switch (input_type) {
-        case ov::element::f32:
-            break;
-        default:
-            OV_CPU_JIT_EMITTER_THROW("Unsupported input type: ", input_type.get_type_name());
-    }
-
     switch (output_type) {
+        case ov::element::f32:
+            switch (input_type) {
+                case ov::element::f32:
+                    break;
+                case ov::element::i32:
+                    cvt_i32_to_f32<isa>(in_idxs, out_idxs, h);
+                    break;
+                case ov::element::f16:
+                    cvt_f16_to_f32<isa>(in_idxs, out_idxs, h);
+                    break;
+                case ov::element::i8:
+                    cvt_i8_to_i32<isa>(in_idxs, out_idxs, h);
+                    cvt_i32_to_f32<isa>(in_idxs, out_idxs, h);
+                    break;
+                case ov::element::u8:
+                    cvt_u8_to_i32<isa>(in_idxs, out_idxs, h);
+                    cvt_i32_to_f32<isa>(in_idxs, out_idxs, h);
+                    break;
+                default:
+                    OV_CPU_JIT_EMITTER_THROW("Unsupported input type: ", input_type.get_type_name());
+            }
+            break;
+        case ov::element::i32:
+            switch (input_type) {
+                case ov::element::f32:
+                    cvt_f32_to_i32<isa>(in_idxs, out_idxs, h);
+                    break;
+                case ov::element::i32:
+                    break;
+                case ov::element::f16:
+                    cvt_f16_to_f32<isa>(in_idxs, out_idxs, h);
+                    cvt_f32_to_i32<isa>(in_idxs, out_idxs, h);
+                    break;
+                case ov::element::i8:
+                    cvt_i8_to_i32<isa>(in_idxs, out_idxs, h);
+                    break;
+                case ov::element::u8:
+                    cvt_u8_to_i32<isa>(in_idxs, out_idxs, h);
+                    break;
+                default:
+                    OV_CPU_JIT_EMITTER_THROW("Unsupported input type: ", input_type.get_type_name());
+            }
+            break;
+        case ov::element::f16:
+            switch (input_type) {
+                case ov::element::f32:
+                    cvt_f32_to_f16<isa>(in_idxs, out_idxs, h);
+                    break;
+                case ov::element::i32:
+                    cvt_i32_to_f32<isa>(in_idxs, out_idxs, h);
+                    cvt_f32_to_f16<isa>(in_idxs, out_idxs, h);
+                    break;
+                case ov::element::f16:
+                    break;
+                case ov::element::i8:
+                    cvt_i8_to_i32<isa>(in_idxs, out_idxs, h);
+                    cvt_i32_to_f32<isa>(in_idxs, out_idxs, h);
+                    cvt_f32_to_f16<isa>(in_idxs, out_idxs, h);
+                    break;
+                case ov::element::u8:
+                    cvt_u8_to_i32<isa>(in_idxs, out_idxs, h);
+                    cvt_i32_to_f32<isa>(in_idxs, out_idxs, h);
+                    cvt_f32_to_f16<isa>(in_idxs, out_idxs, h);
+                    break;
+                default:
+                    OV_CPU_JIT_EMITTER_THROW("Unsupported input type: ", input_type.get_type_name());
+            }
+            break;
         case ov::element::i8:
+            switch (input_type) {
+                case ov::element::f32:
+                    cvt_f32_to_i32<isa>(in_idxs, out_idxs, h);
+                    cvt_i32_to_i8<isa>(in_idxs, out_idxs, h);
+                    break;
+                case ov::element::i32:
+                    cvt_i32_to_i8<isa>(in_idxs, out_idxs, h);
+                    break;
+                case ov::element::f16:
+                    cvt_f16_to_f32<isa>(in_idxs, out_idxs, h);
+                    cvt_f32_to_i32<isa>(in_idxs, out_idxs, h);
+                    cvt_i32_to_i8<isa>(in_idxs, out_idxs, h);
+                    break;
+                case ov::element::i8:
+                    break;
+                case ov::element::u8:
+                    cvt_u8_to_i32<isa>(in_idxs, out_idxs, h);
+                    cvt_i32_to_i8<isa>(in_idxs, out_idxs, h);
+                    break;
+                default:
+                    OV_CPU_JIT_EMITTER_THROW("Unsupported input type: ", input_type.get_type_name());
+            }
+            break;
+        case ov::element::u8:
+            switch (input_type) {
+                case ov::element::f32:
+                    cvt_f32_to_i32<isa>(in_idxs, out_idxs, h);
+                    cvt_i32_to_u8<isa>(in_idxs, out_idxs, h);
+                    break;
+                case ov::element::i32:
+                    cvt_i32_to_u8<isa>(in_idxs, out_idxs, h);
+                    break;
+                case ov::element::f16:
+                    cvt_f16_to_f32<isa>(in_idxs, out_idxs, h);
+                    cvt_f32_to_i32<isa>(in_idxs, out_idxs, h);
+                    cvt_i32_to_u8<isa>(in_idxs, out_idxs, h);
+                    break;
+                case ov::element::i8:
+                    cvt_i8_to_i32<isa>(in_idxs, out_idxs, h);
+                    cvt_i32_to_u8<isa>(in_idxs, out_idxs, h);
+                    break;
+                case ov::element::u8:
+                    break;
+                default:
+                    OV_CPU_JIT_EMITTER_THROW("Unsupported input type: ", input_type.get_type_name());
+            }
             break;
         default:
             OV_CPU_JIT_EMITTER_THROW("Unsupported output type: ", output_type.get_type_name());

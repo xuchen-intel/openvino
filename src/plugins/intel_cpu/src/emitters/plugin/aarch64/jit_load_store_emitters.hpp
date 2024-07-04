@@ -25,6 +25,7 @@ private:
     template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
     void emit_isa(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const;
     size_t get_aux_gprs_count() const override;
+    size_t get_aux_vecs_count() const override;
 
     std::string name_;
     int load_num_;  // the element number to load
@@ -55,6 +56,7 @@ private:
     template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
     void store_byte(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const;
     size_t get_aux_gprs_count() const override;
+    size_t get_aux_vecs_count() const override;
 
     std::string name_;
     int store_num_;  // the element number to store

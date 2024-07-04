@@ -110,11 +110,11 @@ void jit_convert_truncation_emitter::emit_isa(const std::vector<size_t> &in_idxs
                     break;
                 case ov::element::i8:
                     cvt_i8_to_i32<isa>(in_idxs, out_idxs, h);
-                    cvt_i32_to_f32<isa>(in_idxs, out_idxs, h);
+                    cvt_i32_to_f32<isa>(out_idxs, out_idxs, h);
                     break;
                 case ov::element::u8:
                     cvt_u8_to_i32<isa>(in_idxs, out_idxs, h);
-                    cvt_i32_to_f32<isa>(in_idxs, out_idxs, h);
+                    cvt_i32_to_f32<isa>(out_idxs, out_idxs, h);
                     break;
                 default:
                     OV_CPU_JIT_EMITTER_THROW("Unsupported input type: ", input_type.get_type_name());
@@ -129,7 +129,7 @@ void jit_convert_truncation_emitter::emit_isa(const std::vector<size_t> &in_idxs
                     break;
                 case ov::element::f16:
                     cvt_f16_to_f32<isa>(in_idxs, out_idxs, h);
-                    cvt_f32_to_i32<isa>(in_idxs, out_idxs, h);
+                    cvt_f32_to_i32<isa>(out_idxs, out_idxs, h);
                     break;
                 case ov::element::i8:
                     cvt_i8_to_i32<isa>(in_idxs, out_idxs, h);
@@ -148,19 +148,19 @@ void jit_convert_truncation_emitter::emit_isa(const std::vector<size_t> &in_idxs
                     break;
                 case ov::element::i32:
                     cvt_i32_to_f32<isa>(in_idxs, out_idxs, h);
-                    cvt_f32_to_f16<isa>(in_idxs, out_idxs, h);
+                    cvt_f32_to_f16<isa>(out_idxs, out_idxs, h);
                     break;
                 case ov::element::f16:
                     break;
                 case ov::element::i8:
                     cvt_i8_to_i32<isa>(in_idxs, out_idxs, h);
-                    cvt_i32_to_f32<isa>(in_idxs, out_idxs, h);
-                    cvt_f32_to_f16<isa>(in_idxs, out_idxs, h);
+                    cvt_i32_to_f32<isa>(out_idxs, out_idxs, h);
+                    cvt_f32_to_f16<isa>(out_idxs, out_idxs, h);
                     break;
                 case ov::element::u8:
                     cvt_u8_to_i32<isa>(in_idxs, out_idxs, h);
-                    cvt_i32_to_f32<isa>(in_idxs, out_idxs, h);
-                    cvt_f32_to_f16<isa>(in_idxs, out_idxs, h);
+                    cvt_i32_to_f32<isa>(out_idxs, out_idxs, h);
+                    cvt_f32_to_f16<isa>(out_idxs, out_idxs, h);
                     break;
                 default:
                     OV_CPU_JIT_EMITTER_THROW("Unsupported input type: ", input_type.get_type_name());
@@ -170,21 +170,21 @@ void jit_convert_truncation_emitter::emit_isa(const std::vector<size_t> &in_idxs
             switch (input_type) {
                 case ov::element::f32:
                     cvt_f32_to_i32<isa>(in_idxs, out_idxs, h);
-                    cvt_i32_to_i8<isa>(in_idxs, out_idxs, h);
+                    cvt_i32_to_i8<isa>(out_idxs, out_idxs, h);
                     break;
                 case ov::element::i32:
                     cvt_i32_to_i8<isa>(in_idxs, out_idxs, h);
                     break;
                 case ov::element::f16:
                     cvt_f16_to_f32<isa>(in_idxs, out_idxs, h);
-                    cvt_f32_to_i32<isa>(in_idxs, out_idxs, h);
-                    cvt_i32_to_i8<isa>(in_idxs, out_idxs, h);
+                    cvt_f32_to_i32<isa>(out_idxs, out_idxs, h);
+                    cvt_i32_to_i8<isa>(out_idxs, out_idxs, h);
                     break;
                 case ov::element::i8:
                     break;
                 case ov::element::u8:
                     cvt_u8_to_i32<isa>(in_idxs, out_idxs, h);
-                    cvt_i32_to_i8<isa>(in_idxs, out_idxs, h);
+                    cvt_i32_to_i8<isa>(out_idxs, out_idxs, h);
                     break;
                 default:
                     OV_CPU_JIT_EMITTER_THROW("Unsupported input type: ", input_type.get_type_name());
@@ -194,19 +194,19 @@ void jit_convert_truncation_emitter::emit_isa(const std::vector<size_t> &in_idxs
             switch (input_type) {
                 case ov::element::f32:
                     cvt_f32_to_i32<isa>(in_idxs, out_idxs, h);
-                    cvt_i32_to_u8<isa>(in_idxs, out_idxs, h);
+                    cvt_i32_to_u8<isa>(out_idxs, out_idxs, h);
                     break;
                 case ov::element::i32:
                     cvt_i32_to_u8<isa>(in_idxs, out_idxs, h);
                     break;
                 case ov::element::f16:
                     cvt_f16_to_f32<isa>(in_idxs, out_idxs, h);
-                    cvt_f32_to_i32<isa>(in_idxs, out_idxs, h);
-                    cvt_i32_to_u8<isa>(in_idxs, out_idxs, h);
+                    cvt_f32_to_i32<isa>(out_idxs, out_idxs, h);
+                    cvt_i32_to_u8<isa>(out_idxs, out_idxs, h);
                     break;
                 case ov::element::i8:
                     cvt_i8_to_i32<isa>(in_idxs, out_idxs, h);
-                    cvt_i32_to_u8<isa>(in_idxs, out_idxs, h);
+                    cvt_i32_to_u8<isa>(out_idxs, out_idxs, h);
                     break;
                 case ov::element::u8:
                     break;

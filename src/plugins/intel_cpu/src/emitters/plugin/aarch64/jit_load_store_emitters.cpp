@@ -16,44 +16,44 @@ using jit_generator = dnnl::impl::cpu::aarch64::jit_generator;
 using cpu_isa_t = dnnl::impl::cpu::aarch64::cpu_isa_t;
 
 template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
-static void cvt_f16_to_f32(const std::vector<size_t> &in_idxs, const std::vector<size_t> &aux_idxs,
+static void cvt_f16_to_f32(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs,
                            dnnl::impl::cpu::aarch64::jit_generator* h) {
 }
 
 template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
-static void cvt_f32_to_f16(const std::vector<size_t> &in_idxs, const std::vector<size_t> &aux_idxs,
+static void cvt_f32_to_f16(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs,
                            dnnl::impl::cpu::aarch64::jit_generator* h) {
 }
 
 template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
-static void cvt_f32_to_i32(const std::vector<size_t> &in_idxs, const std::vector<size_t> &aux_idxs,
+static void cvt_f32_to_i32(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs,
                            dnnl::impl::cpu::aarch64::jit_generator* h) {
     using TReg = typename dnnl::impl::cpu::aarch64::cpu_isa_traits<isa>::TReg;
     TReg src = TReg(in_idxs[0]);
-    TReg prc = TReg(aux_idxs[0]);
-    h->fcvtzs(prc.s, src.s);
+    TReg dst = TReg(out_idxs[0]);
+    h->fcvtzs(dst.s, src.s);
 }
 
 template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
-static void cvt_i32_to_f32(const std::vector<size_t> &in_idxs, const std::vector<size_t> &aux_idxs,
+static void cvt_i32_to_f32(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs,
                            dnnl::impl::cpu::aarch64::jit_generator* h) {
 }
 
 template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
-static void cvt_i32_to_byte(const std::vector<size_t> &in_idxs, const std::vector<size_t> &aux_idxs,
+static void cvt_i32_to_byte(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs,
                             dnnl::impl::cpu::aarch64::jit_generator* h, bool is_signed) {
     using TReg = typename dnnl::impl::cpu::aarch64::cpu_isa_traits<isa>::TReg;
     TReg src = TReg(in_idxs[0]);
-    TReg prc = TReg(aux_idxs[0]);
+    TReg dst = TReg(out_idxs[0]);
     if (is_signed) {
-        h->xtn(prc.h4, src.s4);
-        h->xtn(prc.b8, prc.h8);
+        h->xtn(dst.h4, src.s4);
+        h->xtn(dst.b8, dst.h8);
     } else {
     }
 }
 
 template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
-static void cvt_byte_to_i32(const std::vector<size_t> &in_idxs, const std::vector<size_t> &aux_idxs,
+static void cvt_byte_to_i32(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs,
                             dnnl::impl::cpu::aarch64::jit_generator* h, bool is_signed) {
 }
 
@@ -163,7 +163,7 @@ void jit_store_emitter::store_f32(const std::vector<size_t> &in_idxs, const std:
             h->str(QReg(src.getIdx()), post_ptr(dst, byte_offset_));
             break;
         default:
-            OV_CPU_JIT_EMITTER_THROW("Unexpected number of elements to load.");
+            OV_CPU_JIT_EMITTER_THROW("Unexpected number of elements to store.");
     }
 }
 
@@ -194,7 +194,7 @@ void jit_store_emitter::store_byte(const std::vector<size_t> &in_idxs, const std
                 h->str(src_s, post_ptr(dst, byte_offset_));
                 break;
             default:
-                OV_CPU_JIT_EMITTER_THROW("Unexpected number of elements to load.");
+                OV_CPU_JIT_EMITTER_THROW("Unexpected number of elements to store.");
         }
     } else {
         switch (store_num_) {
@@ -209,7 +209,7 @@ void jit_store_emitter::store_byte(const std::vector<size_t> &in_idxs, const std
             case 4:
                 break;
             default:
-                OV_CPU_JIT_EMITTER_THROW("Unexpected number of elements to load.");
+                OV_CPU_JIT_EMITTER_THROW("Unexpected number of elements to store.");
         }
     }
 }
@@ -228,7 +228,7 @@ void jit_store_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::
                 case ov::element::f32:
                     break;
                 case ov::element::i32:
-                    cvt_i32_to_f32<isa>(in_idxs, out_idxs, h);
+                    cvt_i32_to_f32<isa>(in_idxs, aux_vec_idxs, h);
                     break;
                 default:
                     OV_CPU_JIT_EMITTER_THROW("Unsupported input type: ", src_prc_.get_type_name());
@@ -238,7 +238,7 @@ void jit_store_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::
         case ov::element::i32:
             switch (src_prc_) {
                 case ov::element::f32:
-                    cvt_f32_to_i32<isa>(in_idxs, out_idxs, h);
+                    cvt_f32_to_i32<isa>(in_idxs, aux_vec_idxs, h);
                     break;
                 case ov::element::i32:
                     break;
@@ -250,11 +250,11 @@ void jit_store_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::
         case ov::element::f16:
             switch (src_prc_) {
                 case ov::element::f32:
-                    cvt_f32_to_f16<isa>(in_idxs, out_idxs, h);
+                    cvt_f32_to_f16<isa>(in_idxs, aux_vec_idxs, h);
                     break;
                 case ov::element::i32:
-                    cvt_i32_to_f32<isa>(in_idxs, out_idxs, h);
-                    cvt_f32_to_f16<isa>(in_idxs, out_idxs, h);
+                    cvt_i32_to_f32<isa>(in_idxs, aux_vec_idxs, h);
+                    cvt_f32_to_f16<isa>(aux_vec_idxs, aux_vec_idxs, h);
                     break;
                 case ov::element::f16:
                     break;
@@ -267,11 +267,11 @@ void jit_store_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::
         case ov::element::u8:
             switch (src_prc_) {
                 case ov::element::f32:
-                    cvt_f32_to_i32<isa>(in_idxs, out_idxs, h);
-                    cvt_i32_to_byte<isa>(in_idxs, out_idxs, h, dst_prc_.is_signed());
+                    cvt_f32_to_i32<isa>(in_idxs, aux_vec_idxs, h);
+                    cvt_i32_to_byte<isa>(aux_vec_idxs, aux_vec_idxs, h, dst_prc_.is_signed());
                     break;
                 case ov::element::i32:
-                    cvt_i32_to_byte<isa>(in_idxs, out_idxs, h, dst_prc_.is_signed());
+                    cvt_i32_to_byte<isa>(in_idxs, aux_vec_idxs, h, dst_prc_.is_signed());
                     break;
                 case ov::element::i8:
                 case ov::element::u8:

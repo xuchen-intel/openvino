@@ -177,18 +177,28 @@ void jit_store_emitter::store_f16(const std::vector<size_t> &in_idxs, const std:
 
 template <cpu_isa_t isa>
 void jit_store_emitter::store_byte(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {
+    using TReg = typename dnnl::impl::cpu::aarch64::cpu_isa_traits<isa>::TReg;
+    TReg src = TReg(in_idxs[0]);
+    BReg src_b = BReg(in_idxs[0]);
+    HReg src_h = HReg(in_idxs[0]);
     SReg src_s = SReg(in_idxs[0]);
     XReg dst = XReg(out_idxs[0]);
+    XReg prc = XReg(aux_gpr_idxs[0]);
 
     if (dst_prc_.is_signed()) {
         switch (store_num_) {
             case 0:
                 break;
             case 1:
+                h->str(src_b, post_ptr(dst, byte_offset_));
                 break;
             case 2:
+                h->str(src_h, post_ptr(dst, byte_offset_));
                 break;
             case 3:
+                h->str(src_h, post_ptr(dst, byte_offset_));
+                h->add_imm(prc, dst, byte_offset_ + 2 * sizeof(int8_t), h->X_DEFAULT_ADDR);
+                h->st1(src.b[2], ptr(prc));
                 break;
             case 4:
                 h->str(src_s, post_ptr(dst, byte_offset_));

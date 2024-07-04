@@ -31,10 +31,9 @@ void jit_load_emitter::emit_impl(const std::vector<size_t> &in_idxs, const std::
 
 template <cpu_isa_t isa>
 void jit_load_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {
-    OV_CPU_JIT_EMITTER_ASSERT(one_of(src_prc_, ov::element::f32, ov::element::i8),
-                              "Unsupported input type: ", src_prc_.get_type_name());
-    OV_CPU_JIT_EMITTER_ASSERT(one_of(dst_prc_, ov::element::f32, ov::element::i8),
-                              "Unsupported output type: ", dst_prc_.get_type_name());
+    bool is_supported_precision = one_of(src_prc_, ov::element::f32, ov::element::i32, ov::element::f16, ov::element::i8, ov::element::u8) &&
+                                  (src_prc_ == dst_prc_ || one_of(dst_prc_, ov::element::f32, ov::element::i32));
+    OV_CPU_JIT_EMITTER_ASSERT(is_supported_precision, "Unsupported precision pair.");
     OV_CPU_JIT_EMITTER_ASSERT(load_num_ <= static_cast<int>((get_vec_length() / dst_prc_.size())),
                               "Unexpected number of elements to load.");
 
@@ -90,10 +89,9 @@ void jit_store_emitter::emit_impl(const std::vector<size_t> &in_idxs, const std:
 
 template <cpu_isa_t isa>
 void jit_store_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {
-    OV_CPU_JIT_EMITTER_ASSERT(one_of(src_prc_, ov::element::f32, ov::element::i8),
-                              "Unsupported input type: ", src_prc_.get_type_name());
-    OV_CPU_JIT_EMITTER_ASSERT(one_of(dst_prc_, ov::element::f32, ov::element::i8),
-                              "Unsupported output type: ", dst_prc_.get_type_name());
+    bool is_supported_precision = one_of(dst_prc_, ov::element::f32, ov::element::i32, ov::element::f16, ov::element::i8, ov::element::u8) &&
+                                  (src_prc_ == dst_prc_ || one_of(src_prc_, ov::element::f32, ov::element::i32));
+    OV_CPU_JIT_EMITTER_ASSERT(is_supported_precision, "Unsupported precision pair.");
     OV_CPU_JIT_EMITTER_ASSERT(store_num_ <= static_cast<int>((get_vec_length() / dst_prc_.size())),
                               "Unexpected number of elements to store.");
 
@@ -104,8 +102,8 @@ void jit_store_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::
     XReg dst = XReg(out_idxs[0]);
     XReg prc = XReg(aux_gpr_idxs[0]);
 
-    auto store_f32 = [&](int num){
-        switch (num) {
+    const auto store_f32 = [&]() {
+        switch (store_num_) {
             case 0:
                 break;
             case 1:
@@ -123,12 +121,18 @@ void jit_store_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::
                 h->str(QReg(src.getIdx()), post_ptr(dst, byte_offset_));
                 break;
             default:
-                OV_CPU_JIT_EMITTER_THROW("Unsupported output type: ", dst_prc_.get_type_name());
+                OV_CPU_JIT_EMITTER_THROW("Unexpected number of elements to load.");
         }
     };
 
-    auto store_i8 = [&](int num){
-        switch (num) {
+    const auto store_i32 = []() {
+    };
+
+    const auto store_f16 = []() {
+    };
+
+    const auto store_byte = [&]() {
+        switch (store_num_) {
             case 0:
                 break;
             case 1:
@@ -138,9 +142,9 @@ void jit_store_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::
             case 3:
                 break;
             case 4:
-                h->fcvtzs(src.s, src.s);
-                h->xtn(src.h4, src.s4);
-                h->xtn(src.b8, src.h8);
+                // h->fcvtzs(src.s, src.s);
+                // h->xtn(src.h4, src.s4);
+                // h->xtn(src.b8, src.h8);
                 h->str(src_s, post_ptr(dst, byte_offset_));
                 break;
             default:
@@ -150,13 +154,92 @@ void jit_store_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::
 
     switch (dst_prc_) {
         case ov::element::f32:
-            store_f32(store_num_);
+            switch (src_prc_) {
+                case ov::element::f32:
+                    break;
+                case ov::element::i32:
+                    cvt_i32_to_f32();
+                    break;
+                case ov::element::f16:
+                    cvt_f16_to_f32();
+                    break;
+                case ov::element::i8:
+                case ov::element::u8:
+                    cvt_byte_to_i32();
+                    cvt_i32_to_f32();
+                    break;
+                default:
+                    OV_CPU_JIT_EMITTER_THROW("Unsupported input type: ", src_prc_.get_type_name());
+            }
+            store_f32();
+            break;
+        case ov::element::i32:
+            switch (src_prc_) {
+                case ov::element::f32:
+                    cvt_f32_to_i32();
+                    break;
+                case ov::element::i32:
+                    break;
+                case ov::element::f16:
+                    cvt_f16_to_f32();
+                    cvt_f32_to_i32();
+                    break;
+                case ov::element::i8:
+                case ov::element::u8:
+                    cvt_byte_to_i32();
+                    break;
+                default:
+                    OV_CPU_JIT_EMITTER_THROW("Unsupported input type: ", src_prc_.get_type_name());
+            }
+            store_i32();
+            break;
+        case ov::element::f16:
+            switch (src_prc_) {
+                case ov::element::f32:
+                    cvt_f32_to_f16();
+                    break;
+                case ov::element::i32:
+                    cvt_i32_to_f32();
+                    cvt_f32_to_f16();
+                    break;
+                case ov::element::f16:
+                    break;
+                case ov::element::i8:
+                case ov::element::u8:
+                    cvt_byte_to_i32();
+                    cvt_i32_to_f32();
+                    cvt_f32_to_f16();
+                    break;
+                default:
+                    OV_CPU_JIT_EMITTER_THROW("Unsupported input type: ", src_prc_.get_type_name());
+            }
+            store_f16();
             break;
         case ov::element::i8:
-            store_i8(store_num_);
+        case ov::element::u8:
+            switch (src_prc_) {
+                case ov::element::f32:
+                    cvt_f32_to_i32():
+                    cvt_i32_to_byte();
+                    break;
+                case ov::element::i32:
+                    cvt_i32_to_byte();
+                    break;
+                case ov::element::f16:
+                    cvt_f16_to_f32();
+                    cvt_f32_to_i32():
+                    cvt_i32_to_byte();
+                    break;
+                case ov::element::i8:
+                case ov::element::u8:
+                    break;
+                default:
+                    OV_CPU_JIT_EMITTER_THROW("Unsupported input type: ", src_prc_.get_type_name());
+            }
+            store_byte();
             break;
         default:
-            OV_CPU_JIT_EMITTER_THROW("has unsupported dst precision to store.");
+            OV_CPU_JIT_EMITTER_THROW("Unsupported output type: ", dst_prc_.get_type_name());
     }
 }
 

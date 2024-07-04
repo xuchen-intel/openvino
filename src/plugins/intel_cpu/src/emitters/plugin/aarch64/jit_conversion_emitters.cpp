@@ -6,6 +6,7 @@
 #include "emitters/utils.hpp"
 
 using namespace dnnl::impl::cpu::aarch64;
+using namespace Xbyak_aarch64;
 
 namespace ov {
 namespace intel_cpu {
@@ -36,17 +37,36 @@ jit_convert_truncation_emitter::jit_convert_truncation_emitter(jit_generator *ho
     prepare_table();
 }
 
-void jit_convert_truncation_emitter::emit_impl(const std::vector<size_t> &in_vec_idxs, const std::vector<size_t> &out_vec_idxs) const {
+void jit_convert_truncation_emitter::emit_impl(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {
     validate_types();
     if (host_isa_ == dnnl::impl::cpu::aarch64::asimd) {
-        emit_isa<dnnl::impl::cpu::aarch64::asimd>(in_vec_idxs, out_vec_idxs);
+        emit_isa<dnnl::impl::cpu::aarch64::asimd>(in_idxs, out_idxs);
     } else {
         OV_CPU_JIT_EMITTER_THROW("Unsupported ISA ", host_isa_);
     }
 }
 
 template <cpu_isa_t isa>
-void jit_convert_truncation_emitter::emit_isa(const std::vector<size_t> &in_vec_idxs, const std::vector<size_t> &out_vec_idxs) const {
+void jit_convert_truncation_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {
+    using TReg = typename dnnl::impl::cpu::aarch64::cpu_isa_traits<isa>::TReg;
+    TReg src = TReg(in_idxs[0]);
+    SReg src_s = SReg(in_idxs[0]);
+    DReg src_d = DReg(in_idxs[0]);
+    XReg dst = XReg(out_idxs[0]);
+
+    switch (input_type) {
+        case ov::element::f32:
+            break;
+        default:
+            OV_CPU_JIT_EMITTER_THROW("Unsupported input type: ", input_type.get_type_name());
+    }
+
+    switch (output_type) {
+        case ov::element::i8:
+            break;
+        default:
+            OV_CPU_JIT_EMITTER_THROW("Unsupported output type: ", output_type.get_type_name());
+    }
 }
 
 void jit_convert_truncation_emitter::register_table_entries() {

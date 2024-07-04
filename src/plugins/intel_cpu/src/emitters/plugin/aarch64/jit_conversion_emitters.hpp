@@ -35,9 +35,9 @@ public:
                                    const std::shared_ptr<ov::Node>& n, ov::element::Type exec_prc = ov::element::f32);
 
 private:
-    void emit_impl(const std::vector<size_t>& in, const std::vector<size_t>& out) const override;
+    void emit_impl(const std::vector<size_t>& in_idxs, const std::vector<size_t>& out_idxs) const override;
     template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
-    void emit_isa(const std::vector<size_t> &in_vec_idxs, const std::vector<size_t> &out_vec_idxs) const;
+    void emit_isa(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const;
 
     void register_table_entries() override;
 };
@@ -52,9 +52,9 @@ public:
                                    const std::shared_ptr<ov::Node>& n, ov::element::Type exec_prc = ov::element::f32);
 
 private:
-    void emit_impl(const std::vector<size_t>& in, const std::vector<size_t>& out) const override;
+    void emit_impl(const std::vector<size_t>& in_idxs, const std::vector<size_t>& out_idxs) const override;
     template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
-    void emit_isa(const std::vector<size_t> &in_vec_idxs, const std::vector<size_t> &out_vec_idxs) const;
+    void emit_isa(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const;
 };
 
 }   // namespace aarch64

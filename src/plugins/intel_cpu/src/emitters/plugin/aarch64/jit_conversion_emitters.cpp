@@ -62,9 +62,9 @@ jit_convert_emitter::jit_convert_emitter(jit_generator *host, cpu_isa_t host_isa
 }
 
 void jit_convert_emitter::validate_types() const {
-    OV_CPU_JIT_EMITTER_ASSERT(one_of(input_type, ov::element::f32, ov::element::f16, ov::element::i8, ov::element::u8),
+    OV_CPU_JIT_EMITTER_ASSERT(one_of(input_type, ov::element::f32, ov::element::i32, ov::element::f16, ov::element::i8, ov::element::u8),
                               "Unsupported input type: ", input_type.get_type_name());
-    OV_CPU_JIT_EMITTER_ASSERT(one_of(output_type, ov::element::f32, ov::element::f16, ov::element::i8, ov::element::u8),
+    OV_CPU_JIT_EMITTER_ASSERT(one_of(output_type, ov::element::f32, ov::element::i32, ov::element::f16, ov::element::i8, ov::element::u8),
                               "Unsupported output type: ", output_type.get_type_name());
 }
 

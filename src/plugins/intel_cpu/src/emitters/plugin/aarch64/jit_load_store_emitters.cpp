@@ -138,7 +138,7 @@ void jit_store_emitter::emit_impl(const std::vector<size_t> &in_idxs, const std:
 }
 
 template <cpu_isa_t isa>
-void jit_store_emitter::store_f32(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {
+void jit_store_emitter::store_qbyte(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {
     using TReg = typename dnnl::impl::cpu::aarch64::cpu_isa_traits<isa>::TReg;
     TReg src = TReg(in_idxs[0]);
     SReg src_s = SReg(in_idxs[0]);
@@ -170,11 +170,7 @@ void jit_store_emitter::store_f32(const std::vector<size_t> &in_idxs, const std:
 }
 
 template <cpu_isa_t isa>
-void jit_store_emitter::store_i32(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {
-}
-
-template <cpu_isa_t isa>
-void jit_store_emitter::store_f16(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {
+void jit_store_emitter::store_dbyte(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {
     using TReg = typename dnnl::impl::cpu::aarch64::cpu_isa_traits<isa>::TReg;
     TReg src = TReg(in_idxs[0]);
     HReg src_h = HReg(in_idxs[0]);
@@ -256,7 +252,7 @@ void jit_store_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::
                 default:
                     OV_CPU_JIT_EMITTER_THROW("Unsupported input type: ", src_prc_.get_type_name());
             }
-            store_f32<isa>(src_prc_ == dst_prc_ ? in_idxs : aux_vec_idxs, out_idxs);
+            store_qbyte<isa>(src_prc_ == dst_prc_ ? in_idxs : aux_vec_idxs, out_idxs);
             break;
         case ov::element::i32:
             switch (src_prc_) {
@@ -268,7 +264,7 @@ void jit_store_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::
                 default:
                     OV_CPU_JIT_EMITTER_THROW("Unsupported input type: ", src_prc_.get_type_name());
             }
-            store_i32<isa>(src_prc_ == dst_prc_ ? in_idxs : aux_vec_idxs, out_idxs);
+            store_qbyte<isa>(src_prc_ == dst_prc_ ? in_idxs : aux_vec_idxs, out_idxs);
             break;
         case ov::element::f16:
             switch (src_prc_) {
@@ -284,7 +280,7 @@ void jit_store_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::
                 default:
                     OV_CPU_JIT_EMITTER_THROW("Unsupported input type: ", src_prc_.get_type_name());
             }
-            store_f16<isa>(src_prc_ == dst_prc_ ? in_idxs : aux_vec_idxs, out_idxs);
+            store_dbyte<isa>(src_prc_ == dst_prc_ ? in_idxs : aux_vec_idxs, out_idxs);
             break;
         case ov::element::i8:
         case ov::element::u8:

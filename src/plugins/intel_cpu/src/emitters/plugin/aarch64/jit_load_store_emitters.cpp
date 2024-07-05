@@ -23,6 +23,10 @@ static void cvt_f16_to_f32(const std::vector<size_t> &in_idxs, const std::vector
 template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
 static void cvt_f32_to_f16(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs,
                            dnnl::impl::cpu::aarch64::jit_generator* h) {
+    using TReg = typename dnnl::impl::cpu::aarch64::cpu_isa_traits<isa>::TReg;
+    TReg src = TReg(in_idxs[0]);
+    TReg dst = TReg(out_idxs[0]);
+    h->fcvtn(dst.h4, src.s4);
 }
 
 template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
@@ -139,6 +143,7 @@ void jit_store_emitter::store_f32(const std::vector<size_t> &in_idxs, const std:
     TReg src = TReg(in_idxs[0]);
     SReg src_s = SReg(in_idxs[0]);
     DReg src_d = DReg(in_idxs[0]);
+    QReg src_q = QReg(in_idxs[0]);
     XReg dst = XReg(out_idxs[0]);
     XReg prc = XReg(aux_gpr_idxs[0]);
 
@@ -157,7 +162,7 @@ void jit_store_emitter::store_f32(const std::vector<size_t> &in_idxs, const std:
             h->st1(src.s[2], ptr(prc));
             break;
         case 4:
-            h->str(QReg(src.getIdx()), post_ptr(dst, byte_offset_));
+            h->str(src_q, post_ptr(dst, byte_offset_));
             break;
         default:
             OV_CPU_JIT_EMITTER_THROW("Unexpected number of elements to store.");
@@ -170,6 +175,34 @@ void jit_store_emitter::store_i32(const std::vector<size_t> &in_idxs, const std:
 
 template <cpu_isa_t isa>
 void jit_store_emitter::store_f16(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {
+    using TReg = typename dnnl::impl::cpu::aarch64::cpu_isa_traits<isa>::TReg;
+    TReg src = TReg(in_idxs[0]);
+    HReg src_h = HReg(in_idxs[0]);
+    SReg src_s = SReg(in_idxs[0]);
+    DReg src_d = DReg(in_idxs[0]);
+    XReg dst = XReg(out_idxs[0]);
+    XReg prc = XReg(aux_gpr_idxs[0]);
+
+    switch (store_num_) {
+        case 0:
+            break;
+        case 1:
+            h->str(src_h, post_ptr(dst, byte_offset_));
+            break;
+        case 2:
+            h->str(src_s, post_ptr(dst, byte_offset_));
+            break;
+        case 3:
+            h->str(src_s, post_ptr(dst, byte_offset_));
+            h->add_imm(prc, dst, byte_offset_ + 2 * sizeof(uint16_t), h->X_DEFAULT_ADDR);
+            h->st1(src.h[2], ptr(prc));
+            break;
+        case 4:
+            h->str(src_d, post_ptr(dst, byte_offset_));
+            break;
+        default:
+            OV_CPU_JIT_EMITTER_THROW("Unexpected number of elements to store.");
+    }
 }
 
 template <cpu_isa_t isa>

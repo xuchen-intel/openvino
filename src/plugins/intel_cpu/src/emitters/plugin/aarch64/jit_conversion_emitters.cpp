@@ -13,18 +13,15 @@ namespace intel_cpu {
 namespace aarch64 {
 
 template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
-static void cvt_f16_to_f32(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs,
-                           dnnl::impl::cpu::aarch64::jit_generator* h) {
+void jit_convert_emitter::cvt_f16_to_f32(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {
 }
 
 template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
-static void cvt_f32_to_f16(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs,
-                           dnnl::impl::cpu::aarch64::jit_generator* h) {
+void jit_convert_emitter::cvt_f32_to_f16(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {
 }
 
 template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
-static void cvt_f32_to_i32(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs,
-                           dnnl::impl::cpu::aarch64::jit_generator* h) {
+void jit_convert_emitter::cvt_f32_to_i32(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {
     using TReg = typename dnnl::impl::cpu::aarch64::cpu_isa_traits<isa>::TReg;
     TReg src = TReg(in_idxs[0]);
     TReg dst = TReg(out_idxs[0]);
@@ -32,33 +29,26 @@ static void cvt_f32_to_i32(const std::vector<size_t> &in_idxs, const std::vector
 }
 
 template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
-static void cvt_i32_to_f32(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs,
-                           dnnl::impl::cpu::aarch64::jit_generator* h) {
+void jit_convert_emitter::cvt_i32_to_f32(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {
 }
 
 template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
-static void cvt_i32_to_i8(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs,
-                           dnnl::impl::cpu::aarch64::jit_generator* h) {
+void jit_convert_emitter::cvt_i32_to_byte(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs, bool is_saturation) const {
     using TReg = typename dnnl::impl::cpu::aarch64::cpu_isa_traits<isa>::TReg;
     TReg src = TReg(in_idxs[0]);
     TReg dst = TReg(out_idxs[0]);
-    h->xtn(dst.h4, src.s4);
-    h->xtn(dst.b8, dst.h8);
+    if (is_saturation) {
+        if (output_type.is_signed()) {
+        } else {
+        }
+    } else {
+        h->xtn(dst.h4, src.s4);
+        h->xtn(dst.b8, dst.h8);
+    }
 }
 
 template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
-static void cvt_i8_to_i32(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs,
-                           dnnl::impl::cpu::aarch64::jit_generator* h) {
-}
-
-template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
-static void cvt_i32_to_u8(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs,
-                           dnnl::impl::cpu::aarch64::jit_generator* h) {
-}
-
-template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
-static void cvt_u8_to_i32(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs,
-                           dnnl::impl::cpu::aarch64::jit_generator* h) {
+void jit_convert_emitter::cvt_byte_to_i32(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs, bool is_saturation) const {
 }
 
 jit_convert_emitter::jit_convert_emitter(jit_generator *host, cpu_isa_t host_isa, const std::shared_ptr<ov::Node>& node, ov::element::Type exec_prc)
@@ -68,9 +58,9 @@ jit_convert_emitter::jit_convert_emitter(jit_generator *host, cpu_isa_t host_isa
 }
 
 void jit_convert_emitter::validate_types() const {
-    OV_CPU_JIT_EMITTER_ASSERT(one_of(input_type, ov::element::f32, ov::element::i8),
+    OV_CPU_JIT_EMITTER_ASSERT(one_of(input_type, ov::element::f32, ov::element::i8, ov::element::u8),
                               "Unsupported input type: ", input_type.get_type_name());
-    OV_CPU_JIT_EMITTER_ASSERT(one_of(output_type, ov::element::f32, ov::element::i8),
+    OV_CPU_JIT_EMITTER_ASSERT(one_of(output_type, ov::element::f32, ov::element::i8, ov::element::u8),
                               "Unsupported output type: ", output_type.get_type_name());
 }
 
@@ -83,7 +73,6 @@ void jit_convert_emitter::emit_data() const {
 jit_convert_truncation_emitter::jit_convert_truncation_emitter(jit_generator *host, cpu_isa_t host_isa,
                                                                const std::shared_ptr<ov::Node>& node, ov::element::Type exec_prc)
         : jit_convert_emitter(host, host_isa, node, exec_prc) {
-    prepare_table();
 }
 
 void jit_convert_truncation_emitter::emit_impl(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {
@@ -103,18 +92,15 @@ void jit_convert_truncation_emitter::emit_isa(const std::vector<size_t> &in_idxs
                 case ov::element::f32:
                     break;
                 case ov::element::i32:
-                    cvt_i32_to_f32<isa>(in_idxs, out_idxs, h);
+                    cvt_i32_to_f32<isa>(in_idxs, out_idxs);
                     break;
                 case ov::element::f16:
-                    cvt_f16_to_f32<isa>(in_idxs, out_idxs, h);
+                    cvt_f16_to_f32<isa>(in_idxs, out_idxs);
                     break;
                 case ov::element::i8:
-                    cvt_i8_to_i32<isa>(in_idxs, out_idxs, h);
-                    cvt_i32_to_f32<isa>(out_idxs, out_idxs, h);
-                    break;
                 case ov::element::u8:
-                    cvt_u8_to_i32<isa>(in_idxs, out_idxs, h);
-                    cvt_i32_to_f32<isa>(out_idxs, out_idxs, h);
+                    cvt_byte_to_i32<isa>(in_idxs, out_idxs, false);
+                    cvt_i32_to_f32<isa>(out_idxs, out_idxs);
                     break;
                 default:
                     OV_CPU_JIT_EMITTER_THROW("Unsupported input type: ", input_type.get_type_name());
@@ -123,19 +109,17 @@ void jit_convert_truncation_emitter::emit_isa(const std::vector<size_t> &in_idxs
         case ov::element::i32:
             switch (input_type) {
                 case ov::element::f32:
-                    cvt_f32_to_i32<isa>(in_idxs, out_idxs, h);
+                    cvt_f32_to_i32<isa>(in_idxs, out_idxs);
                     break;
                 case ov::element::i32:
                     break;
                 case ov::element::f16:
-                    cvt_f16_to_f32<isa>(in_idxs, out_idxs, h);
-                    cvt_f32_to_i32<isa>(out_idxs, out_idxs, h);
+                    cvt_f16_to_f32<isa>(in_idxs, out_idxs);
+                    cvt_f32_to_i32<isa>(out_idxs, out_idxs);
                     break;
                 case ov::element::i8:
-                    cvt_i8_to_i32<isa>(in_idxs, out_idxs, h);
-                    break;
                 case ov::element::u8:
-                    cvt_u8_to_i32<isa>(in_idxs, out_idxs, h);
+                    cvt_byte_to_i32<isa>(in_idxs, out_idxs, false);
                     break;
                 default:
                     OV_CPU_JIT_EMITTER_THROW("Unsupported input type: ", input_type.get_type_name());
@@ -144,70 +128,40 @@ void jit_convert_truncation_emitter::emit_isa(const std::vector<size_t> &in_idxs
         case ov::element::f16:
             switch (input_type) {
                 case ov::element::f32:
-                    cvt_f32_to_f16<isa>(in_idxs, out_idxs, h);
+                    cvt_f32_to_f16<isa>(in_idxs, out_idxs);
                     break;
                 case ov::element::i32:
-                    cvt_i32_to_f32<isa>(in_idxs, out_idxs, h);
-                    cvt_f32_to_f16<isa>(out_idxs, out_idxs, h);
+                    cvt_i32_to_f32<isa>(in_idxs, out_idxs);
+                    cvt_f32_to_f16<isa>(out_idxs, out_idxs);
                     break;
                 case ov::element::f16:
                     break;
                 case ov::element::i8:
-                    cvt_i8_to_i32<isa>(in_idxs, out_idxs, h);
-                    cvt_i32_to_f32<isa>(out_idxs, out_idxs, h);
-                    cvt_f32_to_f16<isa>(out_idxs, out_idxs, h);
-                    break;
                 case ov::element::u8:
-                    cvt_u8_to_i32<isa>(in_idxs, out_idxs, h);
-                    cvt_i32_to_f32<isa>(out_idxs, out_idxs, h);
-                    cvt_f32_to_f16<isa>(out_idxs, out_idxs, h);
+                    cvt_byte_to_i32<isa>(in_idxs, out_idxs, false);
+                    cvt_i32_to_f32<isa>(out_idxs, out_idxs);
+                    cvt_f32_to_f16<isa>(out_idxs, out_idxs);
                     break;
                 default:
                     OV_CPU_JIT_EMITTER_THROW("Unsupported input type: ", input_type.get_type_name());
             }
             break;
         case ov::element::i8:
-            switch (input_type) {
-                case ov::element::f32:
-                    cvt_f32_to_i32<isa>(in_idxs, out_idxs, h);
-                    cvt_i32_to_i8<isa>(out_idxs, out_idxs, h);
-                    break;
-                case ov::element::i32:
-                    cvt_i32_to_i8<isa>(in_idxs, out_idxs, h);
-                    break;
-                case ov::element::f16:
-                    cvt_f16_to_f32<isa>(in_idxs, out_idxs, h);
-                    cvt_f32_to_i32<isa>(out_idxs, out_idxs, h);
-                    cvt_i32_to_i8<isa>(out_idxs, out_idxs, h);
-                    break;
-                case ov::element::i8:
-                    break;
-                case ov::element::u8:
-                    cvt_u8_to_i32<isa>(in_idxs, out_idxs, h);
-                    cvt_i32_to_i8<isa>(out_idxs, out_idxs, h);
-                    break;
-                default:
-                    OV_CPU_JIT_EMITTER_THROW("Unsupported input type: ", input_type.get_type_name());
-            }
-            break;
         case ov::element::u8:
             switch (input_type) {
                 case ov::element::f32:
-                    cvt_f32_to_i32<isa>(in_idxs, out_idxs, h);
-                    cvt_i32_to_u8<isa>(out_idxs, out_idxs, h);
+                    cvt_f32_to_i32<isa>(in_idxs, out_idxs);
+                    cvt_i32_to_byte<isa>(out_idxs, out_idxs, false);
                     break;
                 case ov::element::i32:
-                    cvt_i32_to_u8<isa>(in_idxs, out_idxs, h);
+                    cvt_i32_to_byte<isa>(in_idxs, out_idxs, false);
                     break;
                 case ov::element::f16:
-                    cvt_f16_to_f32<isa>(in_idxs, out_idxs, h);
-                    cvt_f32_to_i32<isa>(out_idxs, out_idxs, h);
-                    cvt_i32_to_u8<isa>(out_idxs, out_idxs, h);
+                    cvt_f16_to_f32<isa>(in_idxs, out_idxs);
+                    cvt_f32_to_i32<isa>(out_idxs, out_idxs);
+                    cvt_i32_to_byte<isa>(out_idxs, out_idxs, false);
                     break;
                 case ov::element::i8:
-                    cvt_i8_to_i32<isa>(in_idxs, out_idxs, h);
-                    cvt_i32_to_u8<isa>(out_idxs, out_idxs, h);
-                    break;
                 case ov::element::u8:
                     break;
                 default:
@@ -217,9 +171,6 @@ void jit_convert_truncation_emitter::emit_isa(const std::vector<size_t> &in_idxs
         default:
             OV_CPU_JIT_EMITTER_THROW("Unsupported output type: ", output_type.get_type_name());
     }
-}
-
-void jit_convert_truncation_emitter::register_table_entries() {
 }
 
 jit_convert_saturation_emitter::jit_convert_saturation_emitter(jit_generator *host, cpu_isa_t host_isa,

@@ -41,20 +41,17 @@ static void cvt_i32_to_f32(const std::vector<size_t> &in_idxs, const std::vector
 
 template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
 static void cvt_i32_to_byte(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs,
-                            dnnl::impl::cpu::aarch64::jit_generator* h, bool is_signed) {
+                            dnnl::impl::cpu::aarch64::jit_generator* h) {
     using TReg = typename dnnl::impl::cpu::aarch64::cpu_isa_traits<isa>::TReg;
     TReg src = TReg(in_idxs[0]);
     TReg dst = TReg(out_idxs[0]);
-    if (is_signed) {
-        h->xtn(dst.h4, src.s4);
-        h->xtn(dst.b8, dst.h8);
-    } else {
-    }
+    h->xtn(dst.h4, src.s4);
+    h->xtn(dst.b8, dst.h8);
 }
 
 template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
 static void cvt_byte_to_i32(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs,
-                            dnnl::impl::cpu::aarch64::jit_generator* h, bool is_signed) {
+                            dnnl::impl::cpu::aarch64::jit_generator* h) {
 }
 
 jit_load_emitter::jit_load_emitter(dnnl::impl::cpu::aarch64::jit_generator *host, dnnl::impl::cpu::aarch64::cpu_isa_t host_isa,
@@ -185,42 +182,25 @@ void jit_store_emitter::store_byte(const std::vector<size_t> &in_idxs, const std
     XReg dst = XReg(out_idxs[0]);
     XReg prc = XReg(aux_gpr_idxs[0]);
 
-    if (dst_prc_.is_signed()) {
-        switch (store_num_) {
-            case 0:
-                break;
-            case 1:
-                h->str(src_b, post_ptr(dst, byte_offset_));
-                break;
-            case 2:
-                h->str(src_h, post_ptr(dst, byte_offset_));
-                break;
-            case 3:
-                h->str(src_h, post_ptr(dst, byte_offset_));
-                h->add_imm(prc, dst, byte_offset_ + 2 * sizeof(int8_t), h->X_DEFAULT_ADDR);
-                h->st1(src.b[2], ptr(prc));
-                break;
-            case 4:
-                h->str(src_s, post_ptr(dst, byte_offset_));
-                break;
-            default:
-                OV_CPU_JIT_EMITTER_THROW("Unexpected number of elements to store.");
-        }
-    } else {
-        switch (store_num_) {
-            case 0:
-                break;
-            case 1:
-                break;
-            case 2:
-                break;
-            case 3:
-                break;
-            case 4:
-                break;
-            default:
-                OV_CPU_JIT_EMITTER_THROW("Unexpected number of elements to store.");
-        }
+    switch (store_num_) {
+        case 0:
+            break;
+        case 1:
+            h->str(src_b, post_ptr(dst, byte_offset_));
+            break;
+        case 2:
+            h->str(src_h, post_ptr(dst, byte_offset_));
+            break;
+        case 3:
+            h->str(src_h, post_ptr(dst, byte_offset_));
+            h->add_imm(prc, dst, byte_offset_ + 2 * sizeof(int8_t), h->X_DEFAULT_ADDR);
+            h->st1(src.b[2], ptr(prc));
+            break;
+        case 4:
+            h->str(src_s, post_ptr(dst, byte_offset_));
+            break;
+        default:
+            OV_CPU_JIT_EMITTER_THROW("Unexpected number of elements to store.");
     }
 }
 
@@ -278,10 +258,10 @@ void jit_store_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::
             switch (src_prc_) {
                 case ov::element::f32:
                     cvt_f32_to_i32<isa>(in_idxs, aux_vec_idxs, h);
-                    cvt_i32_to_byte<isa>(aux_vec_idxs, aux_vec_idxs, h, dst_prc_.is_signed());
+                    cvt_i32_to_byte<isa>(aux_vec_idxs, aux_vec_idxs, h);
                     break;
                 case ov::element::i32:
-                    cvt_i32_to_byte<isa>(in_idxs, aux_vec_idxs, h, dst_prc_.is_signed());
+                    cvt_i32_to_byte<isa>(in_idxs, aux_vec_idxs, h);
                     break;
                 case ov::element::i8:
                 case ov::element::u8:

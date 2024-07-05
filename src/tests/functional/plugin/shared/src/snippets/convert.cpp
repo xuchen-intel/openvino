@@ -89,6 +89,14 @@ void Convert::generate_inputs(const std::vector<ov::Shape>& targetInputStaticSha
         in_data.resolution = resolution;
         tensor = ov::test::utils::create_and_fill_tensor(funcInput.get_element_type(), targetInputStaticShapes[i], in_data);
         inputs.insert({funcInput.get_node_shared_ptr(), tensor});
+#if 1
+    size_t input_size = tensor.get_size();
+    auto input_data = static_cast<float *>(tensor.data(ov::element::f32));
+    for (size_t i = 0; i < input_size; i++) {
+        std::cout << input_data[i] << " ";
+    }
+    std::cout << std::endl;
+#endif
     }
 }
 

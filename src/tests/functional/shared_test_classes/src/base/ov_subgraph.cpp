@@ -503,14 +503,14 @@ void SubgraphBaseTest::validate() {
 
 #if 1
     size_t expected_size = expectedOutputs[0].get_size();
-    auto expected_data = static_cast<int8_t *>(expectedOutputs[0].data(ov::element::i8));
+    auto expected_data = static_cast<uint8_t *>(expectedOutputs[0].data(ov::element::u8));
     for (size_t i = 0; i < expected_size; i++) {
         std::cout << static_cast<int>(expected_data[i]) << " ";
     }
     std::cout << std::endl;
 
     size_t actual_size = actualOutputs[0].get_size();
-    auto actual_data = static_cast<int8_t *>(actualOutputs[0].data(ov::element::i8));
+    auto actual_data = static_cast<uint8_t *>(actualOutputs[0].data(ov::element::u8));
     for (size_t i = 0; i < actual_size; i++) {
         std::cout << static_cast<int>(actual_data[i]) << " ";
     }

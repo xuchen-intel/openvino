@@ -20,18 +20,6 @@ public:
 protected:
     void emit_data() const override;
     void validate_types() const;
-    template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
-    void cvt_f16_to_f32(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const;
-    template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
-    void cvt_f32_to_f16(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const;
-    template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
-    void cvt_f32_to_i32(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const;
-    template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
-    void cvt_i32_to_f32(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const;
-    template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
-    void cvt_i32_to_byte(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs, bool is_saturation) const;
-    template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
-    void cvt_byte_to_i32(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs, bool is_saturation) const;
 
     ov::element::Type input_type;
     ov::element::Type output_type;

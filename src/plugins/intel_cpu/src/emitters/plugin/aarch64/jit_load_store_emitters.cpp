@@ -63,6 +63,34 @@ void jit_load_emitter::load_qbyte(const std::vector<size_t> &in_idxs, const std:
 
 template <cpu_isa_t isa>
 void jit_load_emitter::load_dbyte(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {
+    using TReg = typename dnnl::impl::cpu::aarch64::cpu_isa_traits<isa>::TReg;
+    XReg src = XReg(in_idxs[0]);
+    XReg prc = XReg(aux_gpr_idxs[0]);
+    TReg dst = TReg(out_idxs[0]);
+    DReg dst_d = DReg(out_idxs[0]);
+    HReg dst_h = HReg(out_idxs[0]);
+    SReg dst_s = SReg(out_idxs[0]);
+
+    switch (load_num_) {
+        case 0:
+            break;
+        case 1:
+            h->ldr(dst_h, post_ptr(src, byte_offset_));
+            break;
+        case 2:
+            h->ldr(dst_s, post_ptr(src, byte_offset_));
+            break;
+        case 3:
+            h->ldr(dst_s, post_ptr(src, byte_offset_));
+            h->add_imm(prc, src, byte_offset_ + 2 * sizeof(uint16_t), h->X_DEFAULT_ADDR);
+            h->ld1(dst.h[2], ptr(prc));
+            break;
+        case 4:
+            h->ldr(dst_d, post_ptr(src, byte_offset_));
+            break;
+        default:
+            OV_CPU_JIT_EMITTER_THROW("Unexpected number of elements to load.");
+    }
 }
 
 template <cpu_isa_t isa>

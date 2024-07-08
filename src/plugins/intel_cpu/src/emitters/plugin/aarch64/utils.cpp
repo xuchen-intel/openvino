@@ -10,6 +10,10 @@ namespace aarch64 {
 
 template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
 void cvt_f16_to_f32(dnnl::impl::cpu::aarch64::jit_generator* h, const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) {
+    using TReg = typename dnnl::impl::cpu::aarch64::cpu_isa_traits<isa>::TReg;
+    TReg src = TReg(in_idxs[0]);
+    TReg dst = TReg(out_idxs[0]);
+    h->fcvtl(dst.s4, src.h4);
 }
 
 template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>

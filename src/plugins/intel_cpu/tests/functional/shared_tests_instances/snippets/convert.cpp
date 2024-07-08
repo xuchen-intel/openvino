@@ -14,10 +14,10 @@ namespace {
 
 #if 1
 const std::vector<std::pair<std::vector<ov::element::Type>, std::vector<ov::element::Type>>> types_Convert = {
-        { { ov::element::u8 }, { ov::element::f32 } },
-        { { ov::element::u8 }, { ov::element::i32 } },
-        { { ov::element::u8 }, { ov::element::f16 } },
-        { { ov::element::u8 }, { ov::element::i8 } },
+        { { ov::element::i32 }, { ov::element::f32 } },
+        { { ov::element::i32 }, { ov::element::f16 } },
+        { { ov::element::i32 }, { ov::element::i8 } },
+        { { ov::element::i32 }, { ov::element::u8 } },
 };
 
 const std::vector<std::vector<ov::test::InputShape>> inputShapes_Convert = {

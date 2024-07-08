@@ -24,6 +24,8 @@ void jit_convert_emitter::validate_types() const {
                               "Unsupported input type: ", input_type.get_type_name());
     OV_CPU_JIT_EMITTER_ASSERT(one_of(output_type, ov::element::f32, ov::element::i32, ov::element::f16, ov::element::i8, ov::element::u8),
                               "Unsupported output type: ", output_type.get_type_name());
+    OV_CPU_JIT_EMITTER_ASSERT(input_type != output_type, "Input type ", input_type.get_type_name(), " and output type ",
+                              output_type.get_type_name(), " should be different.");
 }
 
 size_t jit_convert_emitter::get_inputs_count() const { return 1; }

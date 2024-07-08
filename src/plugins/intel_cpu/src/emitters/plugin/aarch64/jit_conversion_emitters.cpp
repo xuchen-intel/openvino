@@ -125,6 +125,8 @@ void jit_convert_truncation_emitter::emit_isa(const std::vector<size_t> &in_idxs
                     break;
                 case ov::element::i8:
                 case ov::element::u8:
+                    cvt_byte_to_i32<isa>(h, in_idxs, out_idxs, false, input_type.is_signed());
+                    cvt_i32_to_byte<isa>(h, out_idxs, out_idxs, false, output_type.is_signed());
                     break;
                 default:
                     OV_CPU_JIT_EMITTER_THROW("Unsupported input type: ", input_type.get_type_name());

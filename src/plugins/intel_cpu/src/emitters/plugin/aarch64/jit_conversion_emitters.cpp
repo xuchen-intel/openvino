@@ -34,6 +34,10 @@ void jit_convert_emitter::cvt_f32_to_i32(const std::vector<size_t> &in_idxs, con
 
 template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
 void jit_convert_emitter::cvt_i32_to_f32(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {
+    using TReg = typename dnnl::impl::cpu::aarch64::cpu_isa_traits<isa>::TReg;
+    TReg src = TReg(in_idxs[0]);
+    TReg dst = TReg(out_idxs[0]);
+    h->scvtf(dst.s, src.s);
 }
 
 template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
@@ -53,6 +57,22 @@ void jit_convert_emitter::cvt_i32_to_byte(const std::vector<size_t> &in_idxs, co
 
 template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
 void jit_convert_emitter::cvt_byte_to_i32(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs, bool is_saturation) const {
+    using TReg = typename dnnl::impl::cpu::aarch64::cpu_isa_traits<isa>::TReg;
+    TReg src = TReg(in_idxs[0]);
+    TReg dst = TReg(out_idxs[0]);
+    if (is_saturation) {
+        if (output_type.is_signed()) {
+        } else {
+        }
+    } else {
+        if (output_type.is_signed()) {
+            h->sxtl(dst.h8, src.b8);
+            h->sxtl(dst.s4, dst.h4);
+        } else {
+            h->uxtl(dst.h8, src.b8);
+            h->uxtl(dst.s4, dst.h4);
+        }
+    }
 }
 
 jit_convert_emitter::jit_convert_emitter(jit_generator *host, cpu_isa_t host_isa, const std::shared_ptr<ov::Node>& node, ov::element::Type exec_prc)

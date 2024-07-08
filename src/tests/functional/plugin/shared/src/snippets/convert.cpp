@@ -91,9 +91,9 @@ void Convert::generate_inputs(const std::vector<ov::Shape>& targetInputStaticSha
         inputs.insert({funcInput.get_node_shared_ptr(), tensor});
 #if 1
     size_t input_size = tensor.get_size();
-    auto input_data = static_cast<float *>(tensor.data(ov::element::f32));
+    auto input_data = static_cast<int8_t *>(tensor.data(ov::element::i8));
     for (size_t i = 0; i < input_size; i++) {
-        std::cout << input_data[i] << " ";
+        std::cout << static_cast<int>(input_data[i]) << " ";
     }
     std::cout << std::endl;
 #endif

@@ -41,6 +41,10 @@ static void cvt_f32_to_i32(const std::vector<size_t> &in_idxs, const std::vector
 template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
 static void cvt_i32_to_f32(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs,
                            dnnl::impl::cpu::aarch64::jit_generator* h) {
+    using TReg = typename dnnl::impl::cpu::aarch64::cpu_isa_traits<isa>::TReg;
+    TReg src = TReg(in_idxs[0]);
+    TReg dst = TReg(out_idxs[0]);
+    h->scvtf(dst.s, src.s);
 }
 
 template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
@@ -55,7 +59,23 @@ static void cvt_i32_to_byte(const std::vector<size_t> &in_idxs, const std::vecto
 
 template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
 static void cvt_byte_to_i32(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs,
-                            dnnl::impl::cpu::aarch64::jit_generator* h) {
+                            dnnl::impl::cpu::aarch64::jit_generator* h, bool is_saturation, bool is_signed) {
+    using TReg = typename dnnl::impl::cpu::aarch64::cpu_isa_traits<isa>::TReg;
+    TReg src = TReg(in_idxs[0]);
+    TReg dst = TReg(out_idxs[0]);
+    if (is_saturation) {
+        if (is_signed) {
+        } else {
+        }
+    } else {
+        if (is_signed) {
+            h->sxtl(dst.h8, src.b8);
+            h->sxtl(dst.s4, dst.h4);
+        } else {
+            h->uxtl(dst.h8, src.b8);
+            h->uxtl(dst.s4, dst.h4);
+        }
+    }
 }
 
 jit_load_emitter::jit_load_emitter(dnnl::impl::cpu::aarch64::jit_generator *host, dnnl::impl::cpu::aarch64::cpu_isa_t host_isa,
@@ -73,13 +93,7 @@ void jit_load_emitter::emit_impl(const std::vector<size_t> &in_idxs, const std::
 }
 
 template <cpu_isa_t isa>
-void jit_load_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {
-    bool is_supported_precision = one_of(src_prc_, ov::element::f32, ov::element::i32, ov::element::f16, ov::element::i8, ov::element::u8) &&
-                                  (src_prc_ == dst_prc_ || one_of(dst_prc_, ov::element::f32, ov::element::i32));
-    OV_CPU_JIT_EMITTER_ASSERT(is_supported_precision, "Unsupported precision pair.");
-    OV_CPU_JIT_EMITTER_ASSERT(load_num_ <= static_cast<int>((get_vec_length() / dst_prc_.size())),
-                              "Unexpected number of elements to load.");
-
+void jit_load_emitter::load_qbyte(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {
     using TReg = typename dnnl::impl::cpu::aarch64::cpu_isa_traits<isa>::TReg;
     XReg src = XReg(in_idxs[0]);
     XReg prc = XReg(aux_gpr_idxs[0]);
@@ -106,6 +120,114 @@ void jit_load_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::v
             break;
         default:
             OV_CPU_JIT_EMITTER_THROW("Unexpected number of elements to load.");
+    }
+}
+
+template <cpu_isa_t isa>
+void jit_load_emitter::load_dbyte(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {
+}
+
+template <cpu_isa_t isa>
+void jit_load_emitter::load_byte(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {
+    using TReg = typename dnnl::impl::cpu::aarch64::cpu_isa_traits<isa>::TReg;
+    XReg src = XReg(in_idxs[0]);
+    XReg prc = XReg(aux_gpr_idxs[0]);
+    TReg dst = TReg(out_idxs[0]);
+    BReg dst_b = BReg(out_idxs[0]);
+    HReg dst_h = HReg(out_idxs[0]);
+    SReg dst_s = SReg(out_idxs[0]);
+
+    switch (load_num_) {
+        case 0:
+            break;
+        case 1:
+            h->ldr(dst_b, post_ptr(src, byte_offset_));
+            break;
+        case 2:
+            h->ldr(dst_h, post_ptr(src, byte_offset_));
+            break;
+        case 3:
+            h->ldr(dst_h, post_ptr(src, byte_offset_));
+            h->add_imm(prc, src, byte_offset_ + 2 * sizeof(int8_t), h->X_DEFAULT_ADDR);
+            h->ld1(dst.b[2], ptr(prc));
+            break;
+        case 4:
+            h->ldr(dst_s, post_ptr(src, byte_offset_));
+            break;
+        default:
+            OV_CPU_JIT_EMITTER_THROW("Unexpected number of elements to load.");
+    }
+}
+
+template <cpu_isa_t isa>
+void jit_load_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {
+    bool is_supported_precision = one_of(src_prc_, ov::element::f32, ov::element::i32, ov::element::f16, ov::element::i8, ov::element::u8) &&
+                                  (src_prc_ == dst_prc_ || one_of(dst_prc_, ov::element::f32, ov::element::i32));
+    OV_CPU_JIT_EMITTER_ASSERT(is_supported_precision, "Unsupported precision pair.");
+    OV_CPU_JIT_EMITTER_ASSERT(load_num_ <= static_cast<int>((get_vec_length() / dst_prc_.size())),
+                              "Unexpected number of elements to load.");
+
+    switch (src_prc_) {
+        case ov::element::f32:
+            load_qbyte<isa>(in_idxs, src_prc_ == dst_prc_ ? out_idxs : aux_vec_idxs);
+            switch (dst_prc_) {
+                case ov::element::f32:
+                    break;
+                case ov::element::i32:
+                    cvt_f32_to_i32<isa>(aux_vec_idxs, out_idxs, h);
+                    break;
+                default:
+                    OV_CPU_JIT_EMITTER_THROW("Unsupported output type: ", dst_prc_.get_type_name());
+            }
+            break;
+        case ov::element::i32:
+            load_qbyte<isa>(in_idxs, src_prc_ == dst_prc_ ? out_idxs : aux_vec_idxs);
+            switch (dst_prc_) {
+                case ov::element::f32:
+                    cvt_i32_to_f32<isa>(aux_vec_idxs, out_idxs, h);
+                    break;
+                case ov::element::i32:
+                    break;
+                default:
+                    OV_CPU_JIT_EMITTER_THROW("Unsupported output type: ", dst_prc_.get_type_name());
+            }
+            break;
+        case ov::element::f16:
+            load_dbyte<isa>(in_idxs, src_prc_ == dst_prc_ ? out_idxs : aux_vec_idxs);
+            switch (dst_prc_) {
+                case ov::element::f32:
+                    cvt_f16_to_f32<isa>(aux_vec_idxs, out_idxs, h);
+                    break;
+                case ov::element::i32:
+                    cvt_f16_to_f32<isa>(aux_vec_idxs, aux_vec_idxs, h);
+                    cvt_f32_to_i32<isa>(aux_vec_idxs, out_idxs, h);
+                    break;
+                case ov::element::f16:
+                    break;
+                default:
+                    OV_CPU_JIT_EMITTER_THROW("Unsupported output type: ", dst_prc_.get_type_name());
+            }
+            break;
+        case ov::element::i8:
+        case ov::element::u8:
+            load_byte<isa>(in_idxs, src_prc_ == dst_prc_ ? out_idxs : aux_vec_idxs);
+            switch (dst_prc_) {
+                case ov::element::f32:
+                    cvt_byte_to_i32<isa>(aux_vec_idxs, aux_vec_idxs, h, false, dst_prc_.is_signed());
+                    cvt_i32_to_f32<isa>(aux_vec_idxs, out_idxs, h);
+                    break;
+                case ov::element::i32:
+                    cvt_byte_to_i32<isa>(aux_vec_idxs, out_idxs, h, false, dst_prc_.is_signed());
+                    break;
+                case ov::element::i8:
+                case ov::element::u8:
+                    break;
+                default:
+                    OV_CPU_JIT_EMITTER_THROW("Unsupported output type: ", dst_prc_.get_type_name());
+            }
+            break;
+        default:
+            OV_CPU_JIT_EMITTER_THROW("Unsupported input type: ", src_prc_.get_type_name());
     }
 }
 

@@ -24,6 +24,12 @@ public:
 private:
     template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
     void emit_isa(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const;
+    template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
+    void load_qbyte(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const;
+    template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
+    void load_dbyte(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const;
+    template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
+    void load_byte(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const;
     size_t get_aux_gprs_count() const override;
     size_t get_aux_vecs_count() const override;
 

@@ -1007,8 +1007,7 @@ void Transformations::MainSnippets(void) {
             // So i32 is supported exclusively for transposes and broadcast
             static const std::set<ov::element::Type> supported_element_types =
 #if defined(OPENVINO_ARCH_ARM64)
-                // {ov::element::f32, ov::element::f16, ov::element::i8, ov::element::u8};
-                {ov::element::f32, ov::element::i32, ov::element::f16, ov::element::i8, ov::element::u8};
+                {ov::element::f32, ov::element::f16, ov::element::i8, ov::element::u8};
 #else
                 {ov::element::f32, ov::element::bf16, ov::element::f16, ov::element::i8, ov::element::u8};
 #endif

@@ -30,7 +30,7 @@ static void jit_convert_process(dnnl::impl::cpu::aarch64::jit_generator* h,
                     break;
                 case ov::element::i8:
                 case ov::element::u8:
-                    cvt_byte_to_i32<isa>(h, in_idxs, out_idxs, is_saturated, input_type.is_signed());
+                    cvt_byte_to_i32<isa>(h, in_idxs, out_idxs, input_type.is_signed());
                     cvt_i32_to_f32<isa>(h, out_idxs, out_idxs);
                     break;
                 default:
@@ -50,7 +50,7 @@ static void jit_convert_process(dnnl::impl::cpu::aarch64::jit_generator* h,
                     break;
                 case ov::element::i8:
                 case ov::element::u8:
-                    cvt_byte_to_i32<isa>(h, in_idxs, out_idxs, is_saturated, input_type.is_signed());
+                    cvt_byte_to_i32<isa>(h, in_idxs, out_idxs, input_type.is_signed());
                     break;
                 default:
                     OV_CPU_JIT_EMITTER_THROW("Unsupported input type: ", input_type.get_type_name());
@@ -69,7 +69,7 @@ static void jit_convert_process(dnnl::impl::cpu::aarch64::jit_generator* h,
                     break;
                 case ov::element::i8:
                 case ov::element::u8:
-                    cvt_byte_to_i32<isa>(h, in_idxs, out_idxs, is_saturated, input_type.is_signed());
+                    cvt_byte_to_i32<isa>(h, in_idxs, out_idxs, input_type.is_signed());
                     cvt_i32_to_f32<isa>(h, out_idxs, out_idxs);
                     cvt_f32_to_f16<isa>(h, out_idxs, out_idxs);
                     break;
@@ -82,20 +82,20 @@ static void jit_convert_process(dnnl::impl::cpu::aarch64::jit_generator* h,
             switch (input_type) {
                 case ov::element::f32:
                     cvt_f32_to_i32<isa>(h, in_idxs, out_idxs);
-                    cvt_i32_to_byte<isa>(h, out_idxs, out_idxs, is_saturated, output_type.is_signed());
+                    cvt_i32_to_byte<isa>(h, out_idxs, out_idxs, output_type.is_signed(), is_saturated);
                     break;
                 case ov::element::i32:
-                    cvt_i32_to_byte<isa>(h, in_idxs, out_idxs, is_saturated, output_type.is_signed());
+                    cvt_i32_to_byte<isa>(h, in_idxs, out_idxs, output_type.is_signed(), is_saturated);
                     break;
                 case ov::element::f16:
                     cvt_f16_to_f32<isa>(h, in_idxs, out_idxs);
                     cvt_f32_to_i32<isa>(h, out_idxs, out_idxs);
-                    cvt_i32_to_byte<isa>(h, out_idxs, out_idxs, is_saturated, output_type.is_signed());
+                    cvt_i32_to_byte<isa>(h, out_idxs, out_idxs, output_type.is_signed(), is_saturated);
                     break;
                 case ov::element::i8:
                 case ov::element::u8:
-                    cvt_byte_to_i32<isa>(h, in_idxs, out_idxs, is_saturated, input_type.is_signed());
-                    cvt_i32_to_byte<isa>(h, out_idxs, out_idxs, is_saturated, output_type.is_signed());
+                    cvt_byte_to_i32<isa>(h, in_idxs, out_idxs, input_type.is_signed());
+                    cvt_i32_to_byte<isa>(h, out_idxs, out_idxs, output_type.is_signed(), is_saturated);
                     break;
                 default:
                     OV_CPU_JIT_EMITTER_THROW("Unsupported input type: ", input_type.get_type_name());
@@ -151,17 +151,18 @@ jit_convert_saturation_emitter::jit_convert_saturation_emitter(jit_generator *ho
     : jit_convert_emitter(host, host_isa, node, exec_prc) {
 }
 
-void jit_convert_saturation_emitter::emit_impl(const std::vector<size_t> &in_vec_idxs, const std::vector<size_t> &out_vec_idxs) const {
+void jit_convert_saturation_emitter::emit_impl(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {
     validate_types();
     if (host_isa_ == dnnl::impl::cpu::aarch64::asimd) {
-        emit_isa<dnnl::impl::cpu::aarch64::asimd>(in_vec_idxs, out_vec_idxs);
+        emit_isa<dnnl::impl::cpu::aarch64::asimd>(in_idxs, out_idxs);
     } else {
         OV_CPU_JIT_EMITTER_THROW("Unsupported ISA ", host_isa_);
     }
 }
 
 template <cpu_isa_t isa>
-void jit_convert_saturation_emitter::emit_isa(const std::vector<size_t> &in_vec_idxs, const std::vector<size_t> &out_vec_idxs) const {
+void jit_convert_saturation_emitter::emit_isa(const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs) const {
+    jit_convert_process<isa>(h, in_idxs, out_idxs, input_type, output_type, true);
 }
 
 }   // namespace aarch64

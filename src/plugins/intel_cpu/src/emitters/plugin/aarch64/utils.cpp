@@ -42,7 +42,7 @@ void cvt_i32_to_f32(dnnl::impl::cpu::aarch64::jit_generator* h, const std::vecto
 
 template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
 void cvt_i32_to_byte(dnnl::impl::cpu::aarch64::jit_generator* h, const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs,
-                     bool is_saturated, bool is_signed) {
+                     bool is_signed, bool is_saturated) {
     using TReg = typename dnnl::impl::cpu::aarch64::cpu_isa_traits<isa>::TReg;
     TReg src = TReg(in_idxs[0]);
     TReg dst = TReg(out_idxs[0]);
@@ -58,22 +58,16 @@ void cvt_i32_to_byte(dnnl::impl::cpu::aarch64::jit_generator* h, const std::vect
 
 template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
 void cvt_byte_to_i32(dnnl::impl::cpu::aarch64::jit_generator* h, const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs,
-                     bool is_saturated, bool is_signed) {
+                     bool is_signed) {
     using TReg = typename dnnl::impl::cpu::aarch64::cpu_isa_traits<isa>::TReg;
     TReg src = TReg(in_idxs[0]);
     TReg dst = TReg(out_idxs[0]);
-    if (is_saturated) {
-        if (is_signed) {
-        } else {
-        }
+    if (is_signed) {
+        h->sxtl(dst.h8, src.b8);
+        h->sxtl(dst.s4, dst.h4);
     } else {
-        if (is_signed) {
-            h->sxtl(dst.h8, src.b8);
-            h->sxtl(dst.s4, dst.h4);
-        } else {
-            h->uxtl(dst.h8, src.b8);
-            h->uxtl(dst.s4, dst.h4);
-        }
+        h->uxtl(dst.h8, src.b8);
+        h->uxtl(dst.s4, dst.h4);
     }
 }
 
@@ -91,11 +85,11 @@ template void cvt_i32_to_f32<dnnl::impl::cpu::aarch64::asimd>(dnnl::impl::cpu::a
 
 template void cvt_i32_to_byte<dnnl::impl::cpu::aarch64::asimd>(dnnl::impl::cpu::aarch64::jit_generator* h,
                               const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs,
-                              bool is_saturation, bool is_signed);
+                              bool is_signed, bool is_saturation);
 
 template void cvt_byte_to_i32<dnnl::impl::cpu::aarch64::asimd>(dnnl::impl::cpu::aarch64::jit_generator* h,
                               const std::vector<size_t> &in_idxs, const std::vector<size_t> &out_idxs,
-                              bool is_saturation, bool is_signed);
+                              bool is_signed);
 
 }   // namespace aarch64
 }   // namespace intel_cpu

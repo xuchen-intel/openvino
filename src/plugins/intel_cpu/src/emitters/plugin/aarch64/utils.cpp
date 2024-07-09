@@ -48,7 +48,11 @@ void cvt_i32_to_byte(dnnl::impl::cpu::aarch64::jit_generator* h, const std::vect
     TReg dst = TReg(out_idxs[0]);
     if (is_saturated) {
         if (is_signed) {
+            h->sqxtn(dst.h4, src.s4);
+            h->sqxtn(dst.b8, dst.h8);
         } else {
+            h->uqxtn(dst.h4, src.s4);
+            h->uqxtn(dst.b8, dst.h8);
         }
     } else {
         h->xtn(dst.h4, src.s4);

@@ -379,6 +379,12 @@ std::vector<std::string> disabledTestPatterns() {
     retVector.emplace_back(R"(.*smoke_RoPETest.*)");
 #endif
 
+#if defined(OPENVINO_ARCH_ARM64)
+    // to align with reference and c++ standard, Snippets PropagatePrecision should insert ConvertTruncation
+    // instead of ConvertSaturation when converting larger integer to smaller integer
+    retVector.emplace_back(R"(.*smoke_EltwiseChain_MergeConvert_int8/.*Op0=Prod.*Conversion=i8.*)");
+#endif
+
 #if defined(OPENVINO_ARCH_RISCV64)
     // unsupported node type 'CausalMaskPreprocess'
     retVector.emplace_back(R"(CausalMaskPreprocessCausalMaskPreprocess.smoke_CompareWithRefs)");

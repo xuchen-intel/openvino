@@ -8,6 +8,7 @@
 
 #include "snippets/target_machine.hpp"
 #include "snippets/generator.hpp"
+#include "cache/multi_cache.h"
 
 namespace ov {
 namespace intel_cpu {
@@ -37,6 +38,7 @@ public:
 private:
     std::unique_ptr<dnnl::impl::cpu::aarch64::jit_generator> h;
     dnnl::impl::cpu::aarch64::cpu_isa_t isa;
+    ov::intel_cpu::MultiCacheWeakPtr compiled_kernel_cache;
 };
 
 class CPUGenerator : public snippets::Generator {

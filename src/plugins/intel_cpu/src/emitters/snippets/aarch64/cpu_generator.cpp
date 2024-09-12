@@ -9,11 +9,13 @@
 #include "emitters/snippets/cpu_runtime_configurator.hpp"
 #include "emitters/plugin/aarch64/jit_eltwise_emitters.hpp"
 #include "emitters/plugin/aarch64/jit_conversion_emitters.hpp"
+#include "emitters/snippets/aarch64/jit_brgemm_emitter.hpp"
 #include "emitters/snippets/aarch64/jit_kernel_emitter.hpp"
 #include "emitters/snippets/aarch64/jit_loop_emitters.hpp"
 #include "emitters/snippets/aarch64/jit_memory_emitters.hpp"
 #include "emitters/snippets/aarch64/jit_fill_emitter.hpp"
 
+#include "transformations/snippets/common/op/brgemm_cpu.hpp"
 #include "transformations/snippets/common/op/load_convert.hpp"
 #include "transformations/snippets/common/op/store_convert.hpp"
 #include "transformations/snippets/common/op/fused_mul_add.hpp"
@@ -23,9 +25,9 @@
 
 namespace ov {
 
-#define CREATE_SNIPPETS_EMITTER(e_type) { \
+#define CREATE_SNIPPETS_EMITTER(e_type, ...) { \
     [this](const snippets::lowered::ExpressionPtr& expr) -> std::shared_ptr<snippets::Emitter> { \
-        return std::make_shared<e_type>(h.get(), isa, expr); \
+        return std::make_shared<e_type>(h.get(), isa, expr, ##__VA_ARGS__); \
     }, \
     [](const std::shared_ptr<ov::Node>& n) -> std::set<std::vector<element::Type>> { \
         return e_type::get_supported_precisions(n); \
@@ -155,6 +157,12 @@ CPUTargetMachine::CPUTargetMachine(dnnl::impl::cpu::aarch64::cpu_isa_t host_isa)
     jitters[snippets::op::KernelDynamic::get_type_info_static()] = CREATE_SNIPPETS_EMITTER(jit_kernel_dynamic_emitter);
     jitters[snippets::op::LoopBegin::get_type_info_static()] = CREATE_SNIPPETS_EMITTER(jit_loop_begin_emitter);
     jitters[snippets::op::LoopEnd::get_type_info_static()] = CREATE_SNIPPETS_EMITTER(jit_loop_end_emitter);
+
+    // matmul
+    // Note: jit_brgemm_emitter supports runtime recompilation, so its constructor takes additional arguments
+    jitters[intel_cpu::BrgemmCPU::get_type_info_static()] = CREATE_SNIPPETS_EMITTER(jit_brgemm_emitter,
+                                                                                    configurator->get_kernel_executor_table(),
+                                                                                    compiled_kernel_cache);
 
     // others
     jitters[snippets::op::Scalar::get_type_info_static()] = CREATE_SNIPPETS_EMITTER(jit_scalar_emitter);

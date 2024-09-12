@@ -9,7 +9,7 @@
 #include "snippets/utils/utils.hpp"
 #include "snippets/lowered/expression.hpp"
 
-#include "transformations/snippets/x64/op/brgemm_cpu.hpp"
+#include "transformations/snippets/common/op/brgemm_cpu.hpp"
 
 #include <cpu/x64/brgemm/brgemm.hpp>
 #include <cpu/x64/matmul/brgemm_matmul_utils.hpp>

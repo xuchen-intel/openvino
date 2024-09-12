@@ -9,7 +9,7 @@
 #include <cpu/x64/matmul/brgemm_matmul_copy_utils.hpp>
 
 #include "emitters/plugin/x64/jit_emitter.hpp"
-#include "transformations/snippets/x64/op/brgemm_copy_b.hpp"
+#include "transformations/snippets/common/op/brgemm_copy_b.hpp"
 
 namespace ov {
 namespace intel_cpu {

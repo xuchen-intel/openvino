@@ -4,8 +4,8 @@
 
 #include "shape_inference.hpp"
 #include <snippets/shape_inference/shape_infer_instances.hpp>
-#include "op/brgemm_copy_b.hpp"
-#include "op/brgemm_cpu.hpp"
+#include "transformations/snippets/common/op/brgemm_copy_b.hpp"
+#include "transformations/snippets/common/op/brgemm_cpu.hpp"
 #include "transformations/snippets/common/op/fused_mul_add.hpp"
 #include "transformations/snippets/common/op/load_convert.hpp"
 #include "transformations/snippets/common/op/store_convert.hpp"

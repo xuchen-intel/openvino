@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "transformations/snippets/x64/op/brgemm_cpu.hpp"
+#include "transformations/snippets/common/op/brgemm_cpu.hpp"
 #include "modifiers.hpp"
 
 namespace ov {

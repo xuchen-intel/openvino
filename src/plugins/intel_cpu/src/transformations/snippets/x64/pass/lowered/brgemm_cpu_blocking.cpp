@@ -10,8 +10,8 @@
 #include "snippets/lowered/pass/pass.hpp"
 #include "snippets/snippets_isa.hpp"
 #include "snippets/utils/utils.hpp"
-#include "transformations/snippets/x64/op/brgemm_cpu.hpp"
-#include "transformations/snippets/x64/op/brgemm_utils.hpp"
+#include "transformations/snippets/common/op/brgemm_cpu.hpp"
+#include "transformations/snippets/common/op/brgemm_utils.hpp"
 
 
 namespace ov {

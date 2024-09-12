@@ -4,12 +4,12 @@
 
 #include "jit_brgemm_emitter.hpp"
 
-#include "transformations/snippets/x64/op/brgemm_cpu.hpp"
+#include "transformations/snippets/common/op/brgemm_cpu.hpp"
 #include <cpu/x64/brgemm/brgemm.hpp>
 #include <cpu/x64/amx_tile_configure.hpp>
 #include "snippets/utils/utils.hpp"
 #include "utils.hpp"
-#include "transformations/snippets/x64/op/brgemm_utils.hpp"
+#include "transformations/snippets/common/op/brgemm_utils.hpp"
 
 using namespace Xbyak;
 using namespace dnnl::impl;

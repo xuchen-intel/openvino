@@ -5,7 +5,7 @@
 #pragma once
 
 #include "snippets/lowered/pass/brgemm_blocking.hpp"
-#include "transformations/snippets/x64/op/brgemm_cpu.hpp"
+#include "transformations/snippets/common/op/brgemm_cpu.hpp"
 
 namespace ov {
 namespace intel_cpu {

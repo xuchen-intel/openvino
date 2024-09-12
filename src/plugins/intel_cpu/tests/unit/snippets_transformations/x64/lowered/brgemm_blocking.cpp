@@ -11,8 +11,8 @@
 #include "openvino/opsets/opset10.hpp"
 #include "snippets/lowered/loop_info.hpp"
 #include "snippets/snippets_isa.hpp"
-#include "transformations/snippets/x64/op/brgemm_copy_b.hpp"
-#include "transformations/snippets/x64/op/brgemm_cpu.hpp"
+#include "transformations/snippets/common/op/brgemm_copy_b.hpp"
+#include "transformations/snippets/common/op/brgemm_cpu.hpp"
 #include "transformations/tpp/x64/op/brgemm.hpp"
 #include "cpu/x64/cpu_isa_traits.hpp"
 

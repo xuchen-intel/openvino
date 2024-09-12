@@ -9,8 +9,8 @@
 #include "snippets/utils/utils.hpp"
 #include "snippets/op/brgemm.hpp"
 #include "snippets/op/buffer.hpp"
-#include "transformations/snippets/x64/op/brgemm_copy_b.hpp"
-#include "transformations/snippets/x64/op/brgemm_cpu.hpp"
+#include "transformations/snippets/common/op/brgemm_copy_b.hpp"
+#include "transformations/snippets/common/op/brgemm_cpu.hpp"
 #include "transformations/tpp/x64/op/modifiers.hpp"
 
 #include "openvino/core/rt_info.hpp"
@@ -18,7 +18,7 @@
 #include "openvino/pass/pattern/matcher.hpp"
 
 #include "cpu/x64/cpu_isa_traits.hpp"
-#include "transformations/snippets/x64/op/brgemm_utils.hpp"
+#include "transformations/snippets/common/op/brgemm_utils.hpp"
 
 #include "cpu_shape.h"
 #include "utils/general_utils.h"

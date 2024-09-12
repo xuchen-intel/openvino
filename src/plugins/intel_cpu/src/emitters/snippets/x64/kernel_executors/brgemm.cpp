@@ -292,6 +292,8 @@ void BrgemmKernelExecutor::update_config(const ov::snippets::lowered::Expression
 }
 
 void BrgemmKernelExecutor::execute(const BrgemmKernelExecutor* executor, call_args* args) {
+    std::cout << "###### BrgemmKernelExecutor::execute ######" << std::endl;
+
     auto kernel = executor->get_kernel();
     const auto& config = static_cast<const BrgemmKernelConfig&>(executor->get_config());
     OV_CPU_JIT_EMITTER_ASSERT(kernel, "has nullptr compiler kernel or invalid config");

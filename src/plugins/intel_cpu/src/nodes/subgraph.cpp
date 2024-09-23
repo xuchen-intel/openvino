@@ -511,6 +511,9 @@ void Subgraph::initSupportedPrimitiveDescriptors() {
             }
         }
     }
+    if (!isPlanarPrioritized && getChildEdges().size() == 1 && getChildEdgeAt(0)->getChild()->getType() == Type::Output) {
+        isPlanarPrioritized = true;
+    }
 #endif
 
     if (isPlanarPrioritized)

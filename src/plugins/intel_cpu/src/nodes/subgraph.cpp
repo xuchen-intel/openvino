@@ -341,7 +341,7 @@ Subgraph::Subgraph(const std::shared_ptr<ov::Node>& op, const GraphContext::CPtr
     subgraph_attrs->bodyHash = getBodyHash(tmp_snippet);
 
 #if defined(OPENVINO_ARCH_ARM64)
-    subgraph_attrs->snippet->set_generator(std::make_shared<aarch64::CPUGenerator>(host_isa));
+    subgraph_attrs->snippet->set_generator(std::make_shared<aarch64::CPUGenerator>(host_isa, context->getParamsCache()));
 #elif defined(OPENVINO_ARCH_X86_64)
     subgraph_attrs->snippet->set_generator(std::make_shared<CPUGenerator>(host_isa, context->getParamsCache()));
 #else

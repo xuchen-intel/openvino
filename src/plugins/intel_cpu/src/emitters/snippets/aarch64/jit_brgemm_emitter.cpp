@@ -17,10 +17,11 @@ jit_brgemm_emitter::jit_brgemm_emitter(jit_generator* h, cpu_isa_t isa,
                                        const snippets::KernelExecutorTablePtr& kernel_table,
                                        const ov::intel_cpu::MultiCacheWeakPtr& compiled_kernel_cache) :
                                        jit_emitter(h, isa) {
+    std::cout << "###### jit_brgemm_emitter::jit_brgemm_emitter" << std::endl;
 }
 
-std::set<std::vector<element::Type>> jit_brgemm_emitter::get_supported_precisions(const std::shared_ptr<ov::Node>& node) {
-}
+// std::set<std::vector<element::Type>> jit_brgemm_emitter::get_supported_precisions(const std::shared_ptr<ov::Node>& node) {
+// }
 
 void jit_brgemm_emitter::validate_arguments(const std::vector<size_t> &in, const std::vector<size_t> &out) const {
 }

@@ -18,7 +18,7 @@ public:
                        const ov::intel_cpu::MultiCacheWeakPtr& compiled_kernel_cache);
 
     size_t get_inputs_count() const override { return m_memory_offsets.size() - 1; }
-    static std::set<std::vector<element::Type>> get_supported_precisions(const std::shared_ptr<ov::Node>& node = nullptr);
+    // static std::set<std::vector<element::Type>> get_supported_precisions(const std::shared_ptr<ov::Node>& node = nullptr);
 
 private:
     void validate_arguments(const std::vector<size_t> &in, const std::vector<size_t> &out) const override;

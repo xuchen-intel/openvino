@@ -5,6 +5,7 @@
 #pragma once
 
 #include "emitters/plugin/aarch64/jit_emitter.hpp"
+#include "emitters/snippets/aarch64/kernel_executors/brgemm.hpp"
 
 namespace ov {
 namespace intel_cpu {

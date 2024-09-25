@@ -20,6 +20,14 @@ jit_brgemm_emitter::jit_brgemm_emitter(jit_generator* h, cpu_isa_t isa,
                                        const ov::intel_cpu::MultiCacheWeakPtr& compiled_kernel_cache) :
                                        jit_emitter(h, isa) {
     std::cout << "###### jit_brgemm_emitter::jit_brgemm_emitter" << std::endl;
+
+    in_out_type_ = emitter_in_out_map::gpr_to_gpr;
+    const auto& brgemm_node = as_type_ptr<ov::intel_cpu::BrgemmCPU>(expr->get_node());
+    const auto& brg0Prc = brgemm_node->get_input_element_type(0);
+    const auto& brg1Prc = brgemm_node->get_input_element_type(1);
+    const auto brgemm_type = brgemm_node->get_type();
+    BrgemmKernelConfig kernel_config(brg0Prc, brg1Prc, with_amx(brgemm_type), with_compensations(brgemm_type),
+                                     brgemm_utils::get_primitive_isa(brg0Prc, with_amx(brgemm_type)));
 }
 
 std::set<std::vector<element::Type>> jit_brgemm_emitter::get_supported_precisions(const std::shared_ptr<ov::Node>& node) {

@@ -6,7 +6,7 @@
 
 #include "snippets/op/brgemm.hpp"
 #include "brgemm_copy_b.hpp"
-#include "brgemm_utils.hpp"
+#include "brgemm_common_utils.hpp"
 
 #include "snippets/lowered/port_descriptor.hpp"
 

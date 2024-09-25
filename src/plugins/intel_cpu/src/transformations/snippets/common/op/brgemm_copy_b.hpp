@@ -8,7 +8,7 @@
 #include "snippets/op/memory_access.hpp"
 #include "snippets/shape_inference/shape_inference.hpp"
 #include "snippets/shape_types.hpp"
-#include "brgemm_utils.hpp"
+#include "brgemm_common_utils.hpp"
 
 namespace ov {
 namespace intel_cpu {

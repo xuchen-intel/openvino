@@ -18,7 +18,8 @@
 #include "openvino/pass/pattern/matcher.hpp"
 
 #include "cpu/x64/cpu_isa_traits.hpp"
-#include "transformations/snippets/common/op/brgemm_utils.hpp"
+#include "transformations/snippets/common/op/brgemm_common_utils.hpp"
+#include "transformations/snippets/x64/op/brgemm_utils.hpp"
 
 #include "cpu_shape.h"
 #include "utils/general_utils.h"

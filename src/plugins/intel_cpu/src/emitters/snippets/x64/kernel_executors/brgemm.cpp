@@ -11,7 +11,7 @@
 #include "snippets/lowered/loop_manager.hpp"
 #include "snippets/lowered/pass/insert_specific_iterations.hpp"
 #include "transformations/snippets/common/op/brgemm_cpu.hpp"
-#include "transformations/snippets/common/op/brgemm_utils.hpp"
+#include "transformations/snippets/x64/op/brgemm_utils.hpp"
 
 #define DIM_CAST(X) static_cast<dnnl_dim_t>(X)
 #define DTYPE_CAST(X) static_cast<dnnl_data_type_t>(DnnlExtensionUtils::ElementTypeToDataType(X))

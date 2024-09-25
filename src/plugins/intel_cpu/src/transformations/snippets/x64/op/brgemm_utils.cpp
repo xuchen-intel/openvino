@@ -65,15 +65,15 @@ BRGEMM_TYPE get_brgemm_type(const ov::element::Type& element_type_a, const Dimen
     OV_CPU_JIT_EMITTER_THROW("Failed to determine brgemm mode");
 }
 
-size_t compute_vnni_factor(const ov::element::Type& precision) {
-    return data_type_vnni_granularity(static_cast<dnnl_data_type_t>(ov::intel_cpu::DnnlExtensionUtils::ElementTypeToDataType(precision)));
-}
-
 size_t get_elems_in_vec(const ov::element::Type& precision) {
     using namespace dnnl::impl::cpu;
     OV_CPU_JIT_EMITTER_ASSERT(x64::mayiuse(x64::avx2), "doesn't support non avx512 platforms");
     const auto vlen = x64::mayiuse(avx512_core) ? x64::cpu_isa_traits<x64::avx512_core>::vlen : x64::cpu_isa_traits<x64::avx2>::vlen;
     return vlen / precision.size();
+}
+
+size_t compute_vnni_factor(const ov::element::Type& precision) {
+    return data_type_vnni_granularity(static_cast<dnnl_data_type_t>(ov::intel_cpu::DnnlExtensionUtils::ElementTypeToDataType(precision)));
 }
 
 namespace repacking {
@@ -104,42 +104,8 @@ size_t get_repacking_buffer_size(const ov::snippets::lowered::ExpressionPtr& cop
         return N_dim * rnd_up(k_blk, brgemmVNNIFactor);
     }
 }
-
-size_t get_compensations_buffer_size(const ov::snippets::lowered::ExpressionPtr& copy_b_expr) {
-    OPENVINO_ASSERT(ov::is_type<ov::intel_cpu::BrgemmCopyB>(copy_b_expr->get_node()));
-    const auto& in_subtensor = ov::snippets::utils::get_projected_subtensor(copy_b_expr->get_input_port(0));
-    const size_t n_blk = *in_subtensor.rbegin();
-    OPENVINO_ASSERT(!is_dynamic_value(n_blk), "get_compensations_buffer_size must be called with static subtensor values");
-    const auto& precision = copy_b_expr->get_node()->get_input_element_type(0);
-    // Compensations are computed during repacking, so we need to round-up allocation shape according to m_inner_n_block
-    // because of OneDNN implementation nuances (as in get_repacking_buffer_size).
-    // However, the compensations are computed by N dimension, so K dimension doesn't affect the compensations buffer
-    return std::max(n_blk, compute_inner_n_block(precision));
-}
-
-size_t compute_out_leading_dim(const size_t n_block, const ov::element::Type& precision) {
-    return std::max(n_block, compute_inner_n_block(precision));
-}
-
-size_t compute_inner_n_block(const ov::element::Type& precision) {
-    switch (precision) {
-        case element::i8: return 64;
-        case element::bf16: return 32;
-        case element::f32: return 16;
-        default: OPENVINO_THROW("BrgemmCopyB doesn't support precision ", precision);
-    }
-}
 }   // namespace repacking
+
 }   // namespace brgemm_utils
 }   // namespace intel_cpu
-template <>
-EnumNames<ov::intel_cpu::brgemm_utils::BRGEMM_TYPE>& EnumNames<ov::intel_cpu::brgemm_utils::BRGEMM_TYPE>::get() {
-    static auto enum_names =
-            EnumNames<ov::intel_cpu::brgemm_utils::BRGEMM_TYPE>("ov::intel_cpu::jit_bgremm_utils::BRGEMM_TYPE",
-                                                                {{"stand_alone", ov::intel_cpu::brgemm_utils::BRGEMM_TYPE::STAND_ALONE},
-                                                                 {"with_amx", ov::intel_cpu::brgemm_utils::BRGEMM_TYPE::WITH_AMX},
-                                                                 {"with_compensations", ov::intel_cpu::brgemm_utils::BRGEMM_TYPE::WITH_COMPENSATIONS},
-                                                                 {"repacking_only", ov::intel_cpu::brgemm_utils::BRGEMM_TYPE::REPACKING_ONLY}});
-    return enum_names;
-}
 }   // namespace ov

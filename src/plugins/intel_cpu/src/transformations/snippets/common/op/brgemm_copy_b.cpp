@@ -11,6 +11,8 @@
 namespace ov {
 namespace intel_cpu {
 
+using namespace brgemm_utils;
+
 intel_cpu::BrgemmCopyB::BrgemmCopyB(const Output<Node>& x,
                                     const element::Type src_type,
                                     BRGEMM_TYPE type,

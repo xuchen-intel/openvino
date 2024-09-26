@@ -13,8 +13,7 @@ namespace aarch64 {
 
 struct BrgemmKernelConfig : public snippets::KernelExecutorBase::GenericConfig {
 public:
-    BrgemmKernelConfig(const element::Type& in0_dtype, const element::Type& in1_dtype,
-                       bool is_with_amx, bool is_with_comp, dnnl::impl::cpu::aarch64::cpu_isa_t primitive_isa);
+    BrgemmKernelConfig(const element::Type& in0_dtype, const element::Type& in1_dtype, dnnl::impl::cpu::aarch64::cpu_isa_t primitive_isa);
     BrgemmKernelConfig() = delete;
     bool is_completed() const override;
     size_t hash() const override { return m_hash; }
@@ -25,11 +24,8 @@ public:
 
 private:
     struct StaticParams {
-        StaticParams(const element::Type& in0_dtype, const element::Type& in1_dtype,
-                     bool is_with_amx, bool is_with_comp, dnnl::impl::cpu::aarch64::cpu_isa_t primitive_isa);
+        StaticParams(const element::Type& in0_dtype, const element::Type& in1_dtype, dnnl::impl::cpu::aarch64::cpu_isa_t primitive_isa);
         const dnnl_data_type_t dt_in0 {dnnl_f32}, dt_in1 {dnnl_f32};
-        const bool is_with_amx {false};
-        const bool is_with_comp {false};
         const dnnl::impl::cpu::aarch64::cpu_isa_t isa {dnnl::impl::cpu::aarch64::isa_undef};
         const size_t hash {0};
         bool operator==(const StaticParams& rhs) const;

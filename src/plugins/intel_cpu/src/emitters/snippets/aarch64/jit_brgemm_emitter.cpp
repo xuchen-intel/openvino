@@ -5,6 +5,7 @@
 #include "jit_brgemm_emitter.hpp"
 
 #include "transformations/snippets/common/op/brgemm_cpu.hpp"
+#include "transformations/snippets/aarch64/op/brgemm_utils.hpp"
 
 using jit_generator = dnnl::impl::cpu::aarch64::jit_generator;
 using cpu_isa_t = dnnl::impl::cpu::aarch64::cpu_isa_t;
@@ -25,9 +26,7 @@ jit_brgemm_emitter::jit_brgemm_emitter(jit_generator* h, cpu_isa_t isa,
     const auto& brgemm_node = as_type_ptr<ov::intel_cpu::BrgemmCPU>(expr->get_node());
     const auto& brg0Prc = brgemm_node->get_input_element_type(0);
     const auto& brg1Prc = brgemm_node->get_input_element_type(1);
-    const auto brgemm_type = brgemm_node->get_type();
-    BrgemmKernelConfig kernel_config(brg0Prc, brg1Prc, with_amx(brgemm_type), with_compensations(brgemm_type),
-                                     brgemm_utils::get_primitive_isa(brg0Prc, with_amx(brgemm_type)));
+    BrgemmKernelConfig kernel_config(brg0Prc, brg1Prc, brgemm_utils::get_primitive_isa());
 }
 
 std::set<std::vector<element::Type>> jit_brgemm_emitter::get_supported_precisions(const std::shared_ptr<ov::Node>& node) {

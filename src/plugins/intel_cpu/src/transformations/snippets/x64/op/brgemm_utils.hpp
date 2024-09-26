@@ -5,6 +5,7 @@
 #pragma once
 
 #include "transformations/snippets/common/op/brgemm_common_utils.hpp"
+#include "cpu/x64/cpu_isa_traits.hpp"
 
 namespace ov {
 namespace intel_cpu {

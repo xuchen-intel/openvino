@@ -22,7 +22,6 @@ namespace intel_cpu {
 */
 class BrgemmCopyB : public snippets::modifier::MemoryAccess, public ov::op::Op {
 public:
-    using BRGEMM_TYPE = brgemm_utils::BRGEMM_TYPE;
     OPENVINO_OP("BrgemmCopyB", "SnippetsOpset");
 
     BrgemmCopyB(const Output<Node>& x, const element::Type src_type, BRGEMM_TYPE type = BRGEMM_TYPE::REPACKING_ONLY,

@@ -21,7 +21,6 @@ namespace intel_cpu {
  */
 class BrgemmCPU : public snippets::op::Brgemm {
 public:
-    using BRGEMM_TYPE = brgemm_utils::BRGEMM_TYPE;
     OPENVINO_OP("BrgemmCPU", "SnippetsOpset", snippets::op::Brgemm);
 
     BrgemmCPU(const Output<Node>& A, const Output<Node>& B, BRGEMM_TYPE type,

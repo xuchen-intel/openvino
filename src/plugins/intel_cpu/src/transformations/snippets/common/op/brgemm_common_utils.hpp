@@ -4,14 +4,12 @@
 
 #pragma once
 
-#include "cpu/x64/cpu_isa_traits.hpp"
 #include "openvino/core/type/element_type.hpp"
 #include "openvino/core/dimension.hpp"
 #include "snippets/lowered/expression.hpp"
 
 namespace ov {
 namespace intel_cpu {
-namespace brgemm_utils {
 
 enum class BRGEMM_TYPE {
     STAND_ALONE,            // No extra requirements, used for f32|f32
@@ -19,7 +17,7 @@ enum class BRGEMM_TYPE {
     WITH_COMPENSATIONS,     // i8|i8 (non-AMX system) - needs BrgemmCopyB for data repacking and compensations
     REPACKING_ONLY          // u8|i8 or bf16|bf16 (non-AMX system) - needs BrgemmCopyB on second input for data repacking
 };
-
+namespace brgemm_utils {
 inline bool stand_alone(BRGEMM_TYPE type) { return type == BRGEMM_TYPE::STAND_ALONE; }
 
 inline bool with_amx(BRGEMM_TYPE type) { return type == BRGEMM_TYPE::WITH_AMX; }
@@ -51,12 +49,12 @@ size_t compute_inner_n_block(const ov::element::Type& precision);
 }   // namespace brgemm_utils
 }   // namespace intel_cpu
 template <>
-class AttributeAdapter<intel_cpu::brgemm_utils::BRGEMM_TYPE> :
-        public EnumAttributeAdapterBase<intel_cpu::brgemm_utils::BRGEMM_TYPE> {
+class AttributeAdapter<intel_cpu::BRGEMM_TYPE> :
+        public EnumAttributeAdapterBase<intel_cpu::BRGEMM_TYPE> {
 public:
-    AttributeAdapter(intel_cpu::brgemm_utils::BRGEMM_TYPE& value) :
-        EnumAttributeAdapterBase<intel_cpu::brgemm_utils::BRGEMM_TYPE>(value) {
+    AttributeAdapter(intel_cpu::BRGEMM_TYPE& value) :
+        EnumAttributeAdapterBase<intel_cpu::BRGEMM_TYPE>(value) {
     }
-    OPENVINO_RTTI("AttributeAdapter<ov::intel_cpu::jit_brgemm_utils::BRGEMM_TYPE>");
+    OPENVINO_RTTI("AttributeAdapter<ov::intel_cpu::BRGEMM_TYPE>");
 };
 }   // namespace ov

@@ -10,7 +10,6 @@
 #include "transformations/snippets/common/op/brgemm_copy_b.hpp"
 #include "utils/general_utils.h"
 
-using namespace Xbyak;
 using namespace dnnl::impl;
 using namespace ov::snippets::utils;
 
@@ -48,13 +47,13 @@ size_t compute_inner_n_block(const ov::element::Type& precision) {
 }   // namespace brgemm_utils
 }   // namespace intel_cpu
 template <>
-EnumNames<ov::intel_cpu::brgemm_utils::BRGEMM_TYPE>& EnumNames<ov::intel_cpu::brgemm_utils::BRGEMM_TYPE>::get() {
+EnumNames<ov::intel_cpu::BRGEMM_TYPE>& EnumNames<ov::intel_cpu::BRGEMM_TYPE>::get() {
     static auto enum_names =
-            EnumNames<ov::intel_cpu::brgemm_utils::BRGEMM_TYPE>("ov::intel_cpu::jit_bgremm_utils::BRGEMM_TYPE",
-                                                                {{"stand_alone", ov::intel_cpu::brgemm_utils::BRGEMM_TYPE::STAND_ALONE},
-                                                                 {"with_amx", ov::intel_cpu::brgemm_utils::BRGEMM_TYPE::WITH_AMX},
-                                                                 {"with_compensations", ov::intel_cpu::brgemm_utils::BRGEMM_TYPE::WITH_COMPENSATIONS},
-                                                                 {"repacking_only", ov::intel_cpu::brgemm_utils::BRGEMM_TYPE::REPACKING_ONLY}});
+            EnumNames<ov::intel_cpu::BRGEMM_TYPE>("ov::intel_cpu::jit_bgremm_utils::BRGEMM_TYPE",
+                                                                {{"stand_alone", ov::intel_cpu::BRGEMM_TYPE::STAND_ALONE},
+                                                                 {"with_amx", ov::intel_cpu::BRGEMM_TYPE::WITH_AMX},
+                                                                 {"with_compensations", ov::intel_cpu::BRGEMM_TYPE::WITH_COMPENSATIONS},
+                                                                 {"repacking_only", ov::intel_cpu::BRGEMM_TYPE::REPACKING_ONLY}});
     return enum_names;
 }
 }   // namespace ov

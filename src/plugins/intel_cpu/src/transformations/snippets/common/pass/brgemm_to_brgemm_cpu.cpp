@@ -19,7 +19,11 @@
 
 #include "cpu/x64/cpu_isa_traits.hpp"
 #include "transformations/snippets/common/op/brgemm_common_utils.hpp"
+#if defined(OPENVINO_ARCH_ARM64)
+#include "transformations/snippets/aarch64/op/brgemm_utils.hpp"
+#else
 #include "transformations/snippets/x64/op/brgemm_utils.hpp"
+#endif
 
 #include "cpu_shape.h"
 #include "utils/general_utils.h"
@@ -29,6 +33,7 @@ namespace ov {
 namespace intel_cpu {
 
 using namespace snippets::lowered;
+using namespace brgemm_utils;
 
 namespace {
 template<typename T>
@@ -70,8 +75,12 @@ pass::BrgemmToBrgemmCPU::BrgemmToBrgemmCPU() {
         const auto& layout_c = brgemm_out_desc->get_layout();
 
         const auto element_type_a = brgemm->get_input_element_type(0);
+#if defined(OPENVINO_ARCH_ARM64)
+        const auto brgemm_type = aarch64::brgemm_utils::get_brgemm_type();
+#else
         const bool transpose_b = !layout_b.empty() && layout_b.back() != layout_b.size() - 1;
-        const auto brgemm_type = brgemm_utils::get_brgemm_type(element_type_a, K, N, transpose_b);
+        const auto brgemm_type = get_brgemm_type(element_type_a, K, N, transpose_b);
+#endif
         const auto offset_a = brgemm->get_offset_a();
         const auto offset_b = brgemm->get_offset_b();
         const auto offset_c = brgemm->get_offset_c();
@@ -82,7 +91,7 @@ pass::BrgemmToBrgemmCPU::BrgemmToBrgemmCPU() {
             brgemm_cpu = std::make_shared<BrgemmCPU>(brgemm->input_value(0), brgemm->input_value(1), brgemm_type,
                                                      offset_a, offset_b, offset_c, layout_a, layout_b, layout_c);
         } else {
-            const auto copy_b_type = with_compensations(brgemm_type) ? brgemm_type : brgemm_utils::BRGEMM_TYPE::REPACKING_ONLY;
+            const auto copy_b_type = with_compensations(brgemm_type) ? brgemm_type : BRGEMM_TYPE::REPACKING_ONLY;
             brgemm_repacking = std::make_shared<BrgemmCopyB>(brgemm->input_value(1), element_type_a, copy_b_type, offset_b, 0, 0, layout_b);
             PortDescriptorUtils::set_port_descriptor(brgemm_repacking->input(0), brgemm_in1_desc->get_subtensor(), layout_b);
             for (const auto& output : brgemm_repacking->outputs())

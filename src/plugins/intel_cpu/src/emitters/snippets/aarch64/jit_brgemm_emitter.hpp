@@ -29,6 +29,7 @@ private:
 
     std::vector<size_t> m_memory_offsets{};
     std::vector<size_t> m_buffer_ids{};
+    std::shared_ptr<BrgemmKernelExecutor> m_kernel_executor = nullptr;
 };
 
 }   // namespace aarch64

@@ -17,7 +17,9 @@ public:
     BrgemmKernelConfig() = delete;
     bool is_completed() const override;
     size_t hash() const override { return m_hash; }
-        std::unique_ptr<GenericConfig> get_clone_ptr() const override {
+    bool operator==(const BrgemmKernelConfig& rhs) const;
+    bool operator!=(const BrgemmKernelConfig& rhs) const {return !(*this == rhs);}
+    std::unique_ptr<GenericConfig> get_clone_ptr() const override {
         return std::unique_ptr<BrgemmKernelConfig>( new BrgemmKernelConfig(*this));
     }
     bool is_empty() const;
@@ -43,6 +45,17 @@ struct BrgemmCompiledKernel {
     // Note: Palette is treated as a part of a kernel because it is initialized during the kernel compilation stage.
     //       Each kernel need to store the pallet it was compiled with.
     char palette[64] = {};
+};
+
+class BrgemmKernelExecutor : public CPUKernelExecutor<BrgemmKernelConfig, BrgemmCompiledKernel> {
+public:
+    BrgemmKernelExecutor(ov::intel_cpu::MultiCacheWeakPtr kernel_cache, BrgemmKernelConfig config);
+
+protected:
+    std::shared_ptr<BrgemmCompiledKernel> compile_kernel(const BrgemmKernelConfig& c) const override;
+    void update_config(const ov::snippets::lowered::ExpressionPtr& expr,
+                       const ov::snippets::lowered::LinearIRCPtr& linear_ir,
+                       BrgemmKernelConfig& config) const override;
 };
 
 }   // namespace aarch64

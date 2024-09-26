@@ -37,6 +37,15 @@ bool BrgemmKernelConfig::is_completed() const {
     return !utils::one_of(0, m_M, m_N, m_K, m_LDA, m_LDB, m_LDC) || is_empty();
 }
 
+bool BrgemmKernelConfig::operator==(const BrgemmKernelConfig& rhs) const {
+#define EQ(X) X == rhs.X
+    return EQ(m_hash) && EQ(m_beta) &&
+           EQ(m_M) && EQ(m_N) && EQ(m_K) &&
+           EQ(m_LDA) && EQ(m_LDB) && EQ(m_LDC) &&
+           (EQ(m_static_params.get()) || *m_static_params == *(rhs.m_static_params));
+#undef EQ
+}
+
 bool BrgemmKernelConfig::is_empty() const {
     return everyone_is(0, m_M, m_N, m_K, m_LDA, m_LDB, m_LDC, m_beta);
 }
@@ -48,6 +57,12 @@ BrgemmKernelConfig::StaticParams::StaticParams(const element::Type& in0_dtype, c
                                                hash(init_hash(dt_in0, dt_in1, isa)) {
 }
 
+bool BrgemmKernelConfig::StaticParams::operator==(const StaticParams& rhs) const {
+#define EQ(X) X == rhs.X
+    return EQ(hash) && EQ(dt_in0) && EQ(dt_in1) && EQ(isa);
+#undef EQ
+}
+
 size_t BrgemmKernelConfig::compute_hash() const {
     size_t seed = m_static_params->hash;
 #define HASH(X) seed = hash_combine(seed, X)
@@ -56,6 +71,21 @@ size_t BrgemmKernelConfig::compute_hash() const {
     HASH(m_beta);
 #undef HASH
     return seed;
+}
+
+BrgemmKernelExecutor::BrgemmKernelExecutor(ov::intel_cpu::MultiCacheWeakPtr kernel_cache, BrgemmKernelConfig config) :
+    CPUKernelExecutor<BrgemmKernelConfig, BrgemmCompiledKernel>(std::move(kernel_cache), std::move(config)) {
+}
+
+std::shared_ptr<BrgemmCompiledKernel> BrgemmKernelExecutor::compile_kernel(const BrgemmKernelConfig& config) const {
+    std::shared_ptr<BrgemmCompiledKernel> compiled_kernel = std::make_shared<BrgemmCompiledKernel>();
+
+    return compiled_kernel;
+}
+
+void BrgemmKernelExecutor::update_config(const ov::snippets::lowered::ExpressionPtr& expr,
+                                         const ov::snippets::lowered::LinearIRCPtr& linear_ir,
+                                         BrgemmKernelConfig& config) const {
 }
 
 }   // namespace aarch64

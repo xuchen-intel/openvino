@@ -82,6 +82,8 @@ void jit_brgemm_emitter::emit_impl(const std::vector<size_t>& in, const std::vec
 }
 
 void jit_brgemm_emitter::emit_brgemm_kernel_call(const std::vector<size_t>& mem_ptrs_idxs, const std::vector<size_t>& mem_offsets) const {
+    internal_call_preamble();
+    internal_call_postamble();
 }
 
 }   // namespace aarch64

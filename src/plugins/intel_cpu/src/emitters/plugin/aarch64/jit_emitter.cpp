@@ -25,6 +25,12 @@ const std::vector<size_t> jit_emitter::store_gpr_regs = {
     29, 30
 };
 
+// The gprs that possibly have already been used by Snippets need to be saved before calling ondenn JIT kernel
+const std::vector<size_t> jit_emitter::internal_store_gpr_regs = {
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
+    19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30
+};
+
 static const std::vector<size_t> vec_regs = {
     0, 1, 2, 3, 4, 5, 6, 7,
     8, 9, 10, 11, 12, 13, 14, 15,
@@ -57,6 +63,14 @@ void jit_emitter::emit_data() const {
         for (size_t d = 0; d < len; d += sizeof(table_entry_val_t))
             h->dd(te.val);
     }
+}
+
+void jit_emitter::internal_call_preamble() const {
+    store_context(internal_store_gpr_regs, vec_regs);
+}
+
+void jit_emitter::internal_call_postamble() const {
+    restore_context(internal_store_gpr_regs, vec_regs);
 }
 
 std::set<std::vector<element::Type>> jit_emitter::get_supported_precisions(const std::shared_ptr<ov::Node>& node) {

@@ -140,12 +140,16 @@ protected:
         }
     }
 
+    void internal_call_preamble() const;
+    void internal_call_postamble() const;
+
 private:
     mutable std::vector<size_t> preserved_vec_idxs;
     mutable std::vector<size_t> preserved_gpr_idxs;
 
     // General-purpose Registers
     static const std::vector<size_t> store_gpr_regs;
+    static const std::vector<size_t> internal_store_gpr_regs;
 
     size_t table_off(const std::string& key, const size_t key_off_val_shift = 0) const {
         // assumption: all table entries sharing the same key also

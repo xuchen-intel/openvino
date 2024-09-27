@@ -49,7 +49,16 @@ struct BrgemmCompiledKernel {
 
 class BrgemmKernelExecutor : public CPUKernelExecutor<BrgemmKernelConfig, BrgemmCompiledKernel> {
 public:
+    struct call_args {
+        const void* A = nullptr;
+        const void* B = nullptr;
+        void* C = nullptr;
+        void* scratch = nullptr;
+    };
     BrgemmKernelExecutor(ov::intel_cpu::MultiCacheWeakPtr kernel_cache, BrgemmKernelConfig config);
+
+    /** Function that will be called in runtime to execute the kernel */
+    static void execute(const BrgemmKernelExecutor* executor, call_args* args);
 
 protected:
     std::shared_ptr<BrgemmCompiledKernel> compile_kernel(const BrgemmKernelConfig& c) const override;

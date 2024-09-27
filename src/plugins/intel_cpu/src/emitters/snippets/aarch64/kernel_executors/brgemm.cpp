@@ -7,6 +7,7 @@
 #include "common/utils.hpp"
 #include "dnnl_extension_utils.h"
 #include "utils/general_utils.h"
+#include "emitters/utils.hpp"
 
 #define DTYPE_CAST(X) static_cast<dnnl_data_type_t>(DnnlExtensionUtils::ElementTypeToDataType(X))
 
@@ -86,6 +87,30 @@ std::shared_ptr<BrgemmCompiledKernel> BrgemmKernelExecutor::compile_kernel(const
 void BrgemmKernelExecutor::update_config(const ov::snippets::lowered::ExpressionPtr& expr,
                                          const ov::snippets::lowered::LinearIRCPtr& linear_ir,
                                          BrgemmKernelConfig& config) const {
+}
+
+void BrgemmKernelExecutor::execute(const BrgemmKernelExecutor* executor, call_args* args) {
+    std::cout << "###### BrgemmKernelExecutor::execute ######" << std::endl;
+
+    auto kernel = executor->get_kernel();
+    const auto& config = static_cast<const BrgemmKernelConfig&>(executor->get_config());
+    OV_CPU_JIT_EMITTER_ASSERT(kernel, "has nullptr compiler kernel or invalid config");
+
+    cpu::aarch64::brgemm_kernel_params_t brgemm_p;
+
+    brgemm_p.batch = nullptr;  // default value
+    brgemm_p.ptr_A = args->A;
+    brgemm_p.ptr_B = args->B;
+    brgemm_p.ptr_C = args->C;
+    brgemm_p.ptr_D = args->C;
+    brgemm_p.ptr_buf = args->scratch;
+    brgemm_p.ptr_bias = nullptr;
+    brgemm_p.do_post_ops = 0;
+    brgemm_p.do_apply_comp = 0;
+    brgemm_p.skip_accm = 0;
+    brgemm_p.BS = 1;  // default value
+    OV_CPU_JIT_EMITTER_ASSERT(kernel->compiled_kernel, "has nullptr kernel");
+    (*kernel->compiled_kernel)(&brgemm_p);
 }
 
 }   // namespace aarch64

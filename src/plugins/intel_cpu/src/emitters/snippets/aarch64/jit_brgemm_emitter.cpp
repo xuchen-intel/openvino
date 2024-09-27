@@ -8,15 +8,16 @@
 #include "emitters/utils.hpp"
 #include "transformations/snippets/aarch64/op/brgemm_utils.hpp"
 
-using jit_generator = dnnl::impl::cpu::aarch64::jit_generator;
-using cpu_isa_t = dnnl::impl::cpu::aarch64::cpu_isa_t;
-using ExpressionPtr = ov::snippets::lowered::ExpressionPtr;
+using namespace Xbyak_aarch64;
+using namespace ov::intel_cpu::brgemm_utils;
 
 namespace ov {
 namespace intel_cpu {
 namespace aarch64 {
 
-using namespace ov::intel_cpu::brgemm_utils;
+using jit_generator = dnnl::impl::cpu::aarch64::jit_generator;
+using cpu_isa_t = dnnl::impl::cpu::aarch64::cpu_isa_t;
+using ExpressionPtr = ov::snippets::lowered::ExpressionPtr;
 
 jit_brgemm_emitter::jit_brgemm_emitter(jit_generator* h, cpu_isa_t isa,
                                        const ExpressionPtr& expr,
@@ -84,6 +85,17 @@ void jit_brgemm_emitter::emit_impl(const std::vector<size_t>& in, const std::vec
 void jit_brgemm_emitter::emit_brgemm_kernel_call(const std::vector<size_t>& mem_ptrs_idxs, const std::vector<size_t>& mem_offsets) const {
     internal_call_preamble();
     h->mov(h->x16, reinterpret_cast<uint64_t>(BrgemmKernelExecutor::execute));
+    auto reserved_stack_size = sizeof(BrgemmKernelExecutor::call_args);
+    // Reserve memory on the stack
+    h->sub(h->sp, h->sp, reserved_stack_size);
+
+    auto write_addr_on_stack = [&](size_t arg_offset, XReg addr, size_t addr_offset, size_t buffer_id) {
+        h->mov(h->X_TMP_0, addr);
+        // if (snippets::utils::is_dynamic_value(addr_offset))
+        //     h->add(h->X_TMP_0,  h->ptr[abi_param1 + GET_OFF(buffer_offsets) + buffer_id * sizeof(size_t)]);
+    };
+
+    h->add(h->sp, h->sp, reserved_stack_size);
     internal_call_postamble();
 }
 

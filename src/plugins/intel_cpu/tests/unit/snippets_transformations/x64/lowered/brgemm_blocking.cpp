@@ -23,7 +23,7 @@ using namespace ov::intel_cpu;
 using namespace ov::snippets::lowered;
 using namespace ov::snippets::lowered::pass;
 using namespace ov::snippets;
-using BRGEMM_TYPE = intel_cpu::brgemm_utils::BRGEMM_TYPE;
+using BRGEMM_TYPE = intel_cpu::BRGEMM_TYPE;
 
 namespace {
 enum class BACKEND_TYPE{CPU, TPP};

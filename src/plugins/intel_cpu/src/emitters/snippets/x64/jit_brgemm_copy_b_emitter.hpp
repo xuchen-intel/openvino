@@ -29,7 +29,7 @@ private:
     void emit_impl(const std::vector<size_t>& in, const std::vector<size_t>& out) const override;
 
     void init_brgemm_copy(std::unique_ptr<dnnl::impl::cpu::x64::matmul::jit_brgemm_matmul_copy_b_t>& kernel,
-                          size_t N, size_t N_blk, size_t N_tail, size_t out_leading_dim, size_t K_blk, brgemm_utils::BRGEMM_TYPE brgemm_type,
+                          size_t N, size_t N_blk, size_t N_tail, size_t out_leading_dim, size_t K_blk, BRGEMM_TYPE brgemm_type,
                           const ov::element::Type& dt_in0, const ov::element::Type& dt_in1, size_t wei_stride, dnnl_format_tag_t format) const;
     void emit_kernel_call(const dnnl::impl::cpu::x64::matmul::jit_brgemm_matmul_copy_b_t* kernel,
                           Xbyak::Reg64 src, Xbyak::Reg64 dst, Xbyak::Reg64 comp, size_t N, size_t K,

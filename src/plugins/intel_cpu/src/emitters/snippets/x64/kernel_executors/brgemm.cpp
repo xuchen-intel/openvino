@@ -19,6 +19,7 @@
 using namespace Xbyak;
 using namespace dnnl::impl;
 using namespace dnnl::impl::cpu::x64;
+using namespace ov::intel_cpu::brgemm_utils;
 
 namespace {
 size_t init_hash(dnnl_data_type_t dt_in0, dnnl_data_type_t dt_in1, bool is_with_amx,

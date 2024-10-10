@@ -4,9 +4,11 @@
 
 #pragma once
 
-#include <cpu/aarch64/brgemm/brgemm.hpp>
+#include "cpu/aarch64/brgemm/brgemm.hpp"
 #include "emitters/snippets/jit_snippets_call_args.hpp"
 #include "emitters/snippets/cpu_kernel_executor_table.hpp"
+
+#include "snippets/lowered/loop_manager.hpp"
 
 namespace ov {
 namespace intel_cpu {
@@ -23,6 +25,7 @@ public:
     std::unique_ptr<GenericConfig> get_clone_ptr() const override {
         return std::unique_ptr<BrgemmKernelConfig>( new BrgemmKernelConfig(*this));
     }
+    void update(dnnl_dim_t M, dnnl_dim_t N, dnnl_dim_t K, dnnl_dim_t LDA, dnnl_dim_t LDB, dnnl_dim_t LDC, float beta);
     bool is_empty() const;
 
 private:
@@ -66,6 +69,9 @@ protected:
     void update_config(const ov::snippets::lowered::ExpressionPtr& expr,
                        const ov::snippets::lowered::LinearIRCPtr& linear_ir,
                        BrgemmKernelConfig& config) const override;
+
+    static float get_beta(const ov::snippets::lowered::LoopManagerPtr& loop_manager, int loop_id,
+                          const ov::snippets::lowered::ExpandedLoopInfoPtr& current_expanded_loop_info);
 };
 #define GET_OFF_BRGEMM_ARGS(field) offsetof(BrgemmKernelExecutor::call_args, field)
 

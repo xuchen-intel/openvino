@@ -5,8 +5,10 @@
 #include "jit_brgemm_emitter.hpp"
 
 #include "transformations/snippets/common/op/brgemm_cpu.hpp"
-#include "emitters/utils.hpp"
 #include "transformations/snippets/aarch64/op/brgemm_utils.hpp"
+#include "emitters/utils.hpp"
+#include "utils.hpp"
+#include "cpu/aarch64/xbyak_aarch64/xbyak_aarch64/xbyak_aarch64_adr.h"
 
 using namespace Xbyak_aarch64;
 using namespace ov::intel_cpu::brgemm_utils;
@@ -84,16 +86,41 @@ void jit_brgemm_emitter::emit_impl(const std::vector<size_t>& in, const std::vec
 
 void jit_brgemm_emitter::emit_brgemm_kernel_call(const std::vector<size_t>& mem_ptrs_idxs, const std::vector<size_t>& mem_offsets) const {
     internal_call_preamble();
-    h->mov(h->x16, reinterpret_cast<uint64_t>(BrgemmKernelExecutor::execute));
     auto reserved_stack_size = sizeof(BrgemmKernelExecutor::call_args);
     // Reserve memory on the stack
     h->sub(h->sp, h->sp, reserved_stack_size);
+    h->mov(h->X_DEFAULT_ADDR, h->sp);
 
+    XReg abi_param1 = XReg(0);
     auto write_addr_on_stack = [&](size_t arg_offset, XReg addr, size_t addr_offset, size_t buffer_id) {
+        const auto stack_frame = pre_ptr(h->X_DEFAULT_ADDR, arg_offset);
         h->mov(h->X_TMP_0, addr);
-        // if (snippets::utils::is_dynamic_value(addr_offset))
-        //     h->add(h->X_TMP_0,  h->ptr[abi_param1 + GET_OFF(buffer_offsets) + buffer_id * sizeof(size_t)]);
+        if (snippets::utils::is_dynamic_value(addr_offset))
+            h->add_imm(h->X_TMP_0, abi_param1, static_cast<int32_t>(GET_OFF(buffer_offsets) + buffer_id * sizeof(size_t)), h->X_TMP_1);
+        else if (addr_offset != 0)
+            h->add_imm(h->X_TMP_0, abi_param1, static_cast<int32_t>(addr_offset), h->X_TMP_1);
+        h->str(h->X_TMP_0, stack_frame);
     };
+    const std::vector<size_t> brgemm_args_offsets {GET_OFF_BRGEMM_ARGS(A), GET_OFF_BRGEMM_ARGS(B), GET_OFF_BRGEMM_ARGS(C),
+                                                   GET_OFF_BRGEMM_ARGS(scratch)};
+    const auto& mem_ptrs = utils::transform_idxs_to_regs(mem_ptrs_idxs);
+    for (size_t i = 0; i < mem_ptrs.size(); i++)
+        write_addr_on_stack(brgemm_args_offsets[i], mem_ptrs[i], mem_offsets[i], m_buffer_ids[i]);
+
+    // No scratchpad => need to write nullptr manually
+    if (mem_ptrs.size() < 4) {
+        h->mov(h->X_TMP_0, reinterpret_cast<uintptr_t>(nullptr));
+        h->str(h->X_TMP_0, pre_ptr(h->X_DEFAULT_ADDR, brgemm_args_offsets.back()));
+    }
+
+    XReg abi_param2 = XReg(1);
+    h->mov(abi_param1, reinterpret_cast<uintptr_t>(m_kernel_executor.get()));
+    h->mov(abi_param2, h->sp);
+    h->mov(h->x16, reinterpret_cast<uint64_t>(BrgemmKernelExecutor::execute));
+
+    internal_call_rsp_align();
+    h->blr(h->x16);
+    internal_call_rsp_restore();
 
     h->add(h->sp, h->sp, reserved_stack_size);
     internal_call_postamble();

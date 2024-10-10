@@ -142,6 +142,8 @@ protected:
 
     void internal_call_preamble() const;
     void internal_call_postamble() const;
+    void internal_call_rsp_align() const;
+    void internal_call_rsp_restore() const;
 
 private:
     mutable std::vector<size_t> preserved_vec_idxs;

@@ -73,6 +73,16 @@ void jit_emitter::internal_call_postamble() const {
     restore_context(internal_store_gpr_regs, vec_regs);
 }
 
+void jit_emitter::internal_call_rsp_align() const {
+    h->mov(h->x29, h->sp);
+    h->and_(h->x30, h->x29, 0xfffffffffffffff0);
+    h->mov(h->sp, h->x30);
+}
+
+void jit_emitter::internal_call_rsp_restore() const {
+    h->mov(h->sp, h->x29);
+}
+
 std::set<std::vector<element::Type>> jit_emitter::get_supported_precisions(const std::shared_ptr<ov::Node>& node) {
     return {};
 }

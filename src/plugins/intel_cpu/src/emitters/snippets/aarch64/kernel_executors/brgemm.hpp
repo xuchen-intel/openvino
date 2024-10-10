@@ -5,6 +5,7 @@
 #pragma once
 
 #include <cpu/aarch64/brgemm/brgemm.hpp>
+#include "emitters/snippets/jit_snippets_call_args.hpp"
 #include "emitters/snippets/cpu_kernel_executor_table.hpp"
 
 namespace ov {
@@ -66,6 +67,7 @@ protected:
                        const ov::snippets::lowered::LinearIRCPtr& linear_ir,
                        BrgemmKernelConfig& config) const override;
 };
+#define GET_OFF_BRGEMM_ARGS(field) offsetof(BrgemmKernelExecutor::call_args, field)
 
 }   // namespace aarch64
 }   // namespace intel_cpu

@@ -6,6 +6,7 @@
 
 #include "emitters/utils.hpp"
 #include "snippets/utils/utils.hpp"
+#include "utils.hpp"
 
 using namespace Xbyak_aarch64;
 
@@ -16,18 +17,6 @@ namespace aarch64 {
 using jit_generator = dnnl::impl::cpu::aarch64::jit_generator;
 using cpu_isa_t = dnnl::impl::cpu::aarch64::cpu_isa_t;
 using ExpressionPtr = ov::snippets::lowered::ExpressionPtr;
-
-inline static std::vector<XReg> transform_idxs_to_regs(const std::vector<size_t>& idxs) {
-    std::vector<XReg> regs(idxs.size(), XReg(0));
-    std::transform(idxs.begin(), idxs.end(), regs.begin(), [](size_t idx){return XReg(idx);});
-    return regs;
-}
-
-inline static std::vector<size_t> transform_snippets_regs_to_idxs(const std::vector<snippets::Reg>& regs) {
-    std::vector<size_t> idxs(regs.size());
-    std::transform(regs.cbegin(), regs.cend(), idxs.begin(), [](const snippets::Reg& reg) { return reg.idx; });
-    return idxs;
-}
 
 jit_kernel_emitter::jit_kernel_emitter(jit_generator* h, cpu_isa_t isa, const ov::snippets::lowered::ExpressionPtr& expr)
     : jit_emitter(h, isa), reg_runtime_params_idx(Operand::X0) {
@@ -157,13 +146,13 @@ void jit_kernel_emitter::init_body_regs(const std::set<size_t>& kernel_regs,
 void jit_kernel_emitter::emit_impl(const std::vector<size_t>& in, const std::vector<size_t>& out) const {
     h->preamble();
 
-    auto data_ptr_regs = transform_idxs_to_regs(data_ptr_regs_idx);
+    auto data_ptr_regs = utils::transform_idxs_to_regs(data_ptr_regs_idx);
 
     init_data_pointers(data_ptr_regs);
     for (const auto& expression : *body) {
         const auto reg_info = expression->get_reg_info();
-        auto in_regs = transform_snippets_regs_to_idxs(reg_info.first);
-        auto out_regs = transform_snippets_regs_to_idxs(reg_info.second);
+        auto in_regs = utils::transform_snippets_regs_to_idxs(reg_info.first);
+        auto out_regs = utils::transform_snippets_regs_to_idxs(reg_info.second);
         const auto& emitter = expression->get_emitter();
         emitter->emit_code(in_regs, out_regs, vec_regs_pool, gp_regs_pool);
     }

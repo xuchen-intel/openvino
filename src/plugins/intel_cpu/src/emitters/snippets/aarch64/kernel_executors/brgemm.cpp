@@ -16,6 +16,7 @@
 #define DTYPE_CAST(X) static_cast<dnnl_data_type_t>(DnnlExtensionUtils::ElementTypeToDataType(X))
 
 using namespace dnnl::impl;
+using namespace dnnl::impl::cpu::aarch64;
 using namespace ov::intel_cpu::brgemm_utils;
 
 namespace {
@@ -103,6 +104,31 @@ std::shared_ptr<BrgemmCompiledKernel> BrgemmKernelExecutor::compile_kernel(const
         std::cout << "****** early return" << std::endl;
         return compiled_kernel;
     }
+
+    cpu::aarch64::brgemm_t desc;
+    auto status = brgemm_desc_init(&desc, config.get_isa(), cpu::aarch64::brgemm_strd,
+                                config.get_dt_in0(), config.get_dt_in1(),
+                                false, false, cpu::aarch64::brgemm_row_major, 1.f,
+                                config.get_beta(),
+                                config.get_LDA(), config.get_LDB(), config.get_LDC(),
+                                config.get_M(), config.get_N(), config.get_K(), nullptr);
+    std::cout << "****** brgemm_desc_init status: " << status << std::endl;
+    std::cout << "****** config.get_isa(): " << static_cast<int>(config.get_isa()) << std::endl;
+    std::cout << "****** config.get_dt_in0(): " << static_cast<int>(config.get_dt_in0()) << std::endl;
+    std::cout << "****** config.get_dt_in1(): " << static_cast<int>(config.get_dt_in1()) << std::endl;
+    std::cout << "****** config.get_beta(): " << static_cast<int>(config.get_beta()) << std::endl;
+    std::cout << "****** config.get_LDA(): " << static_cast<int>(config.get_LDA()) << std::endl;
+    std::cout << "****** config.get_LDB(): " << static_cast<int>(config.get_LDB()) << std::endl;
+    std::cout << "****** config.get_LDC(): " << static_cast<int>(config.get_LDC()) << std::endl;
+    std::cout << "****** config.get_M(): " << static_cast<int>(config.get_M()) << std::endl;
+    std::cout << "****** config.get_N(): " << static_cast<int>(config.get_N()) << std::endl;
+    std::cout << "****** config.get_K(): " << static_cast<int>(config.get_K()) << std::endl;
+    OV_CPU_JIT_EMITTER_ASSERT(status == dnnl_success, "Cannot initialize brgemm descriptor due to invalid params");
+
+    cpu::aarch64::brgemm_kernel_t* kernel_ = nullptr;
+    status = brgemm_kernel_create(&kernel_, desc);
+    OV_CPU_JIT_EMITTER_ASSERT(status == dnnl_success, "Cannot create brgemm kernel due to invalid params");
+    compiled_kernel->compiled_kernel = std::unique_ptr<brgemm_kernel_t>(kernel_);
 
     std::cout << "****** return" << std::endl;
 

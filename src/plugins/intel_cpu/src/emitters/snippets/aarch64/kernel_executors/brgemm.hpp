@@ -28,6 +28,20 @@ public:
     void update(dnnl_dim_t M, dnnl_dim_t N, dnnl_dim_t K, dnnl_dim_t LDA, dnnl_dim_t LDB, dnnl_dim_t LDC, float beta);
     bool is_empty() const;
 
+    dnnl_data_type_t get_dt_in0() const { return m_static_params->dt_in0; }
+    dnnl_data_type_t get_dt_in1() const { return m_static_params->dt_in1; }
+
+    dnnl::impl::cpu::aarch64::cpu_isa_t get_isa() const { return m_static_params->isa; }
+    float get_beta() const { return m_beta; }
+
+    dnnl_dim_t get_M() const { return m_M; }
+    dnnl_dim_t get_N() const { return m_N; }
+    dnnl_dim_t get_K() const { return m_K; }
+
+    dnnl_dim_t get_LDA() const { return m_LDA; }
+    dnnl_dim_t get_LDB() const { return m_LDB; }
+    dnnl_dim_t get_LDC() const { return m_LDC; }
+
 private:
     struct StaticParams {
         StaticParams(const element::Type& in0_dtype, const element::Type& in1_dtype, dnnl::impl::cpu::aarch64::cpu_isa_t primitive_isa);

@@ -24,6 +24,11 @@ void CommonConvertExecutor::exec(const std::vector<MemoryCPtr>& src, const std::
     assert(src.size() == 1);
     assert(dst.size() == 1);
 
+    std::cout << "###### CommonConvertExecutor::exec" << std::endl;
+    std::cout << "###### commonConvertParams.srcPrc: " << commonConvertParams.srcPrc << std::endl;
+    std::cout << "###### commonConvertParams.origPrc: " << commonConvertParams.origPrc << std::endl;
+    std::cout << "###### commonConvertParams.dstPrc: " << commonConvertParams.dstPrc << std::endl;
+
     cpu_convert(src[0]->getData(),
                 dst[0]->getData(),
                 commonConvertParams.srcPrc,

@@ -56,6 +56,14 @@ void convert_vec<float, ov::float16>(jit_generator & gen,
     gen.movdqu(gen.xword[dst], f16vec);
 }
 
+template <>
+void convert_vec<float, ov::float8_e4m3>(jit_generator & gen,
+                                         const RegExp & src,
+                                         const RegExp & dst) {
+    auto const & f16vec = gen.xmm3;
+    auto const & f32vec = gen.ymm4;
+}
+
 class jit_convert_array : public jit_kernel {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_convert_array)
 
@@ -199,6 +207,9 @@ const std::tuple<U, U> & Range<T, U>::fit(const ov::element::Type & prec) {
     if (prec.is_real()) {
         double lbound, ubound;
         switch (prec) {
+            case ov::element::f8e4m3:
+                lbound = static_cast<double>(std::numeric_limits<ov::float8_e4m3>::lowest());
+                ubound = static_cast<double>(std::numeric_limits<ov::float8_e4m3>::max());
             case ov::element::bf16:
                 lbound = static_cast<double>(std::numeric_limits<ov::intel_cpu::bfloat16_t>::lowest());
                 ubound = static_cast<double>(std::numeric_limits<ov::intel_cpu::bfloat16_t>::max());
@@ -320,6 +331,25 @@ struct ConvertPrecision<std::tuple<src_t, dst_t>> {
                 dst[i] = static_cast<dst_t>(std::trunc(std::max(std::min(src[i], ubound), lbound)));
             });
         }
+
+        ctx.converted = true;
+    }
+};
+
+template<>
+struct ConvertPrecision<std::tuple<float, ov::float8_e4m3>> {
+    void operator()(ConvertContext & ctx) {
+        std::cout << "###### ConvertPrecision<std::tuple<float, ov::float8_e4m3>>" << std::endl;
+        auto src = static_cast<const float *>(ctx.srcPtr);
+        auto dst = static_cast<ov::float8_e4m3 *>(ctx.dstPtr);
+
+        constexpr size_t batch = 64;
+        const size_t iterations = ov::intel_cpu::div_up(ctx.size, batch);
+        parallel_for(iterations, [&](size_t i) {
+            const size_t offset = i * batch;
+            const size_t current_batch_size = std::min(ctx.size - offset, batch);
+            jit_convert(src + offset, dst + offset, current_batch_size);  // f32 -> f8e4m3
+        });
 
         ctx.converted = true;
     }
@@ -553,7 +583,8 @@ struct ConvertPrecision<std::tuple<ov::float16, ov::float16>> {
     INTEL_CPU_CVT(boolean, f16), INTEL_CPU_CVT(boolean, bf16), INTEL_CPU_CVT(boolean, f64), INTEL_CPU_CVT(u8, u8), \
     INTEL_CPU_CVT(i8, i8), INTEL_CPU_CVT(u16, u16), INTEL_CPU_CVT(i16, i16), INTEL_CPU_CVT(u32, u32),              \
     INTEL_CPU_CVT(i32, i32), INTEL_CPU_CVT(u64, u64), INTEL_CPU_CVT(i64, i64), INTEL_CPU_CVT(f32, f32),            \
-    INTEL_CPU_CVT(f16, f16), INTEL_CPU_CVT(bf16, bf16), INTEL_CPU_CVT(f64, f64), INTEL_CPU_CVT(boolean, boolean)
+    INTEL_CPU_CVT(f16, f16), INTEL_CPU_CVT(bf16, bf16), INTEL_CPU_CVT(f64, f64), INTEL_CPU_CVT(boolean, boolean),  \
+    INTEL_CPU_CVT(f32, f8e4m3)
 
 
 #define INTEL_CPU_CVT_FROM_BIN_LIST                                          \

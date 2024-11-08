@@ -325,7 +325,16 @@ void SubgraphBaseTest::generate_inputs(const std::vector<ov::Shape>& targetInput
                 std::shared_ptr<ov::Node> nodePtr = node.get_node()->shared_from_this();
                 for (size_t port = 0; port < nodePtr->get_input_size(); ++port) {
                     if (nodePtr->get_input_node_ptr(port)->shared_from_this() == inputNode->shared_from_this()) {
-                        inputs.insert({param, modelRange.generate_input(nodePtr, port, *itTargetShape)});
+                        auto tensor = modelRange.generate_input(nodePtr, port, *itTargetShape);
+                        inputs.insert({param, tensor});
+#if 1
+                        size_t input_size = tensor.get_size();
+                        auto input_data = static_cast<float *>(tensor.data(ov::element::f32));
+                        for (size_t i = 0; i < input_size; i++) {
+                            std::cout << static_cast<float>(input_data[i]) << " ";
+                        }
+                        std::cout << std::endl;
+#endif
                         break;
                     }
                 }
@@ -502,6 +511,22 @@ void SubgraphBaseTest::validate() {
     if (expectedOutputs.empty()) {
         return;
     }
+
+#if 1
+    size_t expected_size = expectedOutputs[0].get_size();
+    auto expected_data = static_cast<uint8_t *>(expectedOutputs[0].data(ov::element::f8e4m3));
+    for (size_t i = 0; i < expected_size; i++) {
+        std::cout << static_cast<float>(float8_e4m3::from_bits(expected_data[i])) << " ";
+    }
+    std::cout << std::endl;
+
+    size_t actual_size = actualOutputs[0].get_size();
+    auto actual_data = static_cast<uint8_t *>(actualOutputs[0].data(ov::element::f8e4m3));
+    for (size_t i = 0; i < actual_size; i++) {
+        std::cout << static_cast<float>(float8_e4m3::from_bits(actual_data[i])) << " ";
+    }
+    std::cout << std::endl;
+#endif
 
     ASSERT_EQ(actualOutputs.size(), expectedOutputs.size())
         << "TEMPLATE plugin has " << expectedOutputs.size() << " outputs, while " << targetDevice << " " << actualOutputs.size();

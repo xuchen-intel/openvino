@@ -393,6 +393,12 @@ void Graph::Configure(bool optimize) {
 
     GraphOptimizer optimizer;
 
+    for (auto &node : graphNodes) {
+        std::cout << "node->getName(): " << node->getName() << std::endl;
+        std::cout << "node->getType(): " << NameFromType(node->getType()) << std::endl;
+    }
+    std::cout << std::endl;
+
     SortTopologically();
     InitNodes();
 

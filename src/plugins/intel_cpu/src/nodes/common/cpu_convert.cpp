@@ -177,14 +177,28 @@ template <>
 void convert_vec<float, ov::float8_e4m3>(jit_generator & gen,
                                          const RegExp & src,
                                          const RegExp & dst) {
-    auto const & f16vec = gen.xmm3;
+    auto const & f8vec = gen.xmm3;
     auto const & f32vec = gen.ymm4;
 
     auto & cvt = dynamic_cast<jit_convert_array &>(gen);
 
     gen.vmovups(f32vec, gen.yword[src]);
-    cvt.get_f8_e4m3_emu()->vcvt_f32_to_f8(f16vec, f32vec);
-    gen.vmovq(gen.qword[dst], f16vec);
+    cvt.get_f8_e4m3_emu()->vcvt_f32_to_f8(f8vec, f32vec);
+    gen.vmovq(gen.qword[dst], f8vec);
+}
+
+template <>
+void convert_vec<ov::float16, ov::float8_e4m3>(jit_generator & gen,
+                                         const RegExp & src,
+                                         const RegExp & dst) {
+    auto const & f8vec = gen.xmm3;
+    auto const & f16vec = gen.ymm4;
+
+    auto & cvt = dynamic_cast<jit_convert_array &>(gen);
+
+    gen.vmovups(f16vec, gen.xword[src]);
+    cvt.get_f8_e4m3_emu()->vcvt_f16_to_f8(f8vec, f16vec);
+    gen.vmovq(gen.qword[dst], f8vec);
 }
 
 template <typename TI, typename TO>
@@ -373,11 +387,11 @@ struct ConvertPrecision<std::tuple<src_t, dst_t>> {
     }
 };
 
-template<>
-struct ConvertPrecision<std::tuple<float, ov::float8_e4m3>> {
+template<typename src_t>
+struct ConvertPrecision<std::tuple<src_t, ov::float8_e4m3>> {
     void operator()(ConvertContext & ctx) {
-        std::cout << "###### ConvertPrecision<std::tuple<float, ov::float8_e4m3>>" << std::endl;
-        auto src = static_cast<const float *>(ctx.srcPtr);
+        std::cout << "###### ConvertPrecision<std::tuple<src_t, ov::float8_e4m3>>" << std::endl;
+        auto src = static_cast<const src_t *>(ctx.srcPtr);
         auto dst = static_cast<ov::float8_e4m3 *>(ctx.dstPtr);
 
         constexpr size_t batch = 64;
@@ -391,6 +405,8 @@ struct ConvertPrecision<std::tuple<float, ov::float8_e4m3>> {
         ctx.converted = true;
     }
 };
+template struct ConvertPrecision<std::tuple<float, ov::float8_e4m3>>;
+template struct ConvertPrecision<std::tuple<ov::float16, ov::float8_e4m3>>;
 
 template<>
 struct ConvertPrecision<std::tuple<float, ov::intel_cpu::bfloat16_t>> {
@@ -621,7 +637,7 @@ struct ConvertPrecision<std::tuple<ov::float16, ov::float16>> {
     INTEL_CPU_CVT(i8, i8), INTEL_CPU_CVT(u16, u16), INTEL_CPU_CVT(i16, i16), INTEL_CPU_CVT(u32, u32),              \
     INTEL_CPU_CVT(i32, i32), INTEL_CPU_CVT(u64, u64), INTEL_CPU_CVT(i64, i64), INTEL_CPU_CVT(f32, f32),            \
     INTEL_CPU_CVT(f16, f16), INTEL_CPU_CVT(bf16, bf16), INTEL_CPU_CVT(f64, f64), INTEL_CPU_CVT(boolean, boolean),  \
-    INTEL_CPU_CVT(f32, f8e4m3)
+    INTEL_CPU_CVT(f32, f8e4m3), INTEL_CPU_CVT(f16, f8e4m3)
 
 
 #define INTEL_CPU_CVT_FROM_BIN_LIST                                          \

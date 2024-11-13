@@ -10,6 +10,7 @@
 
 #if defined(OPENVINO_ARCH_X86_64)
 #include "nodes/kernels/x64/jit_kernel.hpp"
+#include "cpu/x64/jit_avx512_core_fp8cvt.hpp"
 #else
 #include "cpu_memory.h"
 #include "openvino/core/type/element_type_traits.hpp"
@@ -26,6 +27,12 @@ namespace {
 using namespace dnnl::impl::utils;
 using namespace dnnl::impl::cpu::x64;
 using namespace Xbyak;
+
+template<typename src_t, typename dst_t>
+bool is_f8_conversion() {
+    return std::is_same<src_t, ov::float8_e4m3>::value || std::is_same<src_t, ov::float8_e5m2>::value ||
+           std::is_same<dst_t, ov::float8_e4m3>::value || std::is_same<dst_t, ov::float8_e5m2>::value;
+}
 
 template <typename src_t, typename dst_t>
 void convert_vec(jit_generator & gen,
@@ -54,14 +61,6 @@ void convert_vec<float, ov::float16>(jit_generator & gen,
     gen.vmovups(f32vec, gen.yword[src]);
     gen.vcvtps2ph(f16vec, f32vec, 0);
     gen.movdqu(gen.xword[dst], f16vec);
-}
-
-template <>
-void convert_vec<float, ov::float8_e4m3>(jit_generator & gen,
-                                         const RegExp & src,
-                                         const RegExp & dst) {
-    auto const & f16vec = gen.xmm3;
-    auto const & f32vec = gen.ymm4;
 }
 
 class jit_convert_array : public jit_kernel {
@@ -109,6 +108,9 @@ class jit_convert_array : public jit_kernel {
         });
 
         postamble();
+
+        if (f8_e4m3_emu_)
+            f8_e4m3_emu_->prepare_table();
     }
 
 public:
@@ -126,17 +128,25 @@ public:
 
     jit_convert_array(convert_vec_t convert_vec,
                       size_t src_size,
-                      size_t dst_size)
+                      size_t dst_size,
+                      bool convert_f8)
         : jit_kernel(jit_name())
         , _convert_vec(convert_vec)
         , _src_size(src_size)
-        , _dst_size(dst_size) {}
+        , _dst_size(dst_size) {
+        if (convert_f8) {
+            f8_e4m3_emu_ = std::make_shared<fp8_emulation_e4m3_t>(
+            this, fp8_emu_reserv_1_, fp8_emu_reserv_2_,
+            fp8_emu_reserv_3_, fp8_emu_reserv_4_,
+            fp8_emu_reserv_5_, fp8_emu_scratch_);
+        }
+    }
 
     template<typename src_t, typename dst_t>
     static fn_t get() {
         if (mayiuse(cpu_isa_t::avx2)
             && dnnl::impl::cpu::x64::cpu().has(Xbyak::util::Cpu::tF16C)) {
-            static jit_convert_array converter(convert_vec<src_t, dst_t>, sizeof(src_t), sizeof(dst_t));
+            static jit_convert_array converter(convert_vec<src_t, dst_t>, sizeof(src_t), sizeof(dst_t), is_f8_conversion<src_t, dst_t>());
             auto & generator = static_cast<jit_generator&>(converter);
             generator.create_kernel();
             return (fn_t)generator.jit_ker();
@@ -144,11 +154,38 @@ public:
         return nullptr;
     }
 
+    std::shared_ptr<fp8_emulation_e4m3_t> get_f8_e4m3_emu() const {
+        return f8_e4m3_emu_;
+    }
+
 private:
     convert_vec_t _convert_vec;
     size_t _src_size;
     size_t _dst_size;
+
+    std::shared_ptr<fp8_emulation_e4m3_t> f8_e4m3_emu_;
+
+    const Reg64 fp8_emu_scratch_ = rax;
+    const Zmm fp8_emu_reserv_1_ = Zmm(9);
+    const Zmm fp8_emu_reserv_2_ = Zmm(10);
+    const Zmm fp8_emu_reserv_3_ = Zmm(11);
+    const Zmm fp8_emu_reserv_4_ = Zmm(12);
+    const Zmm fp8_emu_reserv_5_ = Zmm(13);
 };
+
+template <>
+void convert_vec<float, ov::float8_e4m3>(jit_generator & gen,
+                                         const RegExp & src,
+                                         const RegExp & dst) {
+    auto const & f16vec = gen.xmm3;
+    auto const & f32vec = gen.ymm4;
+
+    auto & cvt = dynamic_cast<jit_convert_array &>(gen);
+
+    gen.vmovups(f32vec, gen.yword[src]);
+    cvt.get_f8_e4m3_emu()->vcvt_f32_to_f8(f16vec, f32vec);
+    gen.vmovq(gen.qword[dst], f16vec);
+}
 
 template <typename TI, typename TO>
 void jit_convert(const TI* arg, TO* out, size_t count) {

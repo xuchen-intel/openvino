@@ -203,8 +203,8 @@ void convert_vec<ov::float8_e4m3, float>(jit_generator & gen,
 
 template <>
 void convert_vec<ov::float16, ov::float8_e4m3>(jit_generator & gen,
-                                         const RegExp & src,
-                                         const RegExp & dst) {
+                                               const RegExp & src,
+                                               const RegExp & dst) {
     auto const & f8vec = gen.xmm3;
     auto const & f16vec = gen.ymm4;
 
@@ -213,6 +213,20 @@ void convert_vec<ov::float16, ov::float8_e4m3>(jit_generator & gen,
     gen.vmovups(f16vec, gen.xword[src]);
     cvt.get_f8_e4m3_emu()->vcvt_f16_to_f8(f8vec, f16vec);
     gen.vmovq(gen.qword[dst], f8vec);
+}
+
+template <>
+void convert_vec<ov::float8_e4m3, ov::float16>(jit_generator & gen,
+                                               const RegExp & src,
+                                               const RegExp & dst) {
+    auto const & f8vec = gen.xmm3;
+    auto const & f16vec = gen.ymm4;
+
+    auto & cvt = dynamic_cast<jit_convert_array &>(gen);
+
+    gen.vmovq(f8vec, gen.qword[src]);
+    cvt.get_f8_e4m3_emu()->vcvt_f8_to_f16(f16vec, f8vec);
+    gen.movdqu(gen.xword[dst], f16vec);
 }
 
 template <>
@@ -457,6 +471,7 @@ struct ConvertPrecision<std::tuple<ov::float8_e4m3, dst_t>> {
     }
 };
 template struct ConvertPrecision<std::tuple<ov::float8_e4m3, float>>;
+template struct ConvertPrecision<std::tuple<ov::float8_e4m3, ov::float16>>;
 
 template<>
 struct ConvertPrecision<std::tuple<float, ov::intel_cpu::bfloat16_t>> {
@@ -688,7 +703,7 @@ struct ConvertPrecision<std::tuple<ov::float16, ov::float16>> {
     INTEL_CPU_CVT(i32, i32), INTEL_CPU_CVT(u64, u64), INTEL_CPU_CVT(i64, i64), INTEL_CPU_CVT(f32, f32),            \
     INTEL_CPU_CVT(f16, f16), INTEL_CPU_CVT(bf16, bf16), INTEL_CPU_CVT(f64, f64), INTEL_CPU_CVT(boolean, boolean),  \
     INTEL_CPU_CVT(f32, f8e4m3), INTEL_CPU_CVT(f16, f8e4m3), INTEL_CPU_CVT(bf16, f8e4m3),                           \
-    INTEL_CPU_CVT(f8e4m3, f32)
+    INTEL_CPU_CVT(f8e4m3, f32), INTEL_CPU_CVT(f8e4m3, f16)
 
 
 #define INTEL_CPU_CVT_FROM_BIN_LIST                                          \

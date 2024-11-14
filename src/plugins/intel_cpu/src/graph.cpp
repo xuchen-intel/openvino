@@ -393,11 +393,19 @@ void Graph::Configure(bool optimize) {
 
     GraphOptimizer optimizer;
 
+#if 0
+    std::cout << "###### Graph::Configure" << std::endl;
     for (auto &node : graphNodes) {
         std::cout << "node->getName(): " << node->getName() << std::endl;
         std::cout << "node->getType(): " << NameFromType(node->getType()) << std::endl;
+        if (node->getOriginalInputPrecisions().size() > 0)
+            std::cout << "    node->getOriginalInputPrecisionAtPort(0): " << node->getOriginalInputPrecisionAtPort(0) << std::endl;
+        if (node->getOriginalOutputPrecisions().size() > 0)
+            std::cout << "    node->getOriginalOutputPrecisionAtPort(0): " << node->getOriginalOutputPrecisionAtPort(0) << std::endl;
+        std::cout << std::endl;
     }
     std::cout << std::endl;
+#endif
 
     SortTopologically();
     InitNodes();

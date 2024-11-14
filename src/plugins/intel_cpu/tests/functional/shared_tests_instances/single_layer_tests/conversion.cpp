@@ -18,8 +18,8 @@ const std::vector<ov::test::utils::ConversionTypes> conversionOpTypes = {
 const std::vector<std::vector<ov::Shape>> shapes = {{{1, 2, 3, 4}}};
 
 const std::vector<ov::element::Type> floatTypes = {
-    ov::element::f32,
-    // ov::element::f16,
+    // ov::element::f32,
+    ov::element::f16,
     // ov::element::bf16,
 };
 

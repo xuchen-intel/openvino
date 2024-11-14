@@ -546,17 +546,31 @@ void SubgraphBaseTest::validate() {
     // }
     // std::cout << std::endl;
     // f32
+    // size_t expected_size = expectedOutputs[0].get_size();
+    // auto expected_data = static_cast<float *>(expectedOutputs[0].data(ov::element::f32));
+    // for (size_t i = 0; i < expected_size; i++) {
+    //     std::cout << static_cast<float>(expected_data[i]) << " ";
+    // }
+    // std::cout << std::endl;
+
+    // size_t actual_size = actualOutputs[0].get_size();
+    // auto actual_data = static_cast<float *>(actualOutputs[0].data(ov::element::f32));
+    // for (size_t i = 0; i < actual_size; i++) {
+    //     std::cout << static_cast<float>(actual_data[i]) << " ";
+    // }
+    // std::cout << std::endl;
+    // f16
     size_t expected_size = expectedOutputs[0].get_size();
-    auto expected_data = static_cast<float *>(expectedOutputs[0].data(ov::element::f32));
+    auto expected_data = static_cast<uint16_t *>(expectedOutputs[0].data(ov::element::f16));
     for (size_t i = 0; i < expected_size; i++) {
-        std::cout << static_cast<float>(expected_data[i]) << " ";
+        std::cout << static_cast<float>(float16::from_bits(expected_data[i])) << " ";
     }
     std::cout << std::endl;
 
     size_t actual_size = actualOutputs[0].get_size();
-    auto actual_data = static_cast<float *>(actualOutputs[0].data(ov::element::f32));
+    auto actual_data = static_cast<uint16_t *>(actualOutputs[0].data(ov::element::f16));
     for (size_t i = 0; i < actual_size; i++) {
-        std::cout << static_cast<float>(actual_data[i]) << " ";
+        std::cout << static_cast<float>(float16::from_bits(actual_data[i])) << " ";
     }
     std::cout << std::endl;
 #endif

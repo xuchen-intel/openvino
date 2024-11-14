@@ -335,9 +335,15 @@ void SubgraphBaseTest::generate_inputs(const std::vector<ov::Shape>& targetInput
                         //     std::cout << static_cast<float>(input_data[i]) << " ";
                         // }
                         // f16
-                        auto input_data = static_cast<uint16_t *>(tensor.data(ov::element::f16));
+                        // auto input_data = static_cast<uint16_t *>(tensor.data(ov::element::f16));
+                        // for (size_t i = 0; i < input_size; i++) {
+                        //     std::cout << static_cast<float>(float16::from_bits(input_data[i])) << " ";
+                        // }
+                        // std::cout << std::endl;
+                        // bf16
+                        auto input_data = static_cast<uint16_t *>(tensor.data(ov::element::bf16));
                         for (size_t i = 0; i < input_size; i++) {
-                            std::cout << static_cast<float>(float16::from_bits(input_data[i])) << " ";
+                            std::cout << static_cast<float>(bfloat16::from_bits(input_data[i])) << " ";
                         }
                         std::cout << std::endl;
 #endif

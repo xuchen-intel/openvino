@@ -531,46 +531,56 @@ void SubgraphBaseTest::validate() {
     }
 
 #if 1
-    // f8e4m3
+    // === f8e4m3
     // size_t expected_size = expectedOutputs[0].get_size();
     // auto expected_data = static_cast<uint8_t *>(expectedOutputs[0].data(ov::element::f8e4m3));
     // for (size_t i = 0; i < expected_size; i++) {
     //     std::cout << static_cast<float>(float8_e4m3::from_bits(expected_data[i])) << " ";
     // }
     // std::cout << std::endl;
-
     // size_t actual_size = actualOutputs[0].get_size();
     // auto actual_data = static_cast<uint8_t *>(actualOutputs[0].data(ov::element::f8e4m3));
     // for (size_t i = 0; i < actual_size; i++) {
     //     std::cout << static_cast<float>(float8_e4m3::from_bits(actual_data[i])) << " ";
     // }
     // std::cout << std::endl;
-    // f32
+    // === f32
     // size_t expected_size = expectedOutputs[0].get_size();
     // auto expected_data = static_cast<float *>(expectedOutputs[0].data(ov::element::f32));
     // for (size_t i = 0; i < expected_size; i++) {
     //     std::cout << static_cast<float>(expected_data[i]) << " ";
     // }
     // std::cout << std::endl;
-
     // size_t actual_size = actualOutputs[0].get_size();
     // auto actual_data = static_cast<float *>(actualOutputs[0].data(ov::element::f32));
     // for (size_t i = 0; i < actual_size; i++) {
     //     std::cout << static_cast<float>(actual_data[i]) << " ";
     // }
     // std::cout << std::endl;
-    // f16
+    // === f16
+    // size_t expected_size = expectedOutputs[0].get_size();
+    // auto expected_data = static_cast<uint16_t *>(expectedOutputs[0].data(ov::element::f16));
+    // for (size_t i = 0; i < expected_size; i++) {
+    //     std::cout << static_cast<float>(float16::from_bits(expected_data[i])) << " ";
+    // }
+    // std::cout << std::endl;
+    // size_t actual_size = actualOutputs[0].get_size();
+    // auto actual_data = static_cast<uint16_t *>(actualOutputs[0].data(ov::element::f16));
+    // for (size_t i = 0; i < actual_size; i++) {
+    //     std::cout << static_cast<float>(float16::from_bits(actual_data[i])) << " ";
+    // }
+    // std::cout << std::endl;
+    // === bf16
     size_t expected_size = expectedOutputs[0].get_size();
-    auto expected_data = static_cast<uint16_t *>(expectedOutputs[0].data(ov::element::f16));
+    auto expected_data = static_cast<uint16_t *>(expectedOutputs[0].data(ov::element::bf16));
     for (size_t i = 0; i < expected_size; i++) {
-        std::cout << static_cast<float>(float16::from_bits(expected_data[i])) << " ";
+        std::cout << static_cast<float>(bfloat16::from_bits(expected_data[i])) << " ";
     }
     std::cout << std::endl;
-
     size_t actual_size = actualOutputs[0].get_size();
-    auto actual_data = static_cast<uint16_t *>(actualOutputs[0].data(ov::element::f16));
+    auto actual_data = static_cast<uint16_t *>(actualOutputs[0].data(ov::element::bf16));
     for (size_t i = 0; i < actual_size; i++) {
-        std::cout << static_cast<float>(float16::from_bits(actual_data[i])) << " ";
+        std::cout << static_cast<float>(bfloat16::from_bits(actual_data[i])) << " ";
     }
     std::cout << std::endl;
 #endif

@@ -188,6 +188,20 @@ void convert_vec<float, ov::float8_e4m3>(jit_generator & gen,
 }
 
 template <>
+void convert_vec<ov::float8_e4m3, float>(jit_generator & gen,
+                                         const RegExp & src,
+                                         const RegExp & dst) {
+    auto const & f8vec = gen.xmm3;
+    auto const & f32vec = gen.ymm4;
+
+    auto & cvt = dynamic_cast<jit_convert_array &>(gen);
+
+    gen.vmovq(f8vec, gen.qword[src]);
+    cvt.get_f8_e4m3_emu()->vcvt_f8_to_f32(f32vec, f8vec);
+    gen.vmovups(gen.yword[dst], f32vec);
+}
+
+template <>
 void convert_vec<ov::float16, ov::float8_e4m3>(jit_generator & gen,
                                          const RegExp & src,
                                          const RegExp & dst) {
@@ -414,7 +428,7 @@ struct ConvertPrecision<std::tuple<src_t, ov::float8_e4m3>> {
         parallel_for(iterations, [&](size_t i) {
             const size_t offset = i * batch;
             const size_t current_batch_size = std::min(ctx.size - offset, batch);
-            jit_convert(src + offset, dst + offset, current_batch_size);  // f32 -> f8e4m3
+            jit_convert(src + offset, dst + offset, current_batch_size);  // src_t -> f8e4m3
         });
 
         ctx.converted = true;
@@ -423,6 +437,26 @@ struct ConvertPrecision<std::tuple<src_t, ov::float8_e4m3>> {
 template struct ConvertPrecision<std::tuple<float, ov::float8_e4m3>>;
 template struct ConvertPrecision<std::tuple<ov::float16, ov::float8_e4m3>>;
 template struct ConvertPrecision<std::tuple<ov::intel_cpu::bfloat16_t, ov::float8_e4m3>>;
+
+template<typename dst_t>
+struct ConvertPrecision<std::tuple<ov::float8_e4m3, dst_t>> {
+    void operator()(ConvertContext & ctx) {
+        std::cout << "###### ConvertPrecision<std::tuple<ov::float8_e4m3, dst_t>>" << std::endl;
+        auto src = static_cast<const ov::float8_e4m3 *>(ctx.srcPtr);
+        auto dst = static_cast<dst_t *>(ctx.dstPtr);
+
+        constexpr size_t batch = 64;
+        const size_t iterations = ov::intel_cpu::div_up(ctx.size, batch);
+        parallel_for(iterations, [&](size_t i) {
+            const size_t offset = i * batch;
+            const size_t current_batch_size = std::min(ctx.size - offset, batch);
+            jit_convert(src + offset, dst + offset, current_batch_size);  // f8e4m3 -> dst_t
+        });
+
+        ctx.converted = true;
+    }
+};
+template struct ConvertPrecision<std::tuple<ov::float8_e4m3, float>>;
 
 template<>
 struct ConvertPrecision<std::tuple<float, ov::intel_cpu::bfloat16_t>> {
@@ -653,7 +687,8 @@ struct ConvertPrecision<std::tuple<ov::float16, ov::float16>> {
     INTEL_CPU_CVT(i8, i8), INTEL_CPU_CVT(u16, u16), INTEL_CPU_CVT(i16, i16), INTEL_CPU_CVT(u32, u32),              \
     INTEL_CPU_CVT(i32, i32), INTEL_CPU_CVT(u64, u64), INTEL_CPU_CVT(i64, i64), INTEL_CPU_CVT(f32, f32),            \
     INTEL_CPU_CVT(f16, f16), INTEL_CPU_CVT(bf16, bf16), INTEL_CPU_CVT(f64, f64), INTEL_CPU_CVT(boolean, boolean),  \
-    INTEL_CPU_CVT(f32, f8e4m3), INTEL_CPU_CVT(f16, f8e4m3), INTEL_CPU_CVT(bf16, f8e4m3)
+    INTEL_CPU_CVT(f32, f8e4m3), INTEL_CPU_CVT(f16, f8e4m3), INTEL_CPU_CVT(bf16, f8e4m3),                           \
+    INTEL_CPU_CVT(f8e4m3, f32)
 
 
 #define INTEL_CPU_CVT_FROM_BIN_LIST                                          \
@@ -847,7 +882,7 @@ void cpu_convert(const void *srcPtr,
         OV_SWITCH(intel_cpu, ConvertFrom4BitPrecision, ctx, std::tie(srcPrc, dstPrc), INTEL_CPU_CVT_FROM_4BIT_LIST);
         if (!ctx.converted)
             OPENVINO_THROW("cpu_convert can't convert from: ", srcPrc, " precision to: ", dstPrc);
-    } else if (srcPrc.bitwidth() == 8u && srcPrc.is_real()) {
+    } else if (srcPrc == ov::element::f8e8m0) {
         ConvertFromByteFPContext ctx{srcPrc, srcPtr, dstPtr, size, false};
         OV_SWITCH(intel_cpu, ConvertFromByteFPPrecision, ctx, std::tie(srcPrc, dstPrc), INTEL_CPU_CVT_FROM_BYTE_FP_LIST);
         if (!ctx.converted)

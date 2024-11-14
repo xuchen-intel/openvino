@@ -327,7 +327,7 @@ void SubgraphBaseTest::generate_inputs(const std::vector<ov::Shape>& targetInput
                     if (nodePtr->get_input_node_ptr(port)->shared_from_this() == inputNode->shared_from_this()) {
                         auto tensor = modelRange.generate_input(nodePtr, port, *itTargetShape);
                         inputs.insert({param, tensor});
-#if 1
+#if 0
                         size_t input_size = tensor.get_size();
                         // f32
                         // auto input_data = static_cast<float *>(tensor.data(ov::element::f32));
@@ -530,7 +530,7 @@ void SubgraphBaseTest::validate() {
         return;
     }
 
-#if 1
+#if 0
     // === f8e4m3
     // size_t expected_size = expectedOutputs[0].get_size();
     // auto expected_data = static_cast<uint8_t *>(expectedOutputs[0].data(ov::element::f8e4m3));

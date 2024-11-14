@@ -18,8 +18,8 @@ const std::vector<ov::test::utils::ConversionTypes> conversionOpTypes = {
 const std::vector<std::vector<ov::Shape>> shapes = {{{1, 2, 3, 4}}};
 
 const std::vector<ov::element::Type> floatTypes = {
-    // ov::element::f32,
-    // ov::element::f16,
+    ov::element::f32,
+    ov::element::f16,
     ov::element::bf16,
 };
 
@@ -27,7 +27,16 @@ const std::vector<ov::element::Type> f8Types = {
     ov::element::f8e4m3,
 };
 
-INSTANTIATE_TEST_SUITE_P(smoke_ConversionLayerTest,
+INSTANTIATE_TEST_SUITE_P(smoke_ConversionToF8LayerTest,
+                         ConversionLayerTest,
+                         ::testing::Combine(::testing::ValuesIn(conversionOpTypes),
+                                            ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(shapes)),
+                                            ::testing::ValuesIn(floatTypes),
+                                            ::testing::ValuesIn(f8Types),
+                                            ::testing::Values(ov::test::utils::DEVICE_CPU)),
+                         ConversionLayerTest::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(smoke_ConversionFromF8LayerTest,
                          ConversionLayerTest,
                          ::testing::Combine(::testing::ValuesIn(conversionOpTypes),
                                             ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(shapes)),

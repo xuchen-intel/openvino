@@ -244,7 +244,6 @@ void convert_vec<ov::intel_cpu::bfloat16_t, ov::float8_e4m3>(jit_generator & gen
     gen.vmovq(gen.qword[dst], f8vec);
 }
 
-
 template <>
 void convert_vec<ov::float8_e4m3, ov::intel_cpu::bfloat16_t>(jit_generator & gen,
                                                              const RegExp & src,

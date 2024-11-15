@@ -25,6 +25,7 @@ const std::vector<ov::element::Type> floatTypes = {
 
 const std::vector<ov::element::Type> f8Types = {
     ov::element::f8e4m3,
+    ov::element::f8e5m2,
 };
 
 INSTANTIATE_TEST_SUITE_P(smoke_ConversionToF8LayerTest,

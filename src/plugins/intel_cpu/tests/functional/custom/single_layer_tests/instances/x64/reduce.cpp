@@ -105,6 +105,17 @@ const std::vector<std::vector<int>> axesGather = {
         {3}
 };
 
+const std::vector<std::vector<int>> axesZeroDim {
+        {1, 3},
+        {0, 1, 3},
+        {1, 2, 3},
+        {0, 1, 2, 3}
+};
+
+const std::vector<std::vector<int>> axesZeroDimFusing = {
+        {1, 3},
+};
+
 std::vector<CPUSpecificParams> cpuParams_5D = {
         CPUSpecificParams({nCdhw16c}, {nCdhw16c}, {}, {}),
         CPUSpecificParams({ndhwc}, {ndhwc}, {}, {}),
@@ -331,6 +342,20 @@ const auto params_SingleBatch = testing::Combine(
         testing::Values(emptyFusingSpec),
         testing::ValuesIn(additionalConfig()));
 
+const auto params_MultiAxis_4D_dynamic_with_zero = testing::Combine(
+        testing::Combine(
+                testing::ValuesIn(axesZeroDim),
+                testing::Values(ov::test::utils::OpType::VECTOR),
+                testing::ValuesIn(keepDims()),
+                testing::ValuesIn(reductionTypes()),
+                testing::ValuesIn(inpOutPrc()),
+                testing::Values(ElementType::undefined),
+                testing::Values(ElementType::undefined),
+                testing::ValuesIn(inputShapes_Dynmic_ZeroDim)),
+        testing::Values(emptyCPUSpec),
+        testing::Values(emptyFusingSpec),
+        testing::ValuesIn(additionalConfig()));
+
 INSTANTIATE_TEST_SUITE_P(
         smoke_Reduce_OneAxis_CPU,
         ReduceCPULayerTest,
@@ -405,6 +430,13 @@ INSTANTIATE_TEST_SUITE_P(
         smoke_Reduce_SingleBatch_CPU,
         ReduceCPULayerTest,
         params_SingleBatch,
+        ReduceCPULayerTest::getTestCaseName
+);
+
+INSTANTIATE_TEST_SUITE_P(
+        smoke_Reduce_MultiAxis_4D_dynamic_with_zero_CPU,
+        ReduceCPULayerTest,
+        params_MultiAxis_4D_dynamic_with_zero,
         ReduceCPULayerTest::getTestCaseName
 );
 
@@ -606,6 +638,20 @@ const auto params_LowPrecision_fusing = testing::Combine(
         testing::ValuesIn(fusingParamsSet_LowPrecision),
         testing::ValuesIn(additionalConfig()));
 
+const auto params_MultiAxis_4D_dynamic_with_zero_fusing = testing::Combine(
+        testing::Combine(
+                testing::ValuesIn(axesZeroDimFusing),
+                testing::Values(ov::test::utils::OpType::VECTOR),
+                testing::Values(true),
+                testing::ValuesIn(reductionTypes()),
+                testing::ValuesIn(inpOutPrc()),
+                testing::Values(ElementType::undefined),
+                testing::Values(ElementType::undefined),
+                testing::ValuesIn(inputShapes_Dynmic_ZeroDim)),
+        testing::Values(emptyCPUSpec),
+        testing::ValuesIn(fusingParamsSet),
+        testing::ValuesIn(additionalConfig()));
+
 INSTANTIATE_TEST_SUITE_P(
         smoke_Reduce_OneAxis_fusing_CPU,
         ReduceCPULayerTest,
@@ -638,6 +684,13 @@ INSTANTIATE_TEST_SUITE_P(
         smoke_Reduce_LowPrecision_fusing_CPU,
         ReduceCPULayerTest,
         params_LowPrecision_fusing,
+        ReduceCPULayerTest::getTestCaseName
+);
+
+INSTANTIATE_TEST_SUITE_P(
+        smoke_Reduce_MultiAxis_4D_dynamic_with_zero_fusing_CPU,
+        ReduceCPULayerTest,
+        params_MultiAxis_4D_dynamic_with_zero_fusing,
         ReduceCPULayerTest::getTestCaseName
 );
 
@@ -684,6 +737,20 @@ const auto params_MultiAxis_5D_Hybrid_fusing_KeepNoDims = testing::Combine(
         testing::ValuesIn(fusingParamsSet_KeepNoDims),
         testing::ValuesIn(additionalConfigFP32()));
 
+const auto params_MultiAxis_4D_dynamic_with_zero_fusing_KeepNoDims = testing::Combine(
+        testing::Combine(
+                testing::ValuesIn(axesZeroDimFusing),
+                testing::Values(ov::test::utils::OpType::VECTOR),
+                testing::Values(false),
+                testing::ValuesIn(reductionTypes()),
+                testing::ValuesIn(inpOutPrc()),
+                testing::Values(ElementType::undefined),
+                testing::Values(ElementType::undefined),
+                testing::ValuesIn(inputShapes_Dynmic_ZeroDim)),
+        testing::Values(emptyCPUSpec),
+        testing::ValuesIn(fusingParamsSet_KeepNoDims),
+        testing::ValuesIn(additionalConfig()));
+
 INSTANTIATE_TEST_SUITE_P(
         smoke_Reduce_OneAxis_fusing_KeepNoDims_CPU,
         ReduceCPULayerTest,
@@ -705,47 +772,10 @@ INSTANTIATE_TEST_SUITE_P(
         ReduceCPULayerTest::getTestCaseName
 );
 
-
-/* ================================ 2.3 Empty dims ================================ */
-const auto params_MultiAxis_4D_dynamic_with_zero = testing::Combine(
-        testing::Combine(
-                testing::ValuesIn(axesND()),
-                testing::Values(ov::test::utils::OpType::VECTOR),
-                testing::ValuesIn(keepDims()),
-                testing::ValuesIn(reductionTypes()),
-                testing::ValuesIn(inpOutPrc()),
-                testing::Values(ElementType::undefined),
-                testing::Values(ElementType::undefined),
-                testing::ValuesIn(inputShapes_Dynmic_ZeroDim)),
-        testing::Values(emptyCPUSpec),
-        testing::Values(emptyFusingSpec),
-        testing::ValuesIn(additionalConfig()));
-
-const auto params_MultiAxis_4D_dynamic_with_zero_fusing = testing::Combine(
-        testing::Combine(
-                testing::ValuesIn(axesNDFusing),
-                testing::Values(ov::test::utils::OpType::VECTOR),
-                testing::ValuesIn(keepDims()),
-                testing::ValuesIn(reductionTypes()),
-                testing::ValuesIn(inpOutPrc()),
-                testing::Values(ElementType::undefined),
-                testing::Values(ElementType::undefined),
-                testing::ValuesIn(inputShapes_Dynmic_ZeroDim)),
-        testing::Values(emptyCPUSpec),
-        testing::Values(fusingSwish),
-        testing::ValuesIn(additionalConfig()));
-
 INSTANTIATE_TEST_SUITE_P(
-        smoke_Reduce_MultiAxis_4D_dynamic_with_zero_CPU,
+        smoke_Reduce_MultiAxis_4D_dynamic_with_zero_fusing_KeepNoDims_CPU,
         ReduceCPULayerTest,
-        params_MultiAxis_4D_dynamic_with_zero,
-        ReduceCPULayerTest::getTestCaseName
-);
-
-INSTANTIATE_TEST_SUITE_P(
-        smoke_Reduce_MultiAxis_4D_dynamic_with_zero_fusing_CPU,
-        ReduceCPULayerTest,
-        params_MultiAxis_4D_dynamic_with_zero_fusing,
+        params_MultiAxis_4D_dynamic_with_zero_fusing_KeepNoDims,
         ReduceCPULayerTest::getTestCaseName
 );
 

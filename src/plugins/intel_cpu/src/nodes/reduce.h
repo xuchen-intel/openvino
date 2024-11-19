@@ -152,6 +152,7 @@ private:
     bool ReduceCDW_opt = false;
     bool use_aux_kernel = false;
     bool set_use_aux_kernel = false;
+    bool empty_input = false;
     bool ReduceN, ReduceC, ReduceD, ReduceH, ReduceW;
     size_t IB, IC, ID, IH, IW;
     size_t OB, OC, OD, OH, OW;

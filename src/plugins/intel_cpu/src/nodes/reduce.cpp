@@ -2275,13 +2275,11 @@ void Reduce::execute(dnnl::stream strm) {
     uint8_t *dst_data = dstMemPtr->getDataAs<uint8_t>();
 
     const auto& src_shape = srcMemPtr->getStaticDims();
-    if ((shape_size(src_shape) == 0 || srcMemPtr->getSize() == 0)) {
+    empty_input = shape_size(src_shape) == 0 || srcMemPtr->getSize() == 0;
+    if (empty_input) {
         if (dstMemPtr->getSize() > 0) {
             init_dst_data(dst_data, dstMemPtr->getSize());
-            const bool skip_post_process = getAlgorithm() == Algorithm::ReduceMean || attr.get()->post_ops_.len() == 0;
-            if (!skip_post_process) {
-                reduce_kernel_post_process(dst_data);
-            }
+            reduce_kernel_post_process(dst_data);
         }
         return;
     }
@@ -2737,7 +2735,7 @@ inline void Reduce::reduce_kernel_process(const uint8_t *in_p, uint8_t *out_p, s
 
 inline void Reduce::reduce_kernel_post_process(uint8_t *out_ptr) {
     const uint8_t *in_ptr = fuse_low_precision ? static_cast<uint8_t *>(&intermediate_buf[0]) : nullptr;
-    const size_t integerDivisor = IB * IC * ID * IH * IW / (OB * OC * OD * OH * OW);
+    const size_t integerDivisor = empty_input ? 1 : IB * IC * ID * IH * IW / (OB * OC * OD * OH * OW);
     const float divisor = static_cast<float>(integerDivisor);
     if (layout == ReduceLayoutType::reduce_ncsp) {
         parallel_for2d(OB, OC, [&](size_t ob, size_t oc) {

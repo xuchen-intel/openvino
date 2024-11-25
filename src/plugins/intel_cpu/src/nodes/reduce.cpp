@@ -2033,6 +2033,14 @@ void Reduce::initSupportedPrimitiveDescriptors() {
                                                                    std::make_shared<ExecutorContext>(context, getImplPriority()));
             if (!factory->isEmpty()) {
                 supportedPrimitiveDescriptors.push_back({config, impl_type, factory});
+            } else {
+                bool apply_ref = customImplPriorities.size() > 0 && customImplPriorities[0] == ref;
+                // For the case of empty input, transformations ConvertReduceProd(Min, Max, Sum) are disabled to avoid empty output.
+                // So these 4 reduce modes are not supported for such case, then factory->isEmpty() returns true. Though we don't
+                // actually need these acl kernels in execution, supportedPrimitiveDescriptors mustn't be empty otherwise we get error.
+                if (!apply_ref) {
+                    supportedPrimitiveDescriptors.push_back({config, impl_type});
+                }
             }
         } else {
             supportedPrimitiveDescriptors.push_back({config, impl_type});
@@ -2093,6 +2101,10 @@ bool Reduce::isExecutable() const {
 }
 
 void Reduce::prepareParams() {
+    auto srcMemPtr = getSrcMemoryAtPort(REDUCE_DATA);
+    const auto& src_shape = srcMemPtr->getStaticDims();
+    empty_input = shape_size(src_shape) == 0 || srcMemPtr->getSize() == 0;
+#if defined (OV_CPU_WITH_ACL)
     if (canUseAclExecutor) {
         std::vector<MemoryDescPtr> srcMemoryDescs;
         for (size_t i = 0; i < getParentEdges().size(); i++) {
@@ -2102,11 +2114,25 @@ void Reduce::prepareParams() {
         dstMemoryDescs.push_back(getDstMemoryAtPort(0)->getDescPtr());
 
         auto selectedPD = getSelectedPrimitiveDescriptor();
-        aclExecPtr = selectedPD->getExecutorFactoryAs<ReduceExecutorFactory>()->makeExecutor(reduceAttrs, srcMemoryDescs, dstMemoryDescs, {});
-        selectedPD->setImplementationType(aclExecPtr->getImplType());
-
+        if (!empty_input) {
+            aclExecPtr = selectedPD->getExecutorFactoryAs<ReduceExecutorFactory>()->makeExecutor(reduceAttrs, srcMemoryDescs, dstMemoryDescs, {});
+            selectedPD->setImplementationType(aclExecPtr->getImplType());
+        } else {
+            selectedPD->setImplementationType(acl);
+        }
         return;
+    } else {
+        auto selectedPD = getSelectedPrimitiveDescriptor();
+        if (!empty_input) {
+            // ref
+            selectedPD->setImplementationType(ref);
+        } else {
+            // unsupported reduce mode (prod, min, max, sum) for empty input
+            selectedPD->setImplementationType(acl);
+            return;
+        }
     }
+#endif
 
     src_dims = getParentEdgeAt(REDUCE_DATA)->getMemory().getDesc().getShape().getDims();
     std::vector<int> reduce_axes;
@@ -2274,12 +2300,14 @@ void Reduce::execute(dnnl::stream strm) {
     const uint8_t *src_data = srcMemPtr->getDataAs<const uint8_t>();
     uint8_t *dst_data = dstMemPtr->getDataAs<uint8_t>();
 
-    const auto& src_shape = srcMemPtr->getStaticDims();
-    empty_input = shape_size(src_shape) == 0 || srcMemPtr->getSize() == 0;
     if (empty_input) {
         if (dstMemPtr->getSize() > 0) {
             init_dst_data(dst_data, dstMemPtr->getSize());
-            reduce_kernel_post_process(dst_data);
+#if defined(OPENVINO_ARCH_X86_64)
+            if (attr.get()->post_ops_.len() != 0) {
+                reduce_kernel_post_process(dst_data);
+            }
+#endif
         }
         return;
     }

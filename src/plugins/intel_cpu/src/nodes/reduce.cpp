@@ -2301,8 +2301,10 @@ void Reduce::execute(dnnl::stream strm) {
     uint8_t *dst_data = dstMemPtr->getDataAs<uint8_t>();
 
     if (empty_input) {
-        if (dstMemPtr->getSize() > 0) {
-            init_dst_data(dst_data, dstMemPtr->getSize());
+        if (dst_size > 0) {
+            output_info_reassign(&dst_data);
+            init_dst_data(dst_data, dst_size);
+            output_info_restore(&dst_data);
 #if defined(OPENVINO_ARCH_X86_64)
             if (attr.get()->post_ops_.len() != 0) {
                 reduce_kernel_post_process(dst_data);

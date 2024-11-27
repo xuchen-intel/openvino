@@ -2030,18 +2030,25 @@ void Reduce::initSupportedPrimitiveDescriptors() {
                 dstMemoryDescs.push_back(config.outConfs[i].getMemDesc());
             }
 
-            auto factory = std::make_shared<ReduceExecutorFactory>(reduceAttrs, srcMemoryDescs, dstMemoryDescs,
+            auto attrs = reduceAttrs;
+            bool apply_ref = customImplPriorities.size() > 0 && customImplPriorities[0] == ref;
+            bool single_axis_only = one_of(algorithm, Algorithm::ReduceSum, Algorithm::ReduceMax,
+                                                      Algorithm::ReduceMin, Algorithm::ReduceProd);
+            // For the case of empty input, transformations ConvertReduceProd(Min, Max, Sum) are disabled to avoid empty output.
+            // So these 4 reduce modes with empty input reducing more than one axis are not supported by acl executor. Then
+            // factory->isEmpty() returns true, supportedPrimitiveDescriptors is emtpy. Though we don't actually need these acl
+            // kernels in execution, here we pass a fake axis {1} to pass assertion of "!supportedPrimitiveDescriptors.empty()"
+            // in Node::filterSupportedPrimitiveDescriptors().
+            if (!apply_ref && !isDynamicNode() && single_axis_only) {
+                const auto& src_shape = getInputShapeAtPort(REDUCE_DATA).getStaticDims();
+                if (shape_size(src_shape) == 0) {
+                    attrs.axes = {1};
+                }
+            }
+            auto factory = std::make_shared<ReduceExecutorFactory>(attrs, srcMemoryDescs, dstMemoryDescs,
                                                                    std::make_shared<ExecutorContext>(context, getImplPriority()));
             if (!factory->isEmpty()) {
                 supportedPrimitiveDescriptors.push_back({config, impl_type, factory});
-            } else {
-                bool apply_ref = customImplPriorities.size() > 0 && customImplPriorities[0] == ref;
-                // For the case of empty input, transformations ConvertReduceProd(Min, Max, Sum) are disabled to avoid empty output.
-                // So these 4 reduce modes are not supported for such case, then factory->isEmpty() returns true. Though we don't
-                // actually need these acl kernels in execution, supportedPrimitiveDescriptors mustn't be empty otherwise we get error.
-                if (!apply_ref) {
-                    supportedPrimitiveDescriptors.push_back({config, impl_type});
-                }
             }
 #endif
         } else {
@@ -2125,16 +2132,6 @@ void Reduce::prepareParams() {
             selectedPD->setImplementationType(acl);
         }
         return;
-    } else {
-        auto selectedPD = getSelectedPrimitiveDescriptor();
-        if (!empty_input) {
-            // ref
-            selectedPD->setImplementationType(ref);
-        } else {
-            // unsupported reduce mode (prod, min, max, sum) for empty input
-            selectedPD->setImplementationType(acl);
-            return;
-        }
     }
 #endif
 

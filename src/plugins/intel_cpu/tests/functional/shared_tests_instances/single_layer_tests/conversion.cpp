@@ -8,45 +8,6 @@
 #include "single_op_tests/conversion.hpp"
 
 namespace {
-#if 1
-using ov::test::ConversionLayerTest;
-
-const std::vector<ov::test::utils::ConversionTypes> conversionOpTypes = {
-    ov::test::utils::ConversionTypes::CONVERT
-};
-
-const std::vector<std::vector<ov::Shape>> shapes = {{{1, 2, 3, 4}}};
-
-const std::vector<ov::element::Type> floatTypes = {
-    ov::element::f32,
-    ov::element::f16,
-    ov::element::bf16,
-};
-
-const std::vector<ov::element::Type> f8Types = {
-    ov::element::f8e4m3,
-    ov::element::f8e5m2,
-};
-
-INSTANTIATE_TEST_SUITE_P(smoke_ConversionToF8LayerTest,
-                         ConversionLayerTest,
-                         ::testing::Combine(::testing::ValuesIn(conversionOpTypes),
-                                            ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(shapes)),
-                                            ::testing::ValuesIn(floatTypes),
-                                            ::testing::ValuesIn(f8Types),
-                                            ::testing::Values(ov::test::utils::DEVICE_CPU)),
-                         ConversionLayerTest::getTestCaseName);
-
-INSTANTIATE_TEST_SUITE_P(smoke_ConversionFromF8LayerTest,
-                         ConversionLayerTest,
-                         ::testing::Combine(::testing::ValuesIn(conversionOpTypes),
-                                            ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(shapes)),
-                                            ::testing::ValuesIn(f8Types),
-                                            ::testing::ValuesIn(floatTypes),
-                                            ::testing::Values(ov::test::utils::DEVICE_CPU)),
-                         ConversionLayerTest::getTestCaseName);
-
-#else
 using ov::test::ConversionLayerTest;
 
 const std::vector<ov::test::utils::ConversionTypes> conversionOpTypes = {
@@ -71,6 +32,17 @@ const std::vector<ov::element::Type> types = {
     ov::element::f64,
 };
 
+const std::vector<ov::element::Type> floatTypes = {
+    ov::element::f32,
+    ov::element::f16,
+    ov::element::bf16,
+};
+
+const std::vector<ov::element::Type> f8Types = {
+    ov::element::f8e4m3,
+    ov::element::f8e5m2,
+};
+
 INSTANTIATE_TEST_SUITE_P(smoke_ConversionLayerTest,
                          ConversionLayerTest,
                          ::testing::Combine(::testing::ValuesIn(conversionOpTypes),
@@ -88,5 +60,23 @@ INSTANTIATE_TEST_SUITE_P(smoke_ConversionToBooleanLayerTest,
                                             ::testing::Values(ov::element::boolean),
                                             ::testing::Values(ov::test::utils::DEVICE_CPU)),
                          ConversionLayerTest::getTestCaseName);
-#endif
+
+INSTANTIATE_TEST_SUITE_P(smoke_ConversionToF8LayerTest,
+                         ConversionLayerTest,
+                         ::testing::Combine(::testing::ValuesIn(conversionOpTypes),
+                                            ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(shapes)),
+                                            ::testing::ValuesIn(floatTypes),
+                                            ::testing::ValuesIn(f8Types),
+                                            ::testing::Values(ov::test::utils::DEVICE_CPU)),
+                         ConversionLayerTest::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(smoke_ConversionFromF8LayerTest,
+                         ConversionLayerTest,
+                         ::testing::Combine(::testing::ValuesIn(conversionOpTypes),
+                                            ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(shapes)),
+                                            ::testing::ValuesIn(f8Types),
+                                            ::testing::ValuesIn(floatTypes),
+                                            ::testing::Values(ov::test::utils::DEVICE_CPU)),
+                         ConversionLayerTest::getTestCaseName);
+
 }  // namespace

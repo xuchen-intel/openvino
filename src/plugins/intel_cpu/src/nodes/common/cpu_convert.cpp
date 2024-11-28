@@ -535,6 +535,7 @@ struct ConvertPrecision<std::tuple<src_t, dst_t>> {
         auto src = static_cast<const src_t *>(ctx.srcPtr);
         auto dst = static_cast<dst_t *>(ctx.dstPtr);
 
+#if defined(OPENVINO_ARCH_X86_64)
         // f32<=>f8, f16<=>f8, bf16<=>f8
         if (std::is_same<src_t, ov::float8_e4m3>::value || std::is_same<dst_t, ov::float8_e4m3>::value ||
             std::is_same<src_t, ov::float8_e5m2>::value || std::is_same<dst_t, ov::float8_e5m2>::value) {
@@ -549,6 +550,7 @@ struct ConvertPrecision<std::tuple<src_t, dst_t>> {
             ctx.converted = true;
             return;
         }
+#endif
 
         src_t lbound, ubound;
         std::tie(lbound, ubound) = ctx.range<src_t>();
@@ -568,6 +570,7 @@ struct ConvertPrecision<std::tuple<src_t, dst_t>> {
         ctx.converted = true;
     }
 };
+#if defined(OPENVINO_ARCH_X86_64)
 template struct ConvertPrecision<std::tuple<float, ov::float8_e4m3>>;
 template struct ConvertPrecision<std::tuple<ov::float8_e4m3, float>>;
 template struct ConvertPrecision<std::tuple<ov::float16, ov::float8_e4m3>>;
@@ -580,6 +583,7 @@ template struct ConvertPrecision<std::tuple<ov::float16, ov::float8_e5m2>>;
 template struct ConvertPrecision<std::tuple<ov::float8_e5m2, ov::float16>>;
 template struct ConvertPrecision<std::tuple<ov::intel_cpu::bfloat16_t, ov::float8_e5m2>>;
 template struct ConvertPrecision<std::tuple<ov::float8_e5m2, ov::intel_cpu::bfloat16_t>>;
+#endif
 
 template<>
 struct ConvertPrecision<std::tuple<float, ov::intel_cpu::bfloat16_t>> {

@@ -427,9 +427,6 @@ const std::tuple<U, U> & Range<T, U>::fit(const ov::element::Type & prec) {
     if (prec.is_real()) {
         double lbound, ubound;
         switch (prec) {
-            case ov::element::f8e4m3:
-                lbound = static_cast<double>(std::numeric_limits<ov::float8_e4m3>::lowest());
-                ubound = static_cast<double>(std::numeric_limits<ov::float8_e4m3>::max());
             case ov::element::bf16:
                 lbound = static_cast<double>(std::numeric_limits<ov::intel_cpu::bfloat16_t>::lowest());
                 ubound = static_cast<double>(std::numeric_limits<ov::intel_cpu::bfloat16_t>::max());
@@ -537,21 +534,26 @@ struct ConvertPrecision<std::tuple<src_t, dst_t>> {
     void operator()(ConvertContext & ctx) {
         auto src = static_cast<const src_t *>(ctx.srcPtr);
         auto dst = static_cast<dst_t *>(ctx.dstPtr);
+
+        // f32<=>f8, f16<=>f8, bf16<=>f8
+        if (std::is_same<src_t, ov::float8_e4m3>::value || std::is_same<dst_t, ov::float8_e4m3>::value ||
+            std::is_same<src_t, ov::float8_e5m2>::value || std::is_same<dst_t, ov::float8_e5m2>::value) {
+            std::cout << "###### ov::float8 ConvertPrecision" << std::endl;
+            constexpr size_t batch = 64;
+            const size_t iterations = ov::intel_cpu::div_up(ctx.size, batch);
+            parallel_for(iterations, [&](size_t i) {
+                const size_t offset = i * batch;
+                const size_t current_batch_size = std::min(ctx.size - offset, batch);
+                jit_convert(src + offset, dst + offset, current_batch_size);
+            });
+
+            ctx.converted = true;
+            return;
+        }
+
         src_t lbound, ubound;
         std::tie(lbound, ubound) = ctx.range<src_t>();
 
-        // // f32<=>f8, f16<=>f8, bf16<=>f8
-        // if (std::is_same<src_t, ov::float8_e4m3>::value || std::is_same<dst_t, ov::float8_e4m3>::value ||
-        //     std::is_same<src_t, ov::float8_e5m2>::value || std::is_same<dst_t, ov::float8_e5m2>::value) {
-        //     std::cout << "###### ConvertPrecision<std::tuple<src_t, ov::float8>>" << std::endl;
-        //     constexpr size_t batch = 64;
-        //     const size_t iterations = ov::intel_cpu::div_up(ctx.size, batch);
-        //     parallel_for(iterations, [&](size_t i) {
-        //         const size_t offset = i * batch;
-        //         const size_t current_batch_size = std::min(ctx.size - offset, batch);
-        //         jit_convert(src + offset, dst + offset, current_batch_size);
-        //     });
-        // } else if (std::is_integral<src_t>::value
         if (std::is_integral<src_t>::value
             || ctx.interimPrc.is_real()
             || std::is_integral<dst_t>::value) {
@@ -567,93 +569,17 @@ struct ConvertPrecision<std::tuple<src_t, dst_t>> {
         ctx.converted = true;
     }
 };
-
-template<typename src_t>
-struct ConvertPrecision<std::tuple<src_t, ov::float8_e4m3>> {
-    void operator()(ConvertContext & ctx) {
-        std::cout << "###### ConvertPrecision<std::tuple<src_t, ov::float8_e4m3>>" << std::endl;
-        auto src = static_cast<const src_t *>(ctx.srcPtr);
-        auto dst = static_cast<ov::float8_e4m3 *>(ctx.dstPtr);
-
-        constexpr size_t batch = 64;
-        const size_t iterations = ov::intel_cpu::div_up(ctx.size, batch);
-        parallel_for(iterations, [&](size_t i) {
-            const size_t offset = i * batch;
-            const size_t current_batch_size = std::min(ctx.size - offset, batch);
-            jit_convert(src + offset, dst + offset, current_batch_size);  // src_t -> f8e4m3
-        });
-
-        ctx.converted = true;
-    }
-};
 template struct ConvertPrecision<std::tuple<float, ov::float8_e4m3>>;
-template struct ConvertPrecision<std::tuple<ov::float16, ov::float8_e4m3>>;
-template struct ConvertPrecision<std::tuple<ov::intel_cpu::bfloat16_t, ov::float8_e4m3>>;
-
-template<typename dst_t>
-struct ConvertPrecision<std::tuple<ov::float8_e4m3, dst_t>> {
-    void operator()(ConvertContext & ctx) {
-        std::cout << "###### ConvertPrecision<std::tuple<ov::float8_e4m3, dst_t>>" << std::endl;
-        auto src = static_cast<const ov::float8_e4m3 *>(ctx.srcPtr);
-        auto dst = static_cast<dst_t *>(ctx.dstPtr);
-
-        constexpr size_t batch = 64;
-        const size_t iterations = ov::intel_cpu::div_up(ctx.size, batch);
-        parallel_for(iterations, [&](size_t i) {
-            const size_t offset = i * batch;
-            const size_t current_batch_size = std::min(ctx.size - offset, batch);
-            jit_convert(src + offset, dst + offset, current_batch_size);  // f8e4m3 -> dst_t
-        });
-
-        ctx.converted = true;
-    }
-};
 template struct ConvertPrecision<std::tuple<ov::float8_e4m3, float>>;
+template struct ConvertPrecision<std::tuple<ov::float16, ov::float8_e4m3>>;
 template struct ConvertPrecision<std::tuple<ov::float8_e4m3, ov::float16>>;
+template struct ConvertPrecision<std::tuple<ov::intel_cpu::bfloat16_t, ov::float8_e4m3>>;
 template struct ConvertPrecision<std::tuple<ov::float8_e4m3, ov::intel_cpu::bfloat16_t>>;
-
-template<typename src_t>
-struct ConvertPrecision<std::tuple<src_t, ov::float8_e5m2>> {
-    void operator()(ConvertContext & ctx) {
-        std::cout << "###### ConvertPrecision<std::tuple<src_t, ov::float8_e5m2>>" << std::endl;
-        auto src = static_cast<const src_t *>(ctx.srcPtr);
-        auto dst = static_cast<ov::float8_e5m2 *>(ctx.dstPtr);
-
-        constexpr size_t batch = 64;
-        const size_t iterations = ov::intel_cpu::div_up(ctx.size, batch);
-        parallel_for(iterations, [&](size_t i) {
-            const size_t offset = i * batch;
-            const size_t current_batch_size = std::min(ctx.size - offset, batch);
-            jit_convert(src + offset, dst + offset, current_batch_size);  // src_t -> f8e4m3
-        });
-
-        ctx.converted = true;
-    }
-};
 template struct ConvertPrecision<std::tuple<float, ov::float8_e5m2>>;
-template struct ConvertPrecision<std::tuple<ov::float16, ov::float8_e5m2>>;
-template struct ConvertPrecision<std::tuple<ov::intel_cpu::bfloat16_t, ov::float8_e5m2>>;
-
-template<typename dst_t>
-struct ConvertPrecision<std::tuple<ov::float8_e5m2, dst_t>> {
-    void operator()(ConvertContext & ctx) {
-        std::cout << "###### ConvertPrecision<std::tuple<ov::float8_e5m2, dst_t>>" << std::endl;
-        auto src = static_cast<const ov::float8_e5m2 *>(ctx.srcPtr);
-        auto dst = static_cast<dst_t *>(ctx.dstPtr);
-
-        constexpr size_t batch = 64;
-        const size_t iterations = ov::intel_cpu::div_up(ctx.size, batch);
-        parallel_for(iterations, [&](size_t i) {
-            const size_t offset = i * batch;
-            const size_t current_batch_size = std::min(ctx.size - offset, batch);
-            jit_convert(src + offset, dst + offset, current_batch_size);  // f8e4m3 -> dst_t
-        });
-
-        ctx.converted = true;
-    }
-};
 template struct ConvertPrecision<std::tuple<ov::float8_e5m2, float>>;
+template struct ConvertPrecision<std::tuple<ov::float16, ov::float8_e5m2>>;
 template struct ConvertPrecision<std::tuple<ov::float8_e5m2, ov::float16>>;
+template struct ConvertPrecision<std::tuple<ov::intel_cpu::bfloat16_t, ov::float8_e5m2>>;
 template struct ConvertPrecision<std::tuple<ov::float8_e5m2, ov::intel_cpu::bfloat16_t>>;
 
 template<>

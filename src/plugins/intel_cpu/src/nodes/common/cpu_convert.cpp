@@ -540,25 +540,6 @@ struct ConvertPrecision<std::tuple<src_t, dst_t>> {
     void operator()(ConvertContext & ctx) {
         auto src = static_cast<const src_t *>(ctx.srcPtr);
         auto dst = static_cast<dst_t *>(ctx.dstPtr);
-
-#if defined(OPENVINO_ARCH_X86_64)
-        // f32<=>f8, f16<=>f8, bf16<=>f8
-        if (std::is_same<src_t, ov::float8_e4m3>::value || std::is_same<dst_t, ov::float8_e4m3>::value ||
-            std::is_same<src_t, ov::float8_e5m2>::value || std::is_same<dst_t, ov::float8_e5m2>::value) {
-            std::cout << "====== ov::float8 ConvertPrecision" << std::endl;
-            constexpr size_t batch = 64;
-            const size_t iterations = ov::intel_cpu::div_up(ctx.size, batch);
-            parallel_for(iterations, [&](size_t i) {
-                const size_t offset = i * batch;
-                const size_t current_batch_size = std::min(ctx.size - offset, batch);
-                jit_convert(src + offset, dst + offset, current_batch_size);
-            });
-
-            ctx.converted = true;
-            return;
-        }
-#endif
-
         src_t lbound, ubound;
         std::tie(lbound, ubound) = ctx.range<src_t>();
 
@@ -577,20 +558,6 @@ struct ConvertPrecision<std::tuple<src_t, dst_t>> {
         ctx.converted = true;
     }
 };
-#if defined(OPENVINO_ARCH_X86_64)
-template struct ConvertPrecision<std::tuple<float, ov::float8_e4m3>>;
-template struct ConvertPrecision<std::tuple<ov::float8_e4m3, float>>;
-template struct ConvertPrecision<std::tuple<ov::float16, ov::float8_e4m3>>;
-template struct ConvertPrecision<std::tuple<ov::float8_e4m3, ov::float16>>;
-template struct ConvertPrecision<std::tuple<ov::intel_cpu::bfloat16_t, ov::float8_e4m3>>;
-template struct ConvertPrecision<std::tuple<ov::float8_e4m3, ov::intel_cpu::bfloat16_t>>;
-template struct ConvertPrecision<std::tuple<float, ov::float8_e5m2>>;
-template struct ConvertPrecision<std::tuple<ov::float8_e5m2, float>>;
-template struct ConvertPrecision<std::tuple<ov::float16, ov::float8_e5m2>>;
-template struct ConvertPrecision<std::tuple<ov::float8_e5m2, ov::float16>>;
-template struct ConvertPrecision<std::tuple<ov::intel_cpu::bfloat16_t, ov::float8_e5m2>>;
-template struct ConvertPrecision<std::tuple<ov::float8_e5m2, ov::intel_cpu::bfloat16_t>>;
-#endif
 
 template<>
 struct ConvertPrecision<std::tuple<float, ov::intel_cpu::bfloat16_t>> {
@@ -956,6 +923,44 @@ struct ConvertFromByteFPPrecision<std::tuple<src_t, dst_t>> {
     }
 };
 
+#if defined(OPENVINO_ARCH_X86_64)
+#define INTEL_CPU_CVT_FP8_LIST                                                                    \
+    INTEL_CPU_CVT(f32, f8e4m3), INTEL_CPU_CVT(f16, f8e4m3), INTEL_CPU_CVT(bf16, f8e4m3),          \
+    INTEL_CPU_CVT(f8e4m3, f32), INTEL_CPU_CVT(f8e4m3, f16), INTEL_CPU_CVT(f8e4m3, bf16),          \
+    INTEL_CPU_CVT(f32, f8e5m2), INTEL_CPU_CVT(f16, f8e5m2), INTEL_CPU_CVT(bf16, f8e5m2),          \
+    INTEL_CPU_CVT(f8e5m2, f32), INTEL_CPU_CVT(f8e5m2, f16), INTEL_CPU_CVT(f8e5m2, bf16)
+
+struct ConvertFP8Context {
+    const void *srcPtr;
+    void *dstPtr;
+    size_t size;
+    bool converted;
+};
+
+template<typename T>
+struct ConvertFP8Precision;
+
+template<typename src_t, typename dst_t>
+struct ConvertFP8Precision<std::tuple<src_t, dst_t>> {
+    void operator()(ConvertFP8Context &ctx) {
+        auto src = static_cast<const src_t*>(ctx.srcPtr);
+        auto dst = static_cast<dst_t*>(ctx.dstPtr);
+#if 0
+        std::cout << "====== ov::float8 ConvertPrecision" << std::endl;
+#endif
+        constexpr size_t batch = 64;
+        const size_t iterations = ov::intel_cpu::div_up(ctx.size, batch);
+        parallel_for(iterations, [&](size_t i) {
+            const size_t offset = i * batch;
+            const size_t current_batch_size = std::min(ctx.size - offset, batch);
+            jit_convert(src + offset, dst + offset, current_batch_size);
+        });
+
+        ctx.converted = true;
+    }
+};
+#endif
+
 void cpu_convert(const void *srcPtr, void *dstPtr, ov::element::Type srcPrc, ov::element::Type dstPrc, const size_t size) {
     cpu_convert(srcPtr, dstPtr, srcPrc, dstPrc, dstPrc, size);
 }
@@ -1023,6 +1028,14 @@ void cpu_convert(const void *srcPtr,
         OV_SWITCH(intel_cpu, ConvertFromByteFPPrecision, ctx, std::tie(srcPrc, dstPrc), INTEL_CPU_CVT_FROM_BYTE_FP_LIST);
         if (!ctx.converted)
             OPENVINO_THROW("cpu_convert can't convert from: ", srcPrc, " precision to: ", dstPrc);
+#if defined(OPENVINO_ARCH_X86_64)
+    } else if (dnnl::impl::cpu::x64::mayiuse(dnnl::impl::cpu::x64::avx512_core_amx) && ( srcPrc == ov::element::f8e4m3 ||
+        dstPrc == ov::element::f8e4m3 || srcPrc == ov::element::f8e5m2 || dstPrc == ov::element::f8e5m2)) {
+        ConvertFP8Context ctx{srcPtr, dstPtr, size, false};
+        OV_SWITCH(intel_cpu, ConvertFP8Precision, ctx, std::tie(srcPrc, dstPrc), INTEL_CPU_CVT_FP8_LIST);
+        if (!ctx.converted)
+            OPENVINO_THROW("cpu_convert can't convert from: ", srcPrc, " precision to: ", dstPrc);
+#endif
     } else {
         ConvertContext ctx {
             srcPtr,
@@ -1055,6 +1068,9 @@ bool is_supported_convert(ov::element::Type srcPrc, ov::element::Type dstPrc) {
     OV_SWITCH(intel_cpu, isSupported, ctx, std::tie(srcPrc, dstPrc), INTEL_CPU_CVT_FROM_BIN_LIST);
     OV_SWITCH(intel_cpu, isSupported, ctx, std::tie(srcPrc, dstPrc), INTEL_CPU_CVT_FROM_4BIT_LIST);
     OV_SWITCH(intel_cpu, isSupported, ctx, std::tie(srcPrc, dstPrc), INTEL_CPU_CVT_FROM_BYTE_FP_LIST);
+#if defined(OPENVINO_ARCH_X86_64)
+    OV_SWITCH(intel_cpu, isSupported, ctx, std::tie(srcPrc, dstPrc), INTEL_CPU_CVT_FP8_LIST);
+#endif
     return ctx.isSupported;
 }
 

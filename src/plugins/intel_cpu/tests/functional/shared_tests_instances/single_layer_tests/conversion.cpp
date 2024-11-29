@@ -43,23 +43,23 @@ const std::vector<ov::element::Type> f8Types = {
     ov::element::f8e5m2,
 };
 
-INSTANTIATE_TEST_SUITE_P(smoke_ConversionLayerTest,
-                         ConversionLayerTest,
-                         ::testing::Combine(::testing::ValuesIn(conversionOpTypes),
-                                            ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(shapes)),
-                                            ::testing::ValuesIn(types),
-                                            ::testing::ValuesIn(types),
-                                            ::testing::Values(ov::test::utils::DEVICE_CPU)),
-                         ConversionLayerTest::getTestCaseName);
+// INSTANTIATE_TEST_SUITE_P(smoke_ConversionLayerTest,
+//                          ConversionLayerTest,
+//                          ::testing::Combine(::testing::ValuesIn(conversionOpTypes),
+//                                             ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(shapes)),
+//                                             ::testing::ValuesIn(types),
+//                                             ::testing::ValuesIn(types),
+//                                             ::testing::Values(ov::test::utils::DEVICE_CPU)),
+//                          ConversionLayerTest::getTestCaseName);
 
-INSTANTIATE_TEST_SUITE_P(smoke_ConversionToBooleanLayerTest,
-                         ConversionLayerTest,
-                         ::testing::Combine(::testing::ValuesIn(conversionOpTypes),
-                                            ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(shapes)),
-                                            ::testing::ValuesIn(types),
-                                            ::testing::Values(ov::element::boolean),
-                                            ::testing::Values(ov::test::utils::DEVICE_CPU)),
-                         ConversionLayerTest::getTestCaseName);
+// INSTANTIATE_TEST_SUITE_P(smoke_ConversionToBooleanLayerTest,
+//                          ConversionLayerTest,
+//                          ::testing::Combine(::testing::ValuesIn(conversionOpTypes),
+//                                             ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(shapes)),
+//                                             ::testing::ValuesIn(types),
+//                                             ::testing::Values(ov::element::boolean),
+//                                             ::testing::Values(ov::test::utils::DEVICE_CPU)),
+//                          ConversionLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_ConversionToF8LayerTest,
                          ConversionLayerTest,

@@ -545,6 +545,7 @@ struct ConvertPrecision<std::tuple<src_t, dst_t>> {
         // f32<=>f8, f16<=>f8, bf16<=>f8
         if (std::is_same<src_t, ov::float8_e4m3>::value || std::is_same<dst_t, ov::float8_e4m3>::value ||
             std::is_same<src_t, ov::float8_e5m2>::value || std::is_same<dst_t, ov::float8_e5m2>::value) {
+            std::cout << "====== ov::float8 ConvertPrecision" << std::endl;
             constexpr size_t batch = 64;
             const size_t iterations = ov::intel_cpu::div_up(ctx.size, batch);
             parallel_for(iterations, [&](size_t i) {

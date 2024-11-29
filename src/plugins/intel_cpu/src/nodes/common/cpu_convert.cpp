@@ -945,9 +945,6 @@ struct ConvertFP8Precision<std::tuple<src_t, dst_t>> {
     void operator()(ConvertFP8Context &ctx) {
         auto src = static_cast<const src_t*>(ctx.srcPtr);
         auto dst = static_cast<dst_t*>(ctx.dstPtr);
-#if 0
-        std::cout << "====== ov::float8 ConvertPrecision" << std::endl;
-#endif
         constexpr size_t batch = 64;
         const size_t iterations = ov::intel_cpu::div_up(ctx.size, batch);
         parallel_for(iterations, [&](size_t i) {

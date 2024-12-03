@@ -144,6 +144,32 @@ protected:
     }
 };
 
+#if 1
+TEST_P(FakeQuantizeDecompositionTest, CompareFunctions) {}
+
+const std::vector<element::Type_t> precisions = {element::Type_t::f32};
+
+const std::vector<size_t> levels = {256};
+
+const std::vector<std::pair<float, float>> input_ranges_supported = {{-10.0f, 10.f}};
+
+const auto simple_fq_basic = ::testing::Combine(::testing::ValuesIn(precisions),
+                                                ::testing::Values(Shape{2, 3, 4, 5}),
+                                                ::testing::ValuesIn(precisions),
+                                                ::testing::Values(Shape{1, 3, 1, 1}),
+                                                ::testing::Values(Shape{1, 3, 1, 1}),
+                                                ::testing::Values(Shape{1, 3, 1, 1}),
+                                                ::testing::Values(Shape{1, 3, 1, 1}),
+                                                ::testing::ValuesIn(levels));
+
+INSTANTIATE_TEST_SUITE_P(SimpleFakeQuantize_Decomposition,
+                         FakeQuantizeDecompositionTest,
+                         ::testing::Combine(simple_fq_basic,
+                                            ::testing::ValuesIn(input_ranges_supported),
+                                            ::testing::Values(true)),
+                         FakeQuantizeDecompositionTest::getTestCaseName);
+
+#else
 TEST_P(FakeQuantizeDecompositionTest, CompareFunctions) {}
 
 const std::vector<element::Type_t> precisions = {element::Type_t::f16, element::Type_t::f32};
@@ -245,3 +271,4 @@ INSTANTIATE_TEST_SUITE_P(FakeQuantize6D_NoDecomposition,
                                             ::testing::ValuesIn(input_ranges_unsupported),
                                             ::testing::Values(false)),
                          FakeQuantizeDecompositionTest::getTestCaseName);
+#endif

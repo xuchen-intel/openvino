@@ -4,5 +4,72 @@
 
 #include "transformations/op_conversions/fake_convert_decomposition.hpp"
 
+#include "itt.hpp"
+#include "openvino/core/rt_info.hpp"
+#include "openvino/op/add.hpp"
+#include "openvino/op/constant.hpp"
+#include "openvino/op/convert.hpp"
+#include "openvino/op/divide.hpp"
+#include "openvino/op/fake_convert.hpp"
+#include "openvino/op/multiply.hpp"
+#include "openvino/op/subtract.hpp"
+#include "openvino/pass/pattern/op/wrap_type.hpp"
+
 ov::pass::FakeConvertDecomposition::FakeConvertDecomposition() {
+    MATCHER_SCOPE(FakeConvertDecomposition);
+    auto data = pattern::any_input();
+    auto scale = ov::pass::pattern::wrap_type<ov::op::v0::Constant>();
+    auto shift = ov::pass::pattern::wrap_type<ov::op::v0::Constant>();
+
+    auto fake_convert = ov::pass::pattern::wrap_type<ov::op::v13::FakeConvert>({data, scale, shift});
+
+    matcher_pass_callback callback = [OV_CAPTURE_CPY_AND_THIS](ov::pass::pattern::Matcher& m) {
+        auto& pattern_to_output = m.get_pattern_value_map();
+        const auto fake_convert_node =
+            ov::as_type_ptr<ov::op::v13::FakeConvert>(pattern_to_output.at(fake_convert).get_node_shared_ptr());
+
+        if (fake_convert_node == nullptr || transformation_callback(fake_convert_node)) {
+            return false;
+        }
+
+        Output<Node> data{fake_convert_node->input_value(0)};
+        const Output<Node> input_scale{fake_convert_node->input_value(1)};
+        const Output<Node> input_shift{fake_convert_node->input_value(2)};
+        auto input_type = data.get_element_type();
+
+        ov::NodeVector decomp_ops;
+        if (input_type != input_scale.get_element_type()) {
+            input_type = input_scale.get_element_type();
+            data = std::make_shared<ov::op::v0::Convert>(data, input_type);
+            decomp_ops.push_back(data.get_node_shared_ptr());
+        }
+
+        const auto scale = std::make_shared<ov::op::v1::Multiply>(data, input_scale);
+        const auto shift = std::make_shared<ov::op::v1::Subtract>(scale, input_shift);
+        decomp_ops.push_back(scale);
+        decomp_ops.push_back(shift);
+
+        const auto downconvert = std::make_shared<ov::op::v0::Convert>(shift, fake_convert_node->get_destination_element_type());
+        const auto upconvert = std::make_shared<ov::op::v0::Convert>(downconvert, input_type);
+        decomp_ops.push_back(downconvert);
+        decomp_ops.push_back(upconvert);
+
+        const auto deshift = std::make_shared<ov::op::v1::Add>(upconvert, input_shift);
+        std::shared_ptr<Node> result = std::make_shared<ov::op::v1::Divide>(deshift, input_scale);
+        decomp_ops.push_back(deshift);
+        decomp_ops.push_back(result);
+
+        if (result->get_output_element_type(0) != fake_convert_node->get_output_element_type(0)) {
+            result = std::make_shared<ov::op::v0::Convert>(result, fake_convert_node->get_output_element_type(0));
+            decomp_ops.push_back(result);
+        }
+
+        result->set_friendly_name(m.get_match_root()->get_friendly_name());
+        ov::copy_runtime_info(fake_convert_node, decomp_ops);
+        ov::replace_node(m.get_match_root(), result);
+        return true;
+    };
+
+    auto m = std::make_shared<ov::pass::pattern::Matcher>(fake_convert, matcher_name);
+    register_matcher(m, callback);
 }

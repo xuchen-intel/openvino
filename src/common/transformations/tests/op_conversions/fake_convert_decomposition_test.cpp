@@ -4,24 +4,112 @@
 
 #include "transformations/op_conversions/fake_convert_decomposition.hpp"
 
+#include <gtest/gtest.h>
+
+#include "common_test_utils/common_utils.hpp"
 #include "common_test_utils/ov_test_utils.hpp"
+#include "openvino/opsets/opset1.hpp"
+#include "openvino/opsets/opset13.hpp"
 
 using namespace ov;
 
-using FakeConvertDecompositionParamsSet = std::tuple<element::Type_t,
-                                                     Shape>;
+using FakeConvertDecompositionParams = std::tuple<Shape,            // data shape
+                                                  Shape,            // scale shape
+                                                  Shape,            // shift shape
+                                                  element::Type_t,  // input precision
+                                                  element::Type_t>; // destination precision
 
 class FakeConvertDecompositionTest : public ov::test::TestsCommon,
-                                     public ::testing::WithParamInterface<FakeConvertDecompositionParamsSet> {
+                                     public ::testing::WithParamInterface<FakeConvertDecompositionParams> {
 public:
-    static std::string getTestCaseName(::testing::TestParamInfo<FakeConvertDecompositionParamsSet> obj) {
+    static std::string getTestCaseName(::testing::TestParamInfo<FakeConvertDecompositionParams> obj) {
+        FakeConvertDecompositionParams params = obj.param;
+
+        Shape data_shape, scale_shape, shift_shape;
+        element::Type_t data_prec, dst_prec;
+        std::tie(data_shape, scale_shape, shift_shape, data_prec, dst_prec) = params;
+
         std::ostringstream result;
+        result << "dataShape=" << ov::test::utils::vec2str(data_shape) << "_";
+        result << "scaleShape=" << ov::test::utils::vec2str(scale_shape) << "_";
+        result << "shiftShape=" << ov::test::utils::vec2str(shift_shape) << "_";
+        result << "dataPrecision=" << element::Type(data_prec) << "_";
+        result << "destinationPrecision=" << element::Type(dst_prec);
         return result.str();
     }
 
 protected:
     void SetUp() override {
+        FakeConvertDecompositionParams params = this->GetParam();
+
+        Shape data_shape, scale_shape, shift_shape;
+        element::Type_t data_prec, dst_prec;
+        std::tie(data_shape, scale_shape, shift_shape, data_prec, dst_prec) = params;
+
+        std::shared_ptr<ov::Model> f(nullptr);
+        {
+            const auto data = std::make_shared<opset1::Parameter>(data_prec, PartialShape(data_shape));
+            const auto scale = std::make_shared<opset1::Constant>(data_prec, scale_shape);
+            const auto shift = std::make_shared<opset1::Constant>(data_prec, shift_shape);
+
+            const auto fake_convert = std::make_shared<opset13::FakeConvert>(data, scale, shift, dst_prec);
+            f = std::make_shared<ov::Model>(NodeVector{fake_convert}, ParameterVector{data});
+
+            pass::Manager manager;
+            manager.register_pass<ov::pass::InitNodeInfo>();
+            manager.register_pass<ov::pass::FakeConvertDecomposition>();
+            manager.run_passes(f);
+
+            OV_ASSERT_NO_THROW(check_rt_info(f));
+        }
+
+        std::shared_ptr<ov::Model> f_ref(nullptr);
+        {
+            const auto input_data = std::make_shared<opset1::Parameter>(data_prec, PartialShape(data_shape));
+            const auto input_scale = std::make_shared<opset1::Constant>(data_prec, scale_shape);
+            const auto input_shift = std::make_shared<opset1::Constant>(data_prec, shift_shape);
+            ParameterVector params;
+            params.push_back(input_data);
+            std::shared_ptr<Node> data = input_data;
+
+
+            const auto scale = std::make_shared<ov::op::v1::Multiply>(data, input_scale);
+            const auto shift = std::make_shared<ov::op::v1::Subtract>(scale, input_shift);
+
+            const auto downconvert = std::make_shared<ov::op::v0::Convert>(shift, dst_prec);
+            const auto upconvert = std::make_shared<ov::op::v0::Convert>(downconvert, data_prec);
+
+            const auto deshift = std::make_shared<ov::op::v1::Add>(upconvert, input_shift);
+            std::shared_ptr<Node> result = std::make_shared<ov::op::v1::Divide>(deshift, input_scale);
+
+            f_ref = std::make_shared<ov::Model>(NodeVector{result}, params);
+        }
+
+        const auto res = compare_functions(f, f_ref);
+        ASSERT_TRUE(res.first) << res.second;
     }
 };
 
 TEST_P(FakeConvertDecompositionTest, CompareFunctions) {}
+
+const std::vector<element::Type_t> data_precisions = {
+    element::Type_t::f32,
+    element::Type_t::f16,
+    element::Type_t::bf16
+};
+
+const std::vector<element::Type_t> destination_precisions = {
+    element::Type_t::f8e4m3,
+    element::Type_t::f8e5m2
+};
+
+const auto simple_fake_convert_params = ::testing::Combine(::testing::Values(Shape{2, 3, 4, 5}),
+                                                           ::testing::Values(Shape{2, 3, 4, 5}),
+                                                           ::testing::Values(Shape{2, 3, 4, 5}),
+                                                           ::testing::ValuesIn(data_precisions),
+                                                           ::testing::ValuesIn(destination_precisions));
+
+INSTANTIATE_TEST_SUITE_P(SimpleFakeConvert_Decomposition,
+                         FakeConvertDecompositionTest,
+                         simple_fake_convert_params,
+                         FakeConvertDecompositionTest::getTestCaseName);

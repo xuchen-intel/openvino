@@ -18,8 +18,10 @@ class TRANSFORMATIONS_API FakeConvertDecomposition;
 /**
  * @ingroup ov_transformation_common_api
  * @brief FakeConvertDecomposition transformation decomposes FakeConvert layer.
- *
- * output = (convert_f8_to_f32(convert_f32_to_f8(input * scale - shift)) + shift) / scale
+ * f8: f8e4m3, f8e5m2
+ * downconvert: f32->f8, f16->f8, bf16->f8
+ * upconvert: f8->f32, f8->f16, f8->bf16
+ * output = (upconvert(downconvert(input * scale - shift)) + shift) / scale
  *
  */
 

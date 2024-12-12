@@ -104,6 +104,18 @@ const std::vector<element::Type_t> destination_precisions = {
 };
 
 const auto simple_fake_convert_params = ::testing::Combine(::testing::Values(Shape{2, 3, 4, 5}),
+                                                           ::testing::Values(Shape{1}),
+                                                           ::testing::Values(Shape{1}),
+                                                           ::testing::ValuesIn(data_precisions),
+                                                           ::testing::ValuesIn(destination_precisions));
+
+const auto broadcast_fake_convert_params = ::testing::Combine(::testing::Values(Shape{2, 3, 4, 5}),
+                                                           ::testing::Values(Shape{2, 3, 1, 1}),
+                                                           ::testing::Values(Shape{2, 3, 1, 1}),
+                                                           ::testing::ValuesIn(data_precisions),
+                                                           ::testing::ValuesIn(destination_precisions));
+
+const auto elementwise_fake_convert_params = ::testing::Combine(::testing::Values(Shape{2, 3, 4, 5}),
                                                            ::testing::Values(Shape{2, 3, 4, 5}),
                                                            ::testing::Values(Shape{2, 3, 4, 5}),
                                                            ::testing::ValuesIn(data_precisions),
@@ -112,4 +124,14 @@ const auto simple_fake_convert_params = ::testing::Combine(::testing::Values(Sha
 INSTANTIATE_TEST_SUITE_P(SimpleFakeConvert_Decomposition,
                          FakeConvertDecompositionTest,
                          simple_fake_convert_params,
+                         FakeConvertDecompositionTest::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(BroadcastFakeConvert_Decomposition,
+                         FakeConvertDecompositionTest,
+                         broadcast_fake_convert_params,
+                         FakeConvertDecompositionTest::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(ElementwiseFakeConvert_Decomposition,
+                         FakeConvertDecompositionTest,
+                         elementwise_fake_convert_params,
                          FakeConvertDecompositionTest::getTestCaseName);

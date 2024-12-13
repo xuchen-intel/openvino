@@ -17,7 +17,8 @@ using FakeConvertDecompositionParams = std::tuple<Shape,            // data shap
                                                   Shape,            // scale shape
                                                   Shape,            // shift shape
                                                   element::Type_t,  // input precision
-                                                  element::Type_t>; // destination precision
+                                                  element::Type_t,  // destination precision
+                                                  bool>;            // default shift
 
 class FakeConvertDecompositionTest : public ov::test::TestsCommon,
                                      public ::testing::WithParamInterface<FakeConvertDecompositionParams> {
@@ -27,14 +28,19 @@ public:
 
         Shape data_shape, scale_shape, shift_shape;
         element::Type_t data_prec, dst_prec;
-        std::tie(data_shape, scale_shape, shift_shape, data_prec, dst_prec) = params;
+        bool default_shift;
+        std::tie(data_shape, scale_shape, shift_shape, data_prec, dst_prec, default_shift) = params;
 
         std::ostringstream result;
         result << "dataShape=" << ov::test::utils::vec2str(data_shape) << "_";
         result << "scaleShape=" << ov::test::utils::vec2str(scale_shape) << "_";
         result << "shiftShape=" << ov::test::utils::vec2str(shift_shape) << "_";
         result << "dataPrecision=" << element::Type(data_prec) << "_";
-        result << "destinationPrecision=" << element::Type(dst_prec);
+        result << "destinationPrecision=" << element::Type(dst_prec) << "_";
+        if (default_shift)
+            result << "destinationPrecision=true";
+        else
+            result << "defaultShift=false";
         return result.str();
     }
 
@@ -44,7 +50,8 @@ protected:
 
         Shape data_shape, scale_shape, shift_shape;
         element::Type_t data_prec, dst_prec;
-        std::tie(data_shape, scale_shape, shift_shape, data_prec, dst_prec) = params;
+        bool default_shift;
+        std::tie(data_shape, scale_shape, shift_shape, data_prec, dst_prec, default_shift) = params;
 
         std::shared_ptr<ov::Model> f(nullptr);
         {
@@ -52,7 +59,9 @@ protected:
             const auto scale = std::make_shared<opset1::Constant>(data_prec, scale_shape);
             const auto shift = std::make_shared<opset1::Constant>(data_prec, shift_shape);
 
-            const auto fake_convert = std::make_shared<opset13::FakeConvert>(data, scale, shift, dst_prec);
+            const auto fake_convert = default_shift ?
+                                      std::make_shared<opset13::FakeConvert>(data, scale, dst_prec) :
+                                      std::make_shared<opset13::FakeConvert>(data, scale, shift, dst_prec);
             f = std::make_shared<ov::Model>(NodeVector{fake_convert}, ParameterVector{data});
 
             pass::Manager manager;
@@ -72,15 +81,22 @@ protected:
             params.push_back(input_data);
             std::shared_ptr<Node> data = input_data;
 
-
+            std::shared_ptr<Node> result;
             const auto scale = std::make_shared<ov::op::v1::Multiply>(data, input_scale);
-            const auto shift = std::make_shared<ov::op::v1::Subtract>(scale, input_shift);
+            if (default_shift) {
+                const auto downconvert = std::make_shared<ov::op::v0::Convert>(scale, dst_prec);
+                const auto upconvert = std::make_shared<ov::op::v0::Convert>(downconvert, data_prec);
 
-            const auto downconvert = std::make_shared<ov::op::v0::Convert>(shift, dst_prec);
-            const auto upconvert = std::make_shared<ov::op::v0::Convert>(downconvert, data_prec);
+                result = std::make_shared<ov::op::v1::Divide>(upconvert, input_scale);
+            } else {
+                const auto shift = std::make_shared<ov::op::v1::Subtract>(scale, input_shift);
 
-            const auto deshift = std::make_shared<ov::op::v1::Add>(upconvert, input_shift);
-            std::shared_ptr<Node> result = std::make_shared<ov::op::v1::Divide>(deshift, input_scale);
+                const auto downconvert = std::make_shared<ov::op::v0::Convert>(shift, dst_prec);
+                const auto upconvert = std::make_shared<ov::op::v0::Convert>(downconvert, data_prec);
+
+                const auto deshift = std::make_shared<ov::op::v1::Add>(upconvert, input_shift);
+                result = std::make_shared<ov::op::v1::Divide>(deshift, input_scale);
+            }
 
             f_ref = std::make_shared<ov::Model>(NodeVector{result}, params);
         }
@@ -103,23 +119,31 @@ const std::vector<element::Type_t> destination_precisions = {
     element::Type_t::f8e5m2
 };
 
+const std::vector<bool> default_shift = {
+    true,
+    false
+};
+
 const auto simple_fake_convert_params = ::testing::Combine(::testing::Values(Shape{2, 3, 4, 5}),
                                                            ::testing::Values(Shape{1}),
                                                            ::testing::Values(Shape{1}),
                                                            ::testing::ValuesIn(data_precisions),
-                                                           ::testing::ValuesIn(destination_precisions));
+                                                           ::testing::ValuesIn(destination_precisions),
+                                                           ::testing::ValuesIn(default_shift));
 
 const auto broadcast_fake_convert_params = ::testing::Combine(::testing::Values(Shape{2, 3, 4, 5}),
                                                            ::testing::Values(Shape{2, 3, 1, 1}),
                                                            ::testing::Values(Shape{2, 3, 1, 1}),
                                                            ::testing::ValuesIn(data_precisions),
-                                                           ::testing::ValuesIn(destination_precisions));
+                                                           ::testing::ValuesIn(destination_precisions),
+                                                           ::testing::ValuesIn(default_shift));
 
 const auto elementwise_fake_convert_params = ::testing::Combine(::testing::Values(Shape{2, 3, 4, 5}),
                                                            ::testing::Values(Shape{2, 3, 4, 5}),
                                                            ::testing::Values(Shape{2, 3, 4, 5}),
                                                            ::testing::ValuesIn(data_precisions),
-                                                           ::testing::ValuesIn(destination_precisions));
+                                                           ::testing::ValuesIn(destination_precisions),
+                                                           ::testing::ValuesIn(default_shift));
 
 INSTANTIATE_TEST_SUITE_P(SimpleFakeConvert_Decomposition,
                          FakeConvertDecompositionTest,

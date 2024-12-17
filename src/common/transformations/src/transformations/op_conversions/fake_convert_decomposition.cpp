@@ -45,7 +45,8 @@ ov::pass::FakeConvertDecomposition::FakeConvertDecomposition() {
         const auto scale = std::make_shared<ov::op::v1::Multiply>(data, input_scale);
         decomp_ops.push_back(scale);
         if (fake_convert_node->get_input_size() == 2) {
-            const auto downconvert = std::make_shared<ov::op::v0::Convert>(scale, fake_convert_node->get_destination_element_type());
+            const auto downconvert =
+                std::make_shared<ov::op::v0::Convert>(scale, fake_convert_node->get_destination_element_type());
             decomp_ops.push_back(downconvert);
             const auto upconvert = std::make_shared<ov::op::v0::Convert>(downconvert, input_type);
             decomp_ops.push_back(upconvert);
@@ -57,7 +58,8 @@ ov::pass::FakeConvertDecomposition::FakeConvertDecomposition() {
             const auto shift = std::make_shared<ov::op::v1::Subtract>(scale, input_shift);
             decomp_ops.push_back(shift);
 
-            const auto downconvert = std::make_shared<ov::op::v0::Convert>(shift, fake_convert_node->get_destination_element_type());
+            const auto downconvert =
+                std::make_shared<ov::op::v0::Convert>(shift, fake_convert_node->get_destination_element_type());
             decomp_ops.push_back(downconvert);
             const auto upconvert = std::make_shared<ov::op::v0::Convert>(downconvert, input_type);
             decomp_ops.push_back(upconvert);

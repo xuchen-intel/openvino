@@ -114,6 +114,8 @@ class jit_convert_array : public jit_kernel {
             f8_e4m3_emu_->prepare_table();
         if (f8_e5m2_emu_)
             f8_e5m2_emu_->prepare_table();
+        if (uni_vcvtneps2bf16_)
+            uni_vcvtneps2bf16_->emit_data();
     }
 
 public:
@@ -127,7 +129,7 @@ public:
 
     typedef void (*convert_vec_t)(jit_generator&, const RegExp&, const RegExp&);
 
-    jit_convert_array(convert_vec_t convert_vec, size_t src_size, size_t dst_size, f8_type type)
+    jit_convert_array(convert_vec_t convert_vec, size_t src_size, size_t dst_size, f8_type type, bool is_dst_bf16)
         : jit_kernel(jit_name()),
           _convert_vec(convert_vec),
           _src_size(src_size),
@@ -148,6 +150,9 @@ public:
                                                                   fp8_emu_kmask_aux_,
                                                                   fp8_emu_scratch_);
         }
+        if (is_dst_bf16 && mayiuse(cpu_isa_t::avx512_core)) {
+            uni_vcvtneps2bf16_ = std::make_shared<jit_uni_vcvtneps2bf16>(this, cpu_isa_t::avx512_core);
+        }
     }
 
     template <typename src_t, typename dst_t>
@@ -156,7 +161,8 @@ public:
             static jit_convert_array converter(convert_vec<src_t, dst_t>,
                                                sizeof(src_t),
                                                sizeof(dst_t),
-                                               get_f8_type<src_t, dst_t>());
+                                               get_f8_type<src_t, dst_t>(),
+                                               std::is_same<dst_t, ov::intel_cpu::bfloat16_t>::value);
             auto& generator = static_cast<jit_generator&>(converter);
             generator.create_kernel();
             return (fn_t)generator.jit_ker();
@@ -172,6 +178,10 @@ public:
         return f8_e5m2_emu_;
     }
 
+    std::shared_ptr<jit_uni_vcvtneps2bf16> get_uni_vcvtneps2bf16() const {
+        return uni_vcvtneps2bf16_;
+    }
+
 private:
     convert_vec_t _convert_vec;
     size_t _src_size;
@@ -179,6 +189,7 @@ private:
 
     std::shared_ptr<fp8_emulation_e4m3_t> f8_e4m3_emu_;
     std::shared_ptr<fp8_emulation_e5m2_t> f8_e5m2_emu_;
+    std::shared_ptr<jit_uni_vcvtneps2bf16> uni_vcvtneps2bf16_;
 
     const Reg64 fp8_emu_scratch_ = rax;
     const Zmm fp8_emu_reserv_1_ = Zmm(9);
@@ -260,7 +271,8 @@ void convert_vec<ov::float8_e4m3, ov::intel_cpu::bfloat16_t>(jit_generator& gen,
 
     gen.vmovdqu(f8vec, gen.xword[src]);
     cvt.get_f8_e4m3_emu()->vcvt_f8_to_f32(f32vec, f8vec);
-    gen.vcvtneps2bf16(f16vec, f32vec);
+    cvt.get_uni_vcvtneps2bf16()->emit_code({static_cast<size_t>(f32vec.getIdx())},
+                                           {static_cast<size_t>(f16vec.getIdx())});
     gen.vmovdqu(gen.yword[dst], f16vec);
 }
 
@@ -335,7 +347,8 @@ void convert_vec<ov::float8_e5m2, ov::intel_cpu::bfloat16_t>(jit_generator& gen,
 
     gen.vmovdqu(f8vec, gen.xword[src]);
     cvt.get_f8_e5m2_emu()->vcvt_f8_to_f32(f32vec, f8vec);
-    gen.vcvtneps2bf16(f16vec, f32vec);
+    cvt.get_uni_vcvtneps2bf16()->emit_code({static_cast<size_t>(f32vec.getIdx())},
+                                           {static_cast<size_t>(f16vec.getIdx())});
     gen.vmovdqu(gen.yword[dst], f16vec);
 }
 

@@ -43,12 +43,20 @@ const std::vector<ov::element::Type> f8Types = {
     ov::element::f8e5m2,
 };
 
+const std::vector<ov::test::SpecialValue> specialValue = {
+    ov::test::SpecialValue::none,
+    ov::test::SpecialValue::nan,
+    ov::test::SpecialValue::inf,
+    ov::test::SpecialValue::overflow,
+};
+
 INSTANTIATE_TEST_SUITE_P(smoke_ConversionLayerTest,
                          ConversionLayerTest,
                          ::testing::Combine(::testing::ValuesIn(conversionOpTypes),
                                             ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(shapes)),
                                             ::testing::ValuesIn(types),
                                             ::testing::ValuesIn(types),
+                                            ::testing::Values(ov::test::SpecialValue::none),
                                             ::testing::Values(ov::test::utils::DEVICE_CPU)),
                          ConversionLayerTest::getTestCaseName);
 
@@ -58,6 +66,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_ConversionToBooleanLayerTest,
                                             ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(shapes)),
                                             ::testing::ValuesIn(types),
                                             ::testing::Values(ov::element::boolean),
+                                            ::testing::Values(ov::test::SpecialValue::none),
                                             ::testing::Values(ov::test::utils::DEVICE_CPU)),
                          ConversionLayerTest::getTestCaseName);
 
@@ -67,6 +76,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_ConversionToF8LayerTest,
                                             ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(shapes)),
                                             ::testing::ValuesIn(floatTypes),
                                             ::testing::ValuesIn(f8Types),
+                                            ::testing::ValuesIn(specialValue),
                                             ::testing::Values(ov::test::utils::DEVICE_CPU)),
                          ConversionLayerTest::getTestCaseName);
 
@@ -76,6 +86,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_ConversionFromF8LayerTest,
                                             ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(shapes)),
                                             ::testing::ValuesIn(f8Types),
                                             ::testing::ValuesIn(floatTypes),
+                                            ::testing::ValuesIn(specialValue),
                                             ::testing::Values(ov::test::utils::DEVICE_CPU)),
                          ConversionLayerTest::getTestCaseName);
 

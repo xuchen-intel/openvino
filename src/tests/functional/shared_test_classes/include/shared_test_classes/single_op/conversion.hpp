@@ -6,16 +6,20 @@
 
 #include <map>
 
+#include "common_test_utils/test_enums.hpp"
 #include "gtest/gtest.h"
 #include "shared_test_classes/base/ov_subgraph.hpp"
-#include "common_test_utils/test_enums.hpp"
 
 namespace ov {
 namespace test {
+
+enum SpecialValue { none, nan, inf, overflow };
+
 using ConversionParamsTuple = typename std::tuple<ov::test::utils::ConversionTypes,  // Convertion op type
                                                   std::vector<InputShape>,           // Input shapes
                                                   ov::element::Type,                 // Input type
                                                   ov::element::Type,                 // Convert type
+                                                  SpecialValue,                      // Specail value
                                                   std::string>;                      // Device name
 
 class ConversionLayerTest : public testing::WithParamInterface<ConversionParamsTuple>,
@@ -25,6 +29,11 @@ public:
 
 protected:
     void SetUp() override;
+    void generate_inputs(const std::vector<ov::Shape>& targetInputStaticShapes) override;
+
+private:
+    ov::element::Type input_type;
+    ov::test::SpecialValue special_value;
 };
 }  // namespace test
 }  // namespace ov

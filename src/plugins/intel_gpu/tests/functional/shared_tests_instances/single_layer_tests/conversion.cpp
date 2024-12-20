@@ -29,6 +29,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_NoReshape, ConversionLayerTest,
                                 ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(inShape)),
                                 ::testing::ValuesIn(netPrecisions),
                                 ::testing::ValuesIn(netPrecisions),
+                                ::testing::Values(ov::test::SpecialValue::none),
                                 ::testing::Values(ov::test::utils::DEVICE_GPU)),
                         ConversionLayerTest::getTestCaseName);
 

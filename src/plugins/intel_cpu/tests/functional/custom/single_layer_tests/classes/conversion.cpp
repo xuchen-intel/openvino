@@ -92,6 +92,12 @@ void ConvertCPULayerTest::SetUp() {
 
     inputDynamicShapes.push_back(shapes.first);
 
+    if (outPrc == ov::element::f16) {
+        configuration.insert(ov::hint::inference_precision(ov::element::f16));
+    } else if (outPrc == ov::element::bf16) {
+        configuration.insert(ov::hint::inference_precision(ov::element::bf16));
+    }
+
     ov::ParameterVector params;
     for (auto&& shape : inputDynamicShapes) {
         params.push_back(std::make_shared<ov::op::v0::Parameter>(inPrc, shape));

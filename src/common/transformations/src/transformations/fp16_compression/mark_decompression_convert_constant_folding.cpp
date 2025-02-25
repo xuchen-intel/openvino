@@ -58,50 +58,21 @@ pass::KeepConstAndDecompression::KeepConstAndDecompression() {
 
     matcher_pass_callback callback = [OV_CAPTURE_CPY_AND_THIS](pattern::Matcher& m) {
         auto node = m.get_match_root();
-
-        const std::string cvt_name = "Convert_394741";
-
-if (node->get_friendly_name() == cvt_name) {
-    std::cout << "============ Convert_394741 KeepConstAndDecompression 1" << std::endl;
-    // std::cout << "KKKKKKKKKKKK is_decompression(node): " << is_decompression(node) << std::endl;
-}
-
-        // if (!is_decompression(node) || !is_type<ov::op::v0::Convert>(node) ||
-        if (!is_type<ov::op::v0::Convert>(node) ||
+        if (!is_decompression(node) || !is_type<ov::op::v0::Convert>(node) ||
             ov::is_shape_subgraph(node->shared_from_this()))
             return false;
-if (node->get_friendly_name() == cvt_name) {
-    std::cout << "============ Convert_394741 KeepConstAndDecompression 2" << std::endl;
-}
+
         if (transformation_callback(node)) {
             return false;
         }
-if (node->get_friendly_name() == cvt_name) {
-    std::cout << "============ Convert_394741 KeepConstAndDecompression 3" << std::endl;
-}
+
         disable_constant_folding(node);
 
-        if (!is_type<ov::op::v0::Constant>(node->input_value(0).get_node_shared_ptr())) {
-            // std::cout << "KKKKKKKKKKKK node->get_friendly_name(): "
-            //           << node->get_friendly_name() << std::endl;
-            // std::cout << "KKKKKKKKKKKK node->get_type_name(): "
-            //           << node->get_type_name() << std::endl;
-            // std::cout << "KKKKKKKKKKKK node->input_value(0).get_node_shared_ptr()->get_friendly_name(): "
-            //           << node->input_value(0).get_node_shared_ptr()->get_friendly_name() << std::endl;
-            // std::cout << "KKKKKKKKKKKK node->input_value(0).get_node_shared_ptr()->get_type_name(): "
-            //           << node->input_value(0).get_node_shared_ptr()->get_type_name() << std::endl;
-            // std::cout << "KKKKKKKKKKKK KeepConstAndDecompression return false" << std::endl;
+        if (!is_type<ov::op::v0::Constant>(node->input_value(0).get_node_shared_ptr()))
             return false;
-        }
         enable_keep_const_precision(node->input_value(0).get_node_shared_ptr());
 
-        // return false;
-
-if (node->get_friendly_name() == cvt_name) {
-    std::cout << "============ Convert_394741 KeepConstAndDecompression return true" << std::endl;
-}
-
-        return true;
+        return false;
     };
     auto m = std::make_shared<pattern::Matcher>(node_pattern, matcher_name);
     register_matcher(m, callback);

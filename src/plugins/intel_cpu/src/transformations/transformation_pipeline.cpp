@@ -402,6 +402,17 @@ void Transformations::PreLpt(const std::vector<ov::element::Type>& defaultPrecis
 
     type_to_fuse_map type_to_fuse = {{ov::opset10::Convert::get_type_info_static(), fuse_type_to_convert}};
 
+    CPU_REGISTER_PASS_COMMON(manager, ov::pass::KeepConstAndDecompression);
+    // CPU_SET_CALLBACK_COMMON(
+    //     manager,
+    //     [](const_node_ptr& node) -> bool {
+    //         const auto consumers = node->get_output_target_inputs(0);
+    //         return std::all_of(consumers.begin(), consumers.end(), [](const ov::Input<ov::Node>& consumer) {
+    //             return !ov::is_type<ov::op::v0::MatMul>(consumer.get_node());
+    //         });
+    //     },
+    //     ov::pass::KeepConstAndDecompression);
+
     // It cannot be static data, because it may be difference for different inferencePrecision
     const auto precisions = get_convert_precisions();
     if (config.inferencePrecision == ov::element::f16) {
@@ -419,16 +430,16 @@ void Transformations::PreLpt(const std::vector<ov::element::Type>& defaultPrecis
                                  keep_precision_sensitive_in_fp32,
                                  false);
     }
-    CPU_REGISTER_PASS_COMMON(manager, ov::pass::KeepConstAndDecompression);
-    CPU_SET_CALLBACK_COMMON(
-        manager,
-        [](const_node_ptr& node) -> bool {
-            const auto consumers = node->get_output_target_inputs(0);
-            return std::all_of(consumers.begin(), consumers.end(), [](const ov::Input<ov::Node>& consumer) {
-                return !ov::is_type<ov::op::v0::MatMul>(consumer.get_node());
-            });
-        },
-        ov::pass::KeepConstAndDecompression);
+    // CPU_REGISTER_PASS_COMMON(manager, ov::pass::KeepConstAndDecompression);
+    // // CPU_SET_CALLBACK_COMMON(
+    // //     manager,
+    // //     [](const_node_ptr& node) -> bool {
+    // //         const auto consumers = node->get_output_target_inputs(0);
+    // //         return std::all_of(consumers.begin(), consumers.end(), [](const ov::Input<ov::Node>& consumer) {
+    // //             return !ov::is_type<ov::op::v0::MatMul>(consumer.get_node());
+    // //         });
+    // //     },
+    // //     ov::pass::KeepConstAndDecompression);
 
     CPU_REGISTER_PASS_COMMON(manager, ov::pass::AUGRUCellFusion);
     CPU_REGISTER_PASS_COMMON(manager, ov::pass::CommonOptimizations);

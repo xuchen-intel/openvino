@@ -507,8 +507,10 @@ bool ov::pass::ConvertPrecision::run_on_model(const std::shared_ptr<ov::Model>& 
     if (m_keep_precision_sensitive_in_fp32) {
         pass::Manager manager(get_pass_config(), "KeepPrecisionSensitiveInFP32:RemoveConverts");
         manager.register_pass<pass::EnableDecompressionConvertConstantFolding>();
+std::cout << "CCCCCCCCCCCC before first ContantFolding" << std::endl;
         manager.register_pass<pass::ConstantFolding>();
         manager.run_passes(f);
+std::cout << "CCCCCCCCCCCC after first ContantFolding" << std::endl;
     }
 
     (void)is_changed;  // ignored

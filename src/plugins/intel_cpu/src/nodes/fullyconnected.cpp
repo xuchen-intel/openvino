@@ -360,6 +360,11 @@ void FullyConnected::execTensorParallelSync() {
 void FullyConnected::execute(dnnl::stream strm) {
     initTensorParallelSync();
 
+    const std::string fc_name = "__module.model.layers.0.self_attn.v_proj/aten::linear/MatMul";
+    if (this->getName() == fc_name) {
+        std::cout << "============ this->getName(): " << this->getName() << std::endl;
+    }
+
     executor->execute(memory);
 
     execTensorParallelSync();

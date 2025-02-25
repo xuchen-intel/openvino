@@ -103,6 +103,13 @@ bool ov::pass::ConstantFolding::run_on_model(const std::shared_ptr<ov::Model>& m
 
     bool rewritten = pre_calculated_values_folding(model);
 
+    // const std::string cvt_name = "Convert_394723";
+    // const std::string mul_name = "__module.model.layers.0.self_attn.q_proj/aten::linear/MatMul/fc_weights_1";
+    // const std::string mul_name_tmp = "Multiply_32089";
+    const std::string cvt_name = "Convert_394741";
+    const std::string mul_name = "__module.model.layers.0.self_attn.v_proj/aten::linear/MatMul/fc_weights_1";
+    const std::string mul_name_tmp = "Multiply_32111";
+
     for (const auto& original_node : model->get_ordered_ops()) {
         auto node = original_node;
         if (!original_node->can_constant_fold(original_node->input_values())) {
@@ -121,18 +128,42 @@ bool ov::pass::ConstantFolding::run_on_model(const std::shared_ptr<ov::Model>& m
             continue;
         }
         if (node_has_requires_precision_conversion_attribute(node)) {
+            if (node->get_friendly_name() == mul_name) {
+                std::cout << "###### node->get_friendly_name() 1: " << node->get_friendly_name() << std::endl;
+                std::cout << "###### node->get_type_name() 1: " << node->get_type_name() << std::endl;
+            }
             remove_requires_precision_conversion_attribute(node);
             node = util::convert_to_supported_precision(node.get());
+            if (node->get_friendly_name() == mul_name_tmp) {
+                std::cout << "###### node->get_friendly_name() 2: " << node->get_friendly_name() << std::endl;
+                std::cout << "###### node->get_type_name() 2: " << node->get_type_name() << std::endl;
+            }
         } else {
             rewritten = restore_original_input_precision(node) || rewritten;
         }
 
         if (rewritten) {
+            if (node->get_friendly_name() == cvt_name) {
+                std::cout << "###### node->get_friendly_name() 3: " << node->get_friendly_name() << std::endl;
+                std::cout << "###### node->get_type_name() 3: " << node->get_type_name() << std::endl;
+            }
+            if (node->get_friendly_name() == mul_name_tmp) {
+                std::cout << "###### node->get_friendly_name() 4: " << node->get_friendly_name() << std::endl;
+                std::cout << "###### node->get_type_name() 4: " << node->get_type_name() << std::endl;
+            }
             node->validate_and_infer_types();
         }
 
         OutputVector replacements(node->get_output_size());
         if (node->constant_fold(replacements, node->input_values())) {
+            if (node->get_friendly_name() == cvt_name) {
+                std::cout << "###### node->get_friendly_name() 5: " << node->get_friendly_name() << std::endl;
+                std::cout << "###### node->get_type_name() 5: " << node->get_type_name() << std::endl;
+            }
+            if (node->get_friendly_name() == mul_name_tmp) {
+                std::cout << "###### node->get_friendly_name() 6: " << node->get_friendly_name() << std::endl;
+                std::cout << "###### node->get_type_name() 6: " << node->get_type_name() << std::endl;
+            }
             OPENVINO_ASSERT(!constant_folding_is_disabled(original_node),
                             "Node folded but constant folding disabled. Check constant_fold implementation for ",
                             node);
@@ -155,6 +186,11 @@ bool ov::pass::ConstantFolding::run_on_model(const std::shared_ptr<ov::Model>& m
                     copy_runtime_info(original_node, replacement_ptr);
 
                     rewritten = true;
+
+                    if (replacement_ptr->get_friendly_name() == mul_name) {
+                        std::cout << "###### replacement_ptr->get_friendly_name() 7: " << replacement_ptr->get_friendly_name() << std::endl;
+                        std::cout << "###### replacement_ptr->get_type_name() 7: " << replacement_ptr->get_type_name() << std::endl;
+                    }
                 }
             }
         } else {

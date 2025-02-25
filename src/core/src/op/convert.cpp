@@ -204,6 +204,19 @@ bool Convert::evaluate(TensorVector& outputs, const TensorVector& inputs) const 
     OPENVINO_ASSERT(outputs.size() == 1);
     OPENVINO_ASSERT(inputs.size() == 1);
 
+    // const std::string cvt_name = "Convert_394723";
+    const std::string cvt_name = "Convert_394741";
+    if (get_friendly_name() == cvt_name) {
+        std::cout << "############ Convert::evaluate" << std::endl;
+        std::cout << "############ in precision: " << inputs[0].get_element_type() << std::endl;
+        std::cout << "############ out precision: " << get_destination_type() << std::endl;
+        std::cout << "############ shape: ";
+        for (const auto &dim : inputs[0].get_shape()) {
+            std::cout << dim << ",";
+        }
+        std::cout << std::endl;
+    }
+
     if (auto& out = outputs[0]) {
         const auto& in = inputs[0];
         const auto& in_shape = in.get_shape();

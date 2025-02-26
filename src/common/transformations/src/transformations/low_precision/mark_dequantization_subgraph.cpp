@@ -96,9 +96,24 @@ ov::pass::MarkDequantization::MarkDequantization(const element::TypeVector& prec
         auto input = pt_map.at(input_pattern);
         const auto multiply = m.get_match_root();
 
+const std::string mul_name = "__module.model.layers.0.self_attn.v_proj/aten::linear/MatMul/fc_weights_1";
+if (multiply->get_friendly_name() == mul_name) {
+    std::cout << "MMMMMM multiply->get_friendly_name() 1: " << multiply->get_friendly_name() << std::endl;
+    std::cout << "MMMMMM !check_precision(input.get_element_type(), precisions): "
+              << !check_precision(input.get_element_type(), precisions) << std::endl;
+    std::cout << "MMMMMM transformation_callback(multiply): "
+              << transformation_callback(multiply) << std::endl;
+}
+
         if (!check_precision(input.get_element_type(), precisions) || transformation_callback(multiply)) {
             return false;
         }
+
+if (multiply->get_friendly_name() == mul_name) {
+    std::cout << "MMMMMM multiply->get_friendly_name() 2: " << multiply->get_friendly_name() << std::endl;
+    std::cout << "MMMMMM fold_subtract_const: " << fold_subtract_const << std::endl;
+    std::cout << "MMMMMM fold_multiply_const: " << fold_multiply_const << std::endl;
+}
 
         // Multiply and Subtract have to be marked as dq
         set_rt_info(pt_map, mark_as_dequantization_node, {subtract_pattern, multiply_pattern}, {/* not applicable */});
@@ -112,10 +127,16 @@ ov::pass::MarkDequantization::MarkDequantization(const element::TypeVector& prec
             converts_to_unmark.push_back(zp_convert_pattern);
         } else {
             converts_to_mark.push_back(zp_convert_pattern);
+            if (multiply->get_friendly_name() == mul_name) {
+                std::cout << "MMMMMM disable_constant_folding zp_convert_pattern" << std::endl;
+            }
         }
 
         if (fold_multiply_const) {
             converts_to_unmark.push_back(scale_convert_pattern);
+            if (multiply->get_friendly_name() == mul_name) {
+                std::cout << "MMMMMM enable_constant_folding scale_convert_pattern" << std::endl;
+            }
         } else {
             converts_to_mark.push_back(scale_convert_pattern);
         }

@@ -82,7 +82,7 @@ static const TypeMapping dnnlFCTypeMapping {
     {{_bf16, _u8 | _i8 | _nf4 | _u4 | _i4 | _f4e2m1, _any, _any},       pt(bypass(), bypass(), use<0>(), use<0>()),
      Require<dnnl::impl::cpu::x64::avx512_core_bf16>()}, // Ticket 122347
     {{_bf16, _u8 | _i8 | _nf4 | _u4 | _i4 | _f4e2m1, _any, _any},       pt(just<f32>(), bypass(), just<f32>(), just<f32>())},
-    {{_f32,  _u8 | _i8 | _nf4 | _u4 | _i4 | _f4e2m1, _any, _any},       pt(bypass(), bypass(), use<0>(), use<0>())},
+    {{_f32,  _u8 | _i8 | _f8e4m3 | _f8e5m2 | _nf4 | _u4 | _i4 | _f4e2m1, _any, _any},       pt(bypass(), bypass(), use<0>(), use<0>())},
     // @todo should we fallback to FPXX instead of _f32?
     {{_any, _any, _any, _any},                                pt(just<f32>(), just<f32>(), just<f32>(), just<f32>())},
     // @todo explicitly cover configuration limitations for oneDNN on ARM

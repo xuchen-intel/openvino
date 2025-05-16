@@ -22,7 +22,7 @@ myst-parser==2.0.0
 packaging==23.0
 pluggy==0.13.1
 pydata-sphinx-theme==0.14.4
-Pygments==2.15.1
+Pygments==2.19.1
 pyparsing==3.0.9
 pytest==6.2.5
 pytest-html==3.1.1

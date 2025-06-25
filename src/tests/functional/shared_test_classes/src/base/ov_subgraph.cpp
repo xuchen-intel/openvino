@@ -312,6 +312,14 @@ void SubgraphBaseTest::compile_model() {
     }
 }
 
+static int8_t get_u1(const uint8_t& val, uint8_t shift) {
+    return (val & (0x1 << shift)) >> shift;
+}
+
+static int8_t get_u2(const uint8_t& val, uint8_t shift) {
+    return (val & (0x3 << shift)) >> shift;
+}
+
 void SubgraphBaseTest::generate_inputs(const std::vector<ov::Shape>& targetInputStaticShapes) {
     inputs.clear();
     ov::test::utils::ModelRange modelRange;
@@ -325,7 +333,53 @@ void SubgraphBaseTest::generate_inputs(const std::vector<ov::Shape>& targetInput
                 std::shared_ptr<ov::Node> nodePtr = node.get_node()->shared_from_this();
                 for (size_t port = 0; port < nodePtr->get_input_size(); ++port) {
                     if (nodePtr->get_input_node_ptr(port)->shared_from_this() == inputNode->shared_from_this()) {
-                        inputs.insert({param, modelRange.generate_input(nodePtr, port, *itTargetShape)});
+                        auto tensor = modelRange.generate_input(nodePtr, port, *itTargetShape);
+                        inputs.insert({param, tensor});
+#if 1
+                        size_t input_size = tensor.get_size();
+                        // f32
+                        // auto input_data = static_cast<float *>(tensor.data(ov::element::f32));
+                        // for (size_t i = 0; i < input_size; i++) {
+                        //     std::cout << static_cast<float>(input_data[i]) << " ";
+                        // }
+                        // std::cout << std::endl;
+                        // f16
+                        // auto input_data = static_cast<uint16_t *>(tensor.data(ov::element::f16));
+                        // for (size_t i = 0; i < input_size; i++) {
+                        //     std::cout << static_cast<float>(float16::from_bits(input_data[i])) << " ";
+                        // }
+                        // std::cout << std::endl;
+                        // bf16
+                        // auto input_data = static_cast<uint16_t *>(tensor.data(ov::element::bf16));
+                        // for (size_t i = 0; i < input_size; i++) {
+                        //     std::cout << static_cast<float>(bfloat16::from_bits(input_data[i])) << " ";
+                        // }
+                        // std::cout << std::endl;
+                        // f8e4m3
+                        // auto input_data = static_cast<uint8_t *>(tensor.data(ov::element::f8e4m3));
+                        // for (size_t i = 0; i < input_size; i++) {
+                        //     std::cout << static_cast<float>(float8_e4m3::from_bits(input_data[i])) << " ";
+                        // }
+                        // std::cout << std::endl;
+                        // f8e5m2
+                        // auto input_data = static_cast<uint8_t *>(tensor.data(ov::element::f8e5m2));
+                        // for (size_t i = 0; i < input_size; i++) {
+                        //     std::cout << static_cast<float>(float8_e5m2::from_bits(input_data[i])) << " ";
+                        // }
+                        // std::cout << std::endl;
+                        // u1
+                        // auto input_data = static_cast<uint8_t *>(tensor.data(ov::element::u1));
+                        // for (size_t i = 0; i < input_size; i++) {
+                        //     std::cout << static_cast<int>(get_u1(input_data[i / 8], i % 8)) << " ";
+                        // }
+                        // std::cout << std::endl;
+                        // u2
+                        auto input_data = static_cast<uint8_t *>(tensor.data(ov::element::u2));
+                        for (size_t i = 0; i < input_size; i++) {
+                            std::cout << static_cast<int>(get_u2(input_data[i / 4], (i % 4) * 2)) << " ";
+                        }
+                        std::cout << std::endl;
+#endif
                         break;
                     }
                 }
@@ -502,6 +556,87 @@ void SubgraphBaseTest::validate() {
     if (expectedOutputs.empty()) {
         return;
     }
+
+#if 1
+    // === f8e4m3
+    // size_t expected_size = expectedOutputs[0].get_size();
+    // auto expected_data = static_cast<uint8_t *>(expectedOutputs[0].data(ov::element::f8e4m3));
+    // for (size_t i = 0; i < expected_size; i++) {
+    //     std::cout << static_cast<float>(float8_e4m3::from_bits(expected_data[i])) << " ";
+    // }
+    // std::cout << std::endl;
+    // size_t actual_size = actualOutputs[0].get_size();
+    // auto actual_data = static_cast<uint8_t *>(actualOutputs[0].data(ov::element::f8e4m3));
+    // for (size_t i = 0; i < actual_size; i++) {
+    //     std::cout << static_cast<float>(float8_e4m3::from_bits(actual_data[i])) << " ";
+    // }
+    // std::cout << std::endl;
+    // === f8e5m2
+    // size_t expected_size = expectedOutputs[0].get_size();
+    // auto expected_data = static_cast<uint8_t *>(expectedOutputs[0].data(ov::element::f8e5m2));
+    // for (size_t i = 0; i < expected_size; i++) {
+    //     std::cout << static_cast<float>(float8_e5m2::from_bits(expected_data[i])) << " ";
+    // }
+    // std::cout << std::endl;
+    // size_t actual_size = actualOutputs[0].get_size();
+    // auto actual_data = static_cast<uint8_t *>(actualOutputs[0].data(ov::element::f8e5m2));
+    // for (size_t i = 0; i < actual_size; i++) {
+    //     std::cout << static_cast<float>(float8_e5m2::from_bits(actual_data[i])) << " ";
+    // }
+    // std::cout << std::endl;
+    // === f32
+    size_t expected_size = expectedOutputs[0].get_size();
+    auto expected_data = static_cast<float *>(expectedOutputs[0].data(ov::element::f32));
+    for (size_t i = 0; i < expected_size; i++) {
+        std::cout << static_cast<float>(expected_data[i]) << " ";
+    }
+    std::cout << std::endl;
+    size_t actual_size = actualOutputs[0].get_size();
+    auto actual_data = static_cast<float *>(actualOutputs[0].data(ov::element::f32));
+    for (size_t i = 0; i < actual_size; i++) {
+        std::cout << static_cast<float>(actual_data[i]) << " ";
+    }
+    std::cout << std::endl;
+    // === f16
+    // size_t expected_size = expectedOutputs[0].get_size();
+    // auto expected_data = static_cast<uint16_t *>(expectedOutputs[0].data(ov::element::f16));
+    // for (size_t i = 0; i < expected_size; i++) {
+    //     std::cout << static_cast<float>(float16::from_bits(expected_data[i])) << " ";
+    // }
+    // std::cout << std::endl;
+    // size_t actual_size = actualOutputs[0].get_size();
+    // auto actual_data = static_cast<uint16_t *>(actualOutputs[0].data(ov::element::f16));
+    // for (size_t i = 0; i < actual_size; i++) {
+    //     std::cout << static_cast<float>(float16::from_bits(actual_data[i])) << " ";
+    // }
+    // std::cout << std::endl;
+    // === bf16
+    // size_t expected_size = expectedOutputs[0].get_size();
+    // auto expected_data = static_cast<uint16_t *>(expectedOutputs[0].data(ov::element::bf16));
+    // for (size_t i = 0; i < expected_size; i++) {
+    //     std::cout << static_cast<float>(bfloat16::from_bits(expected_data[i])) << " ";
+    // }
+    // std::cout << std::endl;
+    // size_t actual_size = actualOutputs[0].get_size();
+    // auto actual_data = static_cast<uint16_t *>(actualOutputs[0].data(ov::element::bf16));
+    // for (size_t i = 0; i < actual_size; i++) {
+    //     std::cout << static_cast<float>(bfloat16::from_bits(actual_data[i])) << " ";
+    // }
+    // std::cout << std::endl;
+    // === u2
+    // size_t expected_size = expectedOutputs[0].get_size();
+    // auto expected_data = static_cast<uint8_t *>(expectedOutputs[0].data(ov::element::u2));
+    // for (size_t i = 0; i < expected_size; i++) {
+    //     std::cout << static_cast<int>(get_u2(expected_data[i / 4], (i % 4) * 2)) << " ";
+    // }
+    // std::cout << std::endl;
+    // size_t actual_size = actualOutputs[0].get_size();
+    // auto actual_data = static_cast<uint8_t *>(actualOutputs[0].data(ov::element::u2));
+    // for (size_t i = 0; i < actual_size; i++) {
+    //     std::cout << static_cast<int>(get_u2(actual_data[i / 4], (i % 4) * 2)) << " ";
+    // }
+    // std::cout << std::endl;
+#endif
 
     ASSERT_EQ(actualOutputs.size(), expectedOutputs.size())
         << "TEMPLATE plugin has " << expectedOutputs.size() << " outputs, while " << targetDevice << " " << actualOutputs.size();

@@ -148,7 +148,7 @@ private:
 
     static constexpr size_t m_bits = bit_width<ET>();                            //!< Number of bit for single value.
     static constexpr size_t m_num_values = 8 / m_bits;                           //!< Number values in byte.
-    static constexpr size_t m_shift_init = is_nibble_type(ET) ? 0 : 8 - m_bits;  //!< Initial value for bit shift.
+    static constexpr size_t m_shift_init = 0;                                    //!< Initial value for bit shift.
 
     Bits* m_ptr;         //!< Pointer to T as Bits used to get value from bits.
     size_t m_bit_shift;  //!< Current bit shift to get value.
@@ -296,7 +296,7 @@ private:
 
     static constexpr size_t m_bits = bit_width<ET>();         //!< Number of bit for single value.
     static constexpr size_t m_num_values = (3 * 8) / m_bits;  //!< Number values in byte.
-    static constexpr size_t m_shift_init = m_num_values - 1;  //!< Initial value for bit shift.
+    static constexpr size_t m_shift_init = 0;                 //!< Initial value for bit shift.
 
     struct ByteValue {
         uint8_t b0;
@@ -352,7 +352,7 @@ public:
         constexpr uint16_t mask_upper = util::make_n_bit_mask(upper_mask_bits) << lower_mask_bits;
 
         // get lower part of value
-        uint16_t v = ((m_bytes->b0 << 8U) | m_bytes->b1) >> (lower_mask_bits * m_bit_shift);
+        uint16_t v = ((m_bytes->b1 << 8U) | m_bytes->b0) >> (lower_mask_bits * m_bit_shift);
         v &= mask_lower;
         // get upper part of value
         v |= ((m_bytes->b2 << lower_mask_bits) >> (upper_mask_bits * m_bit_shift)) & mask_upper;
@@ -369,11 +369,11 @@ public:
         constexpr uint16_t mask_lower = util::make_n_bit_mask(lower_mask_bits);
         constexpr uint16_t mask_upper = util::make_n_bit_mask(upper_mask_bits) << lower_mask_bits;
 
-        uint16_t tmp = (m_bytes->b0 << 8U) | m_bytes->b1;
+        uint16_t tmp = (m_bytes->b1 << 8U) | m_bytes->b0;
         tmp &= ~(mask_lower << (lower_mask_bits * m_bit_shift));
         tmp |= (v & mask_lower) << (lower_mask_bits * m_bit_shift);
-        m_bytes->b0 = tmp >> 8U;
-        m_bytes->b1 = tmp & 0x00ff;
+        m_bytes->b1 = tmp >> 8U;
+        m_bytes->b0 = tmp & 0x00ff;
 
         tmp = m_bytes->b2 & ~((mask_upper >> lower_mask_bits) << (upper_mask_bits * m_bit_shift));
         tmp |= (((v & mask_upper) >> lower_mask_bits) << (upper_mask_bits * m_bit_shift));
@@ -428,7 +428,7 @@ public:
     // Iteration operators
     template <Type_t ETT = ET>
     typename std::enable_if<is_bit_type(ETT), Iterator<ET, T>>::type& operator++() {
-        m_et_ptr.m_bit_shift -= m_et_ptr.m_bits;
+        m_et_ptr.m_bit_shift += m_et_ptr.m_bits;
         m_et_ptr.m_bit_shift = m_et_ptr.m_bit_shift % (m_et_ptr.m_num_values * m_et_ptr.m_bits);
         m_et_ptr.m_ptr += static_cast<std::ptrdiff_t>(m_et_ptr.m_bit_shift == m_et_ptr.m_shift_init);
         return *this;
@@ -443,7 +443,7 @@ public:
 
     template <Type_t ETT = ET>
     typename std::enable_if<is_split_bit_type(ETT), Iterator<ET, T>>::type& operator++() {
-        --m_et_ptr.m_bit_shift;
+        ++m_et_ptr.m_bit_shift;
         m_et_ptr.m_bit_shift = m_et_ptr.m_bit_shift % m_et_ptr.m_num_values;
         m_et_ptr.m_ptr += (m_et_ptr.m_bit_shift == m_et_ptr.m_shift_init) ? 3 : 0;
         return *this;
@@ -457,8 +457,8 @@ public:
 
     template <Type_t ETT = ET>
     typename std::enable_if<is_bit_type(ETT), Iterator<ET, T>>::type& operator+=(const difference_type& n) {
-        const auto advance = n + (m_et_ptr.m_shift_init - m_et_ptr.m_bit_shift) / m_et_ptr.m_bits;
-        m_et_ptr.m_bit_shift = m_et_ptr.m_shift_init - (advance % m_et_ptr.m_num_values) * m_et_ptr.m_bits;
+        const auto advance = n + m_et_ptr.m_bit_shift / m_et_ptr.m_bits;
+        m_et_ptr.m_bit_shift = (advance % m_et_ptr.m_num_values) * m_et_ptr.m_bits;
         m_et_ptr.m_ptr += advance / m_et_ptr.m_num_values;
         return *this;
     }
@@ -471,8 +471,8 @@ public:
 
     template <Type_t ETT = ET>
     typename std::enable_if<is_split_bit_type(ETT), Iterator<ET, T>>::type& operator+=(const difference_type& n) {
-        const auto advance = n + m_et_ptr.m_shift_init - m_et_ptr.m_bit_shift;
-        m_et_ptr.m_bit_shift = m_et_ptr.m_shift_init - (advance % m_et_ptr.m_num_values);
+        const auto advance = n + m_et_ptr.m_bit_shift;
+        m_et_ptr.m_bit_shift = advance % m_et_ptr.m_num_values;
         m_et_ptr.m_ptr += 3 * (advance / m_et_ptr.m_num_values);
         return *this;
     }
@@ -485,9 +485,9 @@ public:
 
     template <Type_t ETT = ET>
     typename std::enable_if<is_bit_type(ETT), Iterator<ET, T>>::type& operator--() {
-        m_et_ptr.m_bit_shift += m_et_ptr.m_bits;
+        m_et_ptr.m_bit_shift -= m_et_ptr.m_bits;
         m_et_ptr.m_bit_shift = m_et_ptr.m_bit_shift % (m_et_ptr.m_num_values * m_et_ptr.m_bits);
-        m_et_ptr.m_ptr -= static_cast<std::ptrdiff_t>(m_et_ptr.m_bit_shift == 0);
+        m_et_ptr.m_ptr -= static_cast<std::ptrdiff_t>(m_et_ptr.m_bit_shift == 8 - m_et_ptr.m_bits);
         return *this;
     }
 
@@ -500,9 +500,9 @@ public:
 
     template <Type_t ETT = ET>
     typename std::enable_if<is_split_bit_type(ETT), Iterator<ET, T>>::type& operator--() {
-        ++m_et_ptr.m_bit_shift;
+        --m_et_ptr.m_bit_shift;
         m_et_ptr.m_bit_shift = m_et_ptr.m_bit_shift % m_et_ptr.m_num_values;
-        m_et_ptr.m_ptr -= m_et_ptr.m_bit_shift == 0 ? 3 : 0;
+        m_et_ptr.m_ptr -= m_et_ptr.m_bit_shift == m_et_ptr.m_num_values - 1 ? 3 : 0;
         return *this;
     }
 
@@ -514,7 +514,7 @@ public:
 
     template <Type_t ETT = ET>
     typename std::enable_if<is_bit_type(ETT), Iterator<ET, T>>::type& operator-=(const difference_type& n) {
-        const auto advance = m_et_ptr.m_bit_shift / m_et_ptr.m_bits + n;
+        const auto advance = m_et_ptr.m_bit_shift / m_et_ptr.m_bits - n;
         m_et_ptr.m_bit_shift = (advance % m_et_ptr.m_num_values) * m_et_ptr.m_bits;
         m_et_ptr.m_ptr -= advance / m_et_ptr.m_num_values;
         return *this;
@@ -528,7 +528,7 @@ public:
 
     template <Type_t ETT = ET>
     typename std::enable_if<is_split_bit_type(ETT), Iterator<ET, T>>::type& operator-=(const difference_type& n) {
-        const auto advance = m_et_ptr.m_bit_shift + n;
+        const auto advance = m_et_ptr.m_bit_shift - n;
         m_et_ptr.m_bit_shift = advance % m_et_ptr.m_num_values;
         m_et_ptr.m_ptr -= 3 * (advance / m_et_ptr.m_num_values);
         return *this;

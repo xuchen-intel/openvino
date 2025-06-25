@@ -980,6 +980,11 @@ void Node::filterSupportedPrimitiveDescriptors() {
         return;
     }
 
+#if 0
+    std::cout << "###### getName(): " << getName() << std::endl;
+    std::cout << "###### getType(): " << NameFromType(getType()) << std::endl;
+#endif
+
     // Compare by format tag
     auto areCompatible = [](const MemoryDesc& desc, dnnl::memory::format_tag fmt) -> bool {
         auto data_type = DnnlExtensionUtils::ElementTypeToDataType(desc.getPrecision());

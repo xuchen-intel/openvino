@@ -27,6 +27,265 @@
 
 using namespace ov;
 
+static uint8_t quaternary_table[1024] = {
+    0, 0, 0, 0,
+    1, 0, 0, 0,
+    2, 0, 0, 0,
+    3, 0, 0, 0,
+    0, 1, 0, 0,
+    1, 1, 0, 0,
+    2, 1, 0, 0,
+    3, 1, 0, 0,
+    0, 2, 0, 0,
+    1, 2, 0, 0,
+    2, 2, 0, 0,
+    3, 2, 0, 0,
+    0, 3, 0, 0,
+    1, 3, 0, 0,
+    2, 3, 0, 0,
+    3, 3, 0, 0,
+    0, 0, 1, 0,
+    1, 0, 1, 0,
+    2, 0, 1, 0,
+    3, 0, 1, 0,
+    0, 1, 1, 0,
+    1, 1, 1, 0,
+    2, 1, 1, 0,
+    3, 1, 1, 0,
+    0, 2, 1, 0,
+    1, 2, 1, 0,
+    2, 2, 1, 0,
+    3, 2, 1, 0,
+    0, 3, 1, 0,
+    1, 3, 1, 0,
+    2, 3, 1, 0,
+    3, 3, 1, 0,
+    0, 0, 2, 0,
+    1, 0, 2, 0,
+    2, 0, 2, 0,
+    3, 0, 2, 0,
+    0, 1, 2, 0,
+    1, 1, 2, 0,
+    2, 1, 2, 0,
+    3, 1, 2, 0,
+    0, 2, 2, 0,
+    1, 2, 2, 0,
+    2, 2, 2, 0,
+    3, 2, 2, 0,
+    0, 3, 2, 0,
+    1, 3, 2, 0,
+    2, 3, 2, 0,
+    3, 3, 2, 0,
+    0, 0, 3, 0,
+    1, 0, 3, 0,
+    2, 0, 3, 0,
+    3, 0, 3, 0,
+    0, 1, 3, 0,
+    1, 1, 3, 0,
+    2, 1, 3, 0,
+    3, 1, 3, 0,
+    0, 2, 3, 0,
+    1, 2, 3, 0,
+    2, 2, 3, 0,
+    3, 2, 3, 0,
+    0, 3, 3, 0,
+    1, 3, 3, 0,
+    2, 3, 3, 0,
+    3, 3, 3, 0,
+    0, 0, 0, 1,
+    1, 0, 0, 1,
+    2, 0, 0, 1,
+    3, 0, 0, 1,
+    0, 1, 0, 1,
+    1, 1, 0, 1,
+    2, 1, 0, 1,
+    3, 1, 0, 1,
+    0, 2, 0, 1,
+    1, 2, 0, 1,
+    2, 2, 0, 1,
+    3, 2, 0, 1,
+    0, 3, 0, 1,
+    1, 3, 0, 1,
+    2, 3, 0, 1,
+    3, 3, 0, 1,
+    0, 0, 1, 1,
+    1, 0, 1, 1,
+    2, 0, 1, 1,
+    3, 0, 1, 1,
+    0, 1, 1, 1,
+    1, 1, 1, 1,
+    2, 1, 1, 1,
+    3, 1, 1, 1,
+    0, 2, 1, 1,
+    1, 2, 1, 1,
+    2, 2, 1, 1,
+    3, 2, 1, 1,
+    0, 3, 1, 1,
+    1, 3, 1, 1,
+    2, 3, 1, 1,
+    3, 3, 1, 1,
+    0, 0, 2, 1,
+    1, 0, 2, 1,
+    2, 0, 2, 1,
+    3, 0, 2, 1,
+    0, 1, 2, 1,
+    1, 1, 2, 1,
+    2, 1, 2, 1,
+    3, 1, 2, 1,
+    0, 2, 2, 1,
+    1, 2, 2, 1,
+    2, 2, 2, 1,
+    3, 2, 2, 1,
+    0, 3, 2, 1,
+    1, 3, 2, 1,
+    2, 3, 2, 1,
+    3, 3, 2, 1,
+    0, 0, 3, 1,
+    1, 0, 3, 1,
+    2, 0, 3, 1,
+    3, 0, 3, 1,
+    0, 1, 3, 1,
+    1, 1, 3, 1,
+    2, 1, 3, 1,
+    3, 1, 3, 1,
+    0, 2, 3, 1,
+    1, 2, 3, 1,
+    2, 2, 3, 1,
+    3, 2, 3, 1,
+    0, 3, 3, 1,
+    1, 3, 3, 1,
+    2, 3, 3, 1,
+    3, 3, 3, 1,
+    0, 0, 0, 2,
+    1, 0, 0, 2,
+    2, 0, 0, 2,
+    3, 0, 0, 2,
+    0, 1, 0, 2,
+    1, 1, 0, 2,
+    2, 1, 0, 2,
+    3, 1, 0, 2,
+    0, 2, 0, 2,
+    1, 2, 0, 2,
+    2, 2, 0, 2,
+    3, 2, 0, 2,
+    0, 3, 0, 2,
+    1, 3, 0, 2,
+    2, 3, 0, 2,
+    3, 3, 0, 2,
+    0, 0, 1, 2,
+    1, 0, 1, 2,
+    2, 0, 1, 2,
+    3, 0, 1, 2,
+    0, 1, 1, 2,
+    1, 1, 1, 2,
+    2, 1, 1, 2,
+    3, 1, 1, 2,
+    0, 2, 1, 2,
+    1, 2, 1, 2,
+    2, 2, 1, 2,
+    3, 2, 1, 2,
+    0, 3, 1, 2,
+    1, 3, 1, 2,
+    2, 3, 1, 2,
+    3, 3, 1, 2,
+    0, 0, 2, 2,
+    1, 0, 2, 2,
+    2, 0, 2, 2,
+    3, 0, 2, 2,
+    0, 1, 2, 2,
+    1, 1, 2, 2,
+    2, 1, 2, 2,
+    3, 1, 2, 2,
+    0, 2, 2, 2,
+    1, 2, 2, 2,
+    2, 2, 2, 2,
+    3, 2, 2, 2,
+    0, 3, 2, 2,
+    1, 3, 2, 2,
+    2, 3, 2, 2,
+    3, 3, 2, 2,
+    0, 0, 3, 2,
+    1, 0, 3, 2,
+    2, 0, 3, 2,
+    3, 0, 3, 2,
+    0, 1, 3, 2,
+    1, 1, 3, 2,
+    2, 1, 3, 2,
+    3, 1, 3, 2,
+    0, 2, 3, 2,
+    1, 2, 3, 2,
+    2, 2, 3, 2,
+    3, 2, 3, 2,
+    0, 3, 3, 2,
+    1, 3, 3, 2,
+    2, 3, 3, 2,
+    3, 3, 3, 2,
+    0, 0, 0, 3,
+    1, 0, 0, 3,
+    2, 0, 0, 3,
+    3, 0, 0, 3,
+    0, 1, 0, 3,
+    1, 1, 0, 3,
+    2, 1, 0, 3,
+    3, 1, 0, 3,
+    0, 2, 0, 3,
+    1, 2, 0, 3,
+    2, 2, 0, 3,
+    3, 2, 0, 3,
+    0, 3, 0, 3,
+    1, 3, 0, 3,
+    2, 3, 0, 3,
+    3, 3, 0, 3,
+    0, 0, 1, 3,
+    1, 0, 1, 3,
+    2, 0, 1, 3,
+    3, 0, 1, 3,
+    0, 1, 1, 3,
+    1, 1, 1, 3,
+    2, 1, 1, 3,
+    3, 1, 1, 3,
+    0, 2, 1, 3,
+    1, 2, 1, 3,
+    2, 2, 1, 3,
+    3, 2, 1, 3,
+    0, 3, 1, 3,
+    1, 3, 1, 3,
+    2, 3, 1, 3,
+    3, 3, 1, 3,
+    0, 0, 2, 3,
+    1, 0, 2, 3,
+    2, 0, 2, 3,
+    3, 0, 2, 3,
+    0, 1, 2, 3,
+    1, 1, 2, 3,
+    2, 1, 2, 3,
+    3, 1, 2, 3,
+    0, 2, 2, 3,
+    1, 2, 2, 3,
+    2, 2, 2, 3,
+    3, 2, 2, 3,
+    0, 3, 2, 3,
+    1, 3, 2, 3,
+    2, 3, 2, 3,
+    3, 3, 2, 3,
+    0, 0, 3, 3,
+    1, 0, 3, 3,
+    2, 0, 3, 3,
+    3, 0, 3, 3,
+    0, 1, 3, 3,
+    1, 1, 3, 3,
+    2, 1, 3, 3,
+    3, 1, 3, 3,
+    0, 2, 3, 3,
+    1, 2, 3, 3,
+    2, 2, 3, 3,
+    3, 2, 3, 3,
+    0, 3, 3, 3,
+    1, 3, 3, 3,
+    2, 3, 3, 3,
+    3, 3, 3, 3,
+};
+
 bool fuse_type_to_parameter(const std::shared_ptr<ov::Node>& node,
                             const precisions_map& precisions,
                             bool convert_input_precision);
@@ -1265,8 +1524,12 @@ void convert_lp_value(const SRC& src,
 
 std::shared_ptr<Node> convert_low_precisions_int(std::shared_ptr<ov::op::v0::Constant>& constant,
                                                  ov::element::Type to) {
+#if 1
+    std::cout << "############### convert_low_precisions_int begin" << std::endl;
+#endif
     // Supported integer precisions
-    static const precisions_set_t supported_integer_precisions = {ov::element::i4, ov::element::u4, ov::element::u1};
+    static const precisions_set_t supported_integer_precisions = {ov::element::i4, ov::element::u4, ov::element::u2,
+        ov::element::u1};
     // Get source element type and source data
     auto src_type = constant->get_element_type();
     const auto* src_data = reinterpret_cast<const uint8_t*>(constant->get_data_ptr());
@@ -1289,77 +1552,138 @@ std::shared_ptr<Node> convert_low_precisions_int(std::shared_ptr<ov::op::v0::Con
     // Convert values
     const auto size = shape_size(constant->get_shape());
     size_t src_idx(0), dst_idx(0), dst_off(0), src_off(0);
-    if (src_type.bitwidth() < 8) {
-        src_off = 8 - src_type.bitwidth();
+    // if (src_type.bitwidth() < 8) {
+    //     src_off = 8 - src_type.bitwidth();
+    // }
+
+    // if (to.bitwidth() < 8) {
+    //     dst_off = 8 - to.bitwidth();
+    // }
+
+    // Optimization for constant conversion from u2 to u8
+    if (src_type == ov::element::u2 && to == ov::element::u8) {
+#if 1
+        std::cout << "###### opt for u2 to u8" << std::endl;
+#endif
+        auto quadruple_size = size >> 2;
+        auto tail_size = size - (quadruple_size << 2);
+        for (; src_idx < quadruple_size; src_idx++, dst_idx += 4) {
+            std::memcpy(dst_data, &quaternary_table[src_data[src_idx] << 2], 4);
+        }
+        if (tail_size) {
+            std::memcpy(dst_data, &quaternary_table[src_data[src_idx] << 2], tail_size);
+        }
+        return new_constant;
     }
 
-    if (to.bitwidth() < 8) {
-        dst_off = 8 - to.bitwidth();
-    }
-
+    auto to_size = to.size();
+    auto src_bitwidth = src_type.bitwidth();
+    auto to_bitwidth = to.bitwidth();
+    auto src_is_signed = src_type.is_signed();
     for (size_t i = 0; i < size; i++) {
         // Source type at the current moment always less than 1 byte
         // Select the right destination type
-        switch (to.size()) {
+        switch (to_size) {
         case 1:
             convert_lp_value<uint8_t, uint8_t>(src_data[src_idx],
                                                dst_data[dst_idx],
                                                src_off,
-                                               src_type.bitwidth(),
+                                               src_bitwidth,
                                                dst_off,
-                                               to.bitwidth(),
-                                               src_type.is_signed());
+                                               to_bitwidth,
+                                               src_is_signed);
             break;
         case 2:
             convert_lp_value<uint8_t, uint16_t>(src_data[src_idx],
                                                 reinterpret_cast<uint16_t*>(dst_data)[dst_idx],
                                                 src_off,
-                                                src_type.bitwidth(),
+                                                src_bitwidth,
                                                 dst_off,
-                                                to.bitwidth(),
-                                                src_type.is_signed());
+                                                to_bitwidth,
+                                                src_is_signed);
             break;
         case 4:
             convert_lp_value<uint8_t, uint32_t>(src_data[src_idx],
                                                 reinterpret_cast<uint32_t*>(dst_data)[dst_idx],
                                                 src_off,
-                                                src_type.bitwidth(),
+                                                src_bitwidth,
                                                 dst_off,
-                                                to.bitwidth(),
-                                                src_type.is_signed());
+                                                to_bitwidth,
+                                                src_is_signed);
             break;
         case 8:
             convert_lp_value<uint8_t, uint64_t>(src_data[src_idx],
                                                 reinterpret_cast<uint64_t*>(dst_data)[dst_idx],
                                                 src_off,
-                                                src_type.bitwidth(),
+                                                src_bitwidth,
                                                 dst_off,
-                                                to.bitwidth(),
-                                                src_type.is_signed());
+                                                to_bitwidth,
+                                                src_is_signed);
             break;
         default:
             OPENVINO_THROW("Unsupported element size!");
         }
         // Calculate offsets and indexes
+        // if (src_type.bitwidth() < 8) {
+        //     if (src_off == 0) {
+        //         src_off = 8;
+        //         src_idx++;
+        //     }
+        //     src_off -= src_type.bitwidth();
+        // } else {
+        //     src_idx++;
+        // }
+        // if (to.bitwidth() < 8) {
+        //     if (dst_off == 0) {
+        //         dst_off = 8;
+        //         dst_idx++;
+        //     }
+        //     dst_off -= to.bitwidth();
+        // } else {
+        //     dst_idx++;
+        // }
+
+#if 0
+        // Calculate offsets and indexes
+        size_t num_values = 8 / src_type.bitwidth();
         if (src_type.bitwidth() < 8) {
-            if (src_off == 0) {
-                src_off = 8;
+            src_idx = i / num_values;
+            src_off = (i % num_values) * src_type.bitwidth();
+        } else {
+            src_idx = i;
+        }
+        if (to.bitwidth() < 8) {
+            dst_idx = i / num_values;
+            dst_off = (i % num_values) * src_type.bitwidth();
+        } else {
+            dst_idx = i;
+        }
+#else
+        // Calculate offsets and indexes
+        if (src_type.bitwidth() < 8) {
+            if (src_off == 8) {
+                src_off = 0;
                 src_idx++;
             }
-            src_off -= src_type.bitwidth();
+            src_off += src_type.bitwidth();
         } else {
             src_idx++;
         }
         if (to.bitwidth() < 8) {
-            if (dst_off == 0) {
-                dst_off = 8;
+            if (dst_off == 8) {
+                dst_off = 0;
                 dst_idx++;
             }
-            dst_off -= to.bitwidth();
+            dst_off += to.bitwidth();
         } else {
             dst_idx++;
         }
+#endif
     }
+
+#if 1
+    std::cout << "############### convert_low_precisions_int end" << std::endl;
+#endif
 
     return new_constant;
 }
@@ -1412,7 +1736,8 @@ bool fuse_type_to_constant(const std::shared_ptr<ov::Node>& node,
             new_const = change_constant_precision<ov::element::Type_t::u8, ov::element::Type_t::f32>(constant);
         } else if (from == ov::element::i8 && to == ov::element::i64) {
             new_const = change_constant_precision<ov::element::Type_t::i8, ov::element::Type_t::i64>(constant);
-        } else if (from == ov::element::i4 || from == ov::element::u4 || from == ov::element::u1) {
+        } else if (from == ov::element::i4 || from == ov::element::u4 || from == ov::element::u2 ||
+            from == ov::element::u1) {
             new_const = convert_low_precisions_int(constant, to);
         } else {
             OPENVINO_THROW("Precision conversion from " + from.get_type_name() + " to " + to.get_type_name() +

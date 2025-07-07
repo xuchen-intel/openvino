@@ -1566,73 +1566,77 @@ std::shared_ptr<Node> convert_low_precisions_int(std::shared_ptr<ov::op::v0::Con
         return new_constant;
     }
 
-    if (src_type.bitwidth() < 8) {
-        src_off = 8 - src_type.bitwidth();
-    }
-
-    if (to.bitwidth() < 8) {
-        dst_off = 8 - to.bitwidth();
-    }
-
+    const auto to_size = to.size();
+    const auto src_bitwidth = src_type.bitwidth();
+    const auto to_bitwidth = to.bitwidth();
+    const auto is_signed = src_type.is_signed();
     for (size_t i = 0; i < size; i++) {
         // Source type at the current moment always less than 1 byte
         // Select the right destination type
-        switch (to.size()) {
+#if 0
+        std::cout << std::endl;
+        std::cout << "###### src_off: " << src_off << std::endl;
+        std::cout << "###### src_bitwidth: " << src_bitwidth << std::endl;
+        std::cout << "###### dst_off: " << dst_off << std::endl;
+        std::cout << "###### to_bitwidth: " << to_bitwidth << std::endl;
+        std::cout << "###### is_signed: " << is_signed << std::endl;
+#endif
+        switch (to_size) {
         case 1:
             convert_lp_value<uint8_t, uint8_t>(src_data[src_idx],
                                                dst_data[dst_idx],
                                                src_off,
-                                               src_type.bitwidth(),
+                                               src_bitwidth,
                                                dst_off,
-                                               to.bitwidth(),
-                                               src_type.is_signed());
+                                               to_bitwidth,
+                                               is_signed);
             break;
         case 2:
             convert_lp_value<uint8_t, uint16_t>(src_data[src_idx],
                                                 reinterpret_cast<uint16_t*>(dst_data)[dst_idx],
                                                 src_off,
-                                                src_type.bitwidth(),
+                                                src_bitwidth,
                                                 dst_off,
-                                                to.bitwidth(),
-                                                src_type.is_signed());
+                                                to_bitwidth,
+                                                is_signed);
             break;
         case 4:
             convert_lp_value<uint8_t, uint32_t>(src_data[src_idx],
                                                 reinterpret_cast<uint32_t*>(dst_data)[dst_idx],
                                                 src_off,
-                                                src_type.bitwidth(),
+                                                src_bitwidth,
                                                 dst_off,
-                                                to.bitwidth(),
-                                                src_type.is_signed());
+                                                to_bitwidth,
+                                                is_signed);
             break;
         case 8:
             convert_lp_value<uint8_t, uint64_t>(src_data[src_idx],
                                                 reinterpret_cast<uint64_t*>(dst_data)[dst_idx],
                                                 src_off,
-                                                src_type.bitwidth(),
+                                                src_bitwidth,
                                                 dst_off,
-                                                to.bitwidth(),
-                                                src_type.is_signed());
+                                                to_bitwidth,
+                                                is_signed);
             break;
         default:
             OPENVINO_THROW("Unsupported element size!");
         }
         // Calculate offsets and indexes
-        if (src_type.bitwidth() < 8) {
-            if (src_off == 0) {
-                src_off = 8;
+        if (src_bitwidth < 8) {
+            src_off += src_bitwidth;
+            if (src_off == 8) {
+                src_off = 0;
                 src_idx++;
             }
-            src_off -= src_type.bitwidth();
         } else {
             src_idx++;
         }
-        if (to.bitwidth() < 8) {
-            if (dst_off == 0) {
-                dst_off = 8;
+        if (to_bitwidth < 8) {
+            dst_off += to_bitwidth;
+            if (dst_off == 8) {
+                dst_off = 0;
                 dst_idx++;
             }
-            dst_off -= to.bitwidth();
         } else {
             dst_idx++;
         }

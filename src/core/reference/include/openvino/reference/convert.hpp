@@ -36,6 +36,7 @@ namespace detail {
 
 template <typename TI, typename TO>
 constexpr typename std::enable_if<!std::is_same<TO, char>::value, TO>::type convert(const TI v) {
+
     return static_cast<TO>(v);
 }
 

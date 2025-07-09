@@ -312,6 +312,14 @@ void SubgraphBaseTest::compile_model() {
     }
 }
 
+static int8_t get_u1(const uint8_t& val, uint8_t shift) {
+    return (val & (0x1 << shift)) >> shift;
+}
+
+static int8_t get_u2(const uint8_t& val, uint8_t shift) {
+    return (val & (0x3 << shift)) >> shift;
+}
+
 void SubgraphBaseTest::generate_inputs(const std::vector<ov::Shape>& targetInputStaticShapes) {
     inputs.clear();
     ov::test::utils::ModelRange modelRange;

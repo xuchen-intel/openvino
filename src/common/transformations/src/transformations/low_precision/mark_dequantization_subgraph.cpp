@@ -216,16 +216,37 @@ ov::pass::MarkDequantization::MarkDequantization(const element::TypeVector& prec
     auto scale_convert_pattern = pattern::optional<v0::Convert>(scale_pattern);
     auto scale_reshape_pattern = pattern::optional<v1::Reshape, v0::Unsqueeze>({scale_convert_pattern, any_input()});
     auto multiply_pattern = wrap_type<v1::Multiply>({subtract_pattern, scale_reshape_pattern});
+#if 0
+    auto requisite_subtract_pattern = wrap_type<v1::Subtract>({input_pattern, zp_reshape_pattern});
+    auto pattern = std::make_shared<ov::pass::pattern::op::Or>(OutputVector{requisite_subtract_pattern, multiply_pattern});
+#endif
 
     ov::matcher_pass_callback callback = [OV_CAPTURE_CPY_AND_THIS](Matcher& m) -> bool {
         const auto& pt_map = m.get_pattern_value_map();
+#if 1
         auto convert = pt_map.at(convert_pattern);
+#endif
         auto input = pt_map.at(input_pattern);
         const auto multiply = m.get_match_root();
 
         if (transformation_callback(multiply)) {
             return false;
         }
+
+#if 0
+        // if (convert.get_node()->get_friendly_name() == "Convert_368907") {
+        //     std::cout << "###### convert.get_node()->get_friendly_name(): " << convert.get_node()->get_friendly_name() << std::endl;
+        // }
+
+
+        if (pt_map.count(subtract_pattern)) {
+            auto subtract= pt_map.at(subtract_pattern).get_node_shared_ptr();
+            if (subtract->get_friendly_name() == "self.model.model.layers.0.self_attn.qkv_proj.weight/zero_point/subtract" ||     // 4-bit
+                subtract->get_friendly_name() == "__module.model.layers.0.self_attn.q_proj/ov_ext::bit_linear/Subtract") {        // 2-bit 
+                std::cout << "###### MarkDequantization subtract->get_friendly_name(): " << subtract->get_friendly_name() << std::endl;
+            }
+        }
+#endif
 
         // Multiply and Subtract have to be marked as dq
         set_rt_info(pt_map, mark_as_dequantization_node, {subtract_pattern, multiply_pattern}, {/* not applicable */});

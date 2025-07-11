@@ -1520,6 +1520,12 @@ void Eltwise::initSupportedPrimitiveDescriptors() {
                       Algorithm::EltwiseBitwiseRightShift);
     };
 
+#if 0
+    if (getName() == "self.model.model.layers.0.self_attn.qkv_proj.weight/zero_point/subtract") {
+        std::cout << "****** getName(): " << getName() << std::endl;
+    }
+#endif
+
     std::vector<ov::element::Type> supportedPrecisions = isBitwise(algorithm)
                                                              ? std::vector<ov::element::Type>{ov::element::u8,
                                                                                               ov::element::i8,

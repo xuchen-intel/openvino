@@ -224,7 +224,23 @@ std::shared_ptr<ov::ICompiledModel> Plugin::compile_model(const std::shared_ptr<
     transformations.PostLpt();
     transformations.Snippets();
 
+#if 0
+    for (const auto &node : cloned_model->get_ordered_ops()) {
+        if (node->get_friendly_name() == "self.model.model.layers.0.self_attn.qkv_proj.weight/zero_point/subtract") {
+            std::cout << "****** after Snippets node->get_friendly_name(): " << node->get_friendly_name() << std::endl;
+        }
+    }
+#endif
+
     transformations.CpuSpecificOpSet();
+
+#if 0
+    for (const auto &node : cloned_model->get_ordered_ops()) {
+        if (node->get_friendly_name() == "self.model.model.layers.0.self_attn.qkv_proj.weight/zero_point/subtract") {
+            std::cout << "****** after CpuSpecificOpSet node->get_friendly_name(): " << node->get_friendly_name() << std::endl;
+        }
+    }
+#endif
 
     DEBUG_LOG(PrintableModel(*cloned_model, "cpu_"));
 

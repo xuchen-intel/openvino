@@ -132,6 +132,10 @@ void Plugin::get_performance_streams(Config& config, const std::shared_ptr<ov::M
     }
 }
 
+static int8_t get_u2(const uint8_t& val, uint8_t shift) {
+    return (val & (0x3 << shift)) >> shift;
+}
+
 void Plugin::calculate_streams(Config& conf, const std::shared_ptr<ov::Model>& model, bool imported) {
     const auto model_prefer_name = std::string("MODEL_PREFER_THREADS");
     if (imported && model->has_rt_info("intel_cpu_hints_config")) {
@@ -237,6 +241,29 @@ std::shared_ptr<ov::ICompiledModel> Plugin::compile_model(const std::shared_ptr<
     for (const auto &node : cloned_model->get_ordered_ops()) {
         if (node->get_friendly_name() == "self.model.model.layers.0.self_attn.qkv_proj.weight/zero_point/subtract") {
             std::cout << "****** after CpuSpecificOpSet node->get_friendly_name(): " << node->get_friendly_name() << std::endl;
+        }
+    }
+#endif
+
+#if 0
+    for (const auto& node : cloned_model->get_ordered_ops()) {
+        if (std::string(node->get_type_name()) == "Constant") {
+            std::cout << "###### node->get_friendly_name(): " << node->get_friendly_name() << std::endl;
+            const auto& const_node = std::dynamic_pointer_cast<ov::op::v0::Constant>(node);
+            if (const_node && (node->get_friendly_name() == "Constant_478" || node->get_friendly_name() == "Constant_93337")) {
+                const auto& element_type = const_node->get_element_type();
+                const void* data_ptr = const_node->get_data_ptr();
+                if (element_type == ov::element::u2) {
+                    const uint8_t* data = static_cast<const uint8_t *>(data_ptr);
+                    const auto& shape = const_node->get_shape();
+                    std::cout << "###### data type: u2" << std::endl;
+                    std::cout << "###### data count: " << ov::shape_size(shape) << std::endl;
+                    for (size_t i = 0; i < ov::shape_size(shape); i++) {
+                        std::cout << static_cast<int>(get_u2(data[i / 4], (i % 4) * 2)) << " ";
+                    }
+                    std::cout << std::endl << std::endl;;
+                }
+            }
         }
     }
 #endif

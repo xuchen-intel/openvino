@@ -61,11 +61,17 @@ ov::pass::ConvertFullyConnectedToFullyConnectedCompressed::ConvertFullyConnected
     auto transpose_const_m = wrap_type<ov::op::v0::Constant>();
     auto transpose_m = wrap_type<ov::op::v1::Transpose>({transpose_input, transpose_const_m});
 
+    auto required_subtract_m = wrap_type<ov::op::v1::Subtract>({weights_m, sub_const_m});
+    auto required_convert_m = wrap_type<ov::op::v0::Convert>({required_subtract_m});
+
     auto bias_m = any_input();
-    auto weights_input_m = std::make_shared<ov::pass::pattern::op::Or>(ov::OutputVector{reshape_m, transpose_m, mul_m});
+    auto weights_input_m = std::make_shared<ov::pass::pattern::op::Or>(ov::OutputVector{reshape_m, transpose_m, mul_m, required_convert_m});
     auto fully_connected_m = wrap_type<ov::op::internal::FullyConnected>({activation_m, weights_input_m, bias_m});
 
     ov::matcher_pass_callback callback = [OV_CAPTURE_CPY_AND_THIS](ov::pass::pattern::Matcher& m) {
+#if 0
+        std::cout << "### ConvertFullyConnectedToFullyConnectedCompressed callback" << std::endl;
+#endif
         const auto& pattern_map = m.get_pattern_value_map();
         OPENVINO_ASSERT(pattern_map.count(fully_connected_m));
         OPENVINO_ASSERT(pattern_map.count(mul_const_m));

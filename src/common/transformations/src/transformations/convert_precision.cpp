@@ -181,9 +181,26 @@ bool convert_node_output_precision(
         node_changed = t2f_it->second(node, precisions);
     }
 
+#if 0
+    if (node->get_friendly_name() == "__module.model.model.layers.0.self_attn.qkv_proj/ov_ext::linear/Convert" ||  // u4
+        node->get_friendly_name() == "__module.model.layers.0.self_attn.q_proj/ov_ext::bit_linear/Convert") {      // u2
+        std::cout << "=== function_changed: " << function_changed << std::endl;
+        std::cout << "=== node_changed: " << node_changed << std::endl;
+        std::cout << "=== node_is_replaced(node): " << node_is_replaced(node) << std::endl;
+    }
+#endif
+
+#if 0
+    if ((function_changed || node_changed) && !node_is_replaced(node)) {
+        if (node->get_friendly_name() != "beam_idx") {
+            node->revalidate_and_infer_types();
+        }
+    }
+#else
     if ((function_changed || node_changed) && !node_is_replaced(node)) {
         node->revalidate_and_infer_types();
     }
+#endif
 
     return node_changed;
 }
@@ -302,12 +319,29 @@ bool convert_function_precision(ov::pass::PassBase& pass,
             node->revalidate_and_infer_types();
             continue;
         }
+
         is_output_precision_changed = convert_node_output_precision(node,
                                                                     precisions,
                                                                     type_to_fuse,
                                                                     const_to_internal_output,
                                                                     is_changed || is_output_precision_changed) ||
                                       is_output_precision_changed;
+#if 0
+        // Convert
+        std::cout << "****** After convert_node_output_precision node->get_friendly_name(): " << node->get_friendly_name() << std::endl;
+        std::cout << "****** After convert_node_output_precision node->get_type_name(): " << node->get_type_name() << std::endl;
+        bool flag = false;
+        for (const auto &n : f->get_ordered_ops()) {
+            if (n->get_friendly_name() == "__module.model.model.layers.0.self_attn.qkv_proj/ov_ext::linear/Convert" ||  // u4
+                n->get_friendly_name() == "__module.model.layers.0.self_attn.q_proj/ov_ext::bit_linear/Convert") {      // u2
+                std::cout << "****** After convert_node_output_precision n->get_friendly_name(): " << n->get_friendly_name() << std::endl;
+                flag = true;
+            }
+        }
+        if (!flag) {
+            OPENVINO_THROW("error");
+        }
+#endif
     }
 
     if (is_output_precision_changed) {

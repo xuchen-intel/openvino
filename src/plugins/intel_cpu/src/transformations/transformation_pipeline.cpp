@@ -457,6 +457,25 @@ void Transformations::CpuSpecificOpSet() {
 void Transformations::PreLpt(const std::vector<ov::element::Type>& defaultPrecisions) {
     CPU_DEBUG_CAP_TRANSFORMATION_SCOPE(this, PreLpt);
 
+#if 1
+    // Convert
+    for (const auto &node : model->get_ordered_ops()) {
+        if (node->get_friendly_name() == "__module.model.model.layers.0.self_attn.qkv_proj/ov_ext::linear/Convert" ||  // u4
+            node->get_friendly_name() == "__module.model.layers.0.self_attn.q_proj/ov_ext::bit_linear/Convert") {      // u2
+            std::cout << "****** PreLpt 1 node->get_friendly_name(): " << node->get_friendly_name() << std::endl;
+        }
+    }
+#endif
+
+#if 0
+    {
+        std::string path = "/home/chen/git/parallel/u2_weights_decompression/dump/01_PreLpt_begin";
+        std::string xml_path = path + ".xml";
+        std::string bin_path = path + ".bin";
+        ov::pass::Serialize(xml_path, bin_path).run_on_model(model);
+    }
+#endif
+
     // Decompression handling related transformations must be run separately from common preLPT pipeline
     // since there is used the same transformations as in LPT related transformations, but with the specific settings.
     // This must be done in order to keep compressed MatMul weights with decompression operations as is
@@ -896,6 +915,25 @@ void Transformations::PreLpt(const std::vector<ov::element::Type>& defaultPrecis
     CPU_REGISTER_PASS_COMMON(manager, ov::pass::LoraSubgraphFusion);
 
     manager.run_passes(model);
+
+#if 1
+    // Convert
+    for (const auto &node : model->get_ordered_ops()) {
+        if (node->get_friendly_name() == "__module.model.model.layers.0.self_attn.qkv_proj/ov_ext::linear/Convert" ||  // u4
+            node->get_friendly_name() == "__module.model.layers.0.self_attn.q_proj/ov_ext::bit_linear/Convert") {      // u2
+            std::cout << "****** PreLpt 10 node->get_friendly_name(): " << node->get_friendly_name() << std::endl;
+        }
+    }
+#endif
+
+#if 0
+    {
+        std::string path = "/home/chen/git/parallel/u2_weights_decompression/dump/02_PreLpt_end";
+        std::string xml_path = path + ".xml";
+        std::string bin_path = path + ".bin";
+        ov::pass::Serialize(xml_path, bin_path).run_on_model(model);
+    }
+#endif
 }
 
 void Transformations::runLptPasses(const std::vector<ov::element::Type>& defaultPrecisions) {

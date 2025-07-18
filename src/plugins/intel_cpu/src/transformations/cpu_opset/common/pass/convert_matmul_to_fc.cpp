@@ -57,16 +57,38 @@ ov::intel_cpu::ConvertMatMulToFC::ConvertMatMulToFC() {
             return false;
         }
 
+#if 0
+        // Matmul
+        if (matmul->get_friendly_name() == "__module.model.model.layers.0.self_attn.qkv_proj/ov_ext::linear/MatMul" ||  // u4
+            matmul->get_friendly_name() == "__module.model.layers.0.self_attn.q_proj/ov_ext::bit_linear/MatMul") {     // u2
+            std::cout << "****** ConvertMatMulToFC 1 matmul->get_friendly_name(): " << matmul->get_friendly_name() << std::endl;
+        }
+#endif
+
         // fc_input_a and fc_input_b - are the final inputs that will be set to FullyConnected of GemmIE operations.
         // So in case of adding new operations that takes matmul inputs we need keep update fc_input_a and fc_input_b.
         auto fc_input_a = pattern_map.at(activations_m);
         auto fc_input_b = pattern_map.at(weights_m);
         if (auto convert_node = ov::as_type_ptr<ov::op::v0::Convert>(fc_input_b.get_node_shared_ptr())) {
+#if 0
+        // Matmul
+        if (matmul->get_friendly_name() == "__module.model.model.layers.0.self_attn.qkv_proj/ov_ext::linear/MatMul" ||  // u4
+            matmul->get_friendly_name() == "__module.model.layers.0.self_attn.q_proj/ov_ext::bit_linear/MatMul") {     // u2
+            std::cout << "****** ConvertMatMulToFC 1.5 matmul->get_friendly_name(): " << matmul->get_friendly_name() << std::endl;
+            std::cout << "****** is_decompression(convert_node): " << is_decompression(convert_node) << std::endl;
+        }
+#endif
             if (!is_decompression(convert_node)) {
                 return false;
             }
         }
-
+#if 0
+        // Matmul
+        if (matmul->get_friendly_name() == "__module.model.model.layers.0.self_attn.qkv_proj/ov_ext::linear/MatMul" ||  // u4
+            matmul->get_friendly_name() == "__module.model.layers.0.self_attn.q_proj/ov_ext::bit_linear/MatMul") {     // u2
+            std::cout << "****** ConvertMatMulToFC 2 matmul->get_friendly_name(): " << matmul->get_friendly_name() << std::endl;
+        }
+#endif
         auto shape_a = fc_input_a.get_partial_shape();
         auto shape_b = fc_input_b.get_partial_shape();
         OPENVINO_ASSERT(shape_b.is_static());
@@ -182,6 +204,14 @@ ov::intel_cpu::ConvertMatMulToFC::ConvertMatMulToFC() {
                                                                      fc_input_b,
                                                                      bias,
                                                                      matmul->get_output_element_type(0));
+
+#if 0
+        // Matmul
+        if (matmul->get_friendly_name() == "__module.model.model.layers.0.self_attn.qkv_proj/ov_ext::linear/MatMul" ||  // u4
+            matmul->get_friendly_name() == "__module.model.layers.0.self_attn.q_proj/ov_ext::bit_linear/MatMul") {     // u2
+            std::cout << "****** ConvertMatMulToFC 10 matmul->get_friendly_name(): " << matmul->get_friendly_name() << std::endl;
+        }
+#endif
 
         fc->set_friendly_name(matmul->get_friendly_name());
         /// todo: CVS-130863 Remove after fp16_compression is copyable

@@ -229,9 +229,21 @@ std::shared_ptr<ov::ICompiledModel> Plugin::compile_model(const std::shared_ptr<
     transformations.Snippets();
 
 #if 0
+    // Subtract
     for (const auto &node : cloned_model->get_ordered_ops()) {
-        if (node->get_friendly_name() == "self.model.model.layers.0.self_attn.qkv_proj.weight/zero_point/subtract") {
-            std::cout << "****** after Snippets node->get_friendly_name(): " << node->get_friendly_name() << std::endl;
+        if (node->get_friendly_name() == "self.model.model.layers.0.self_attn.qkv_proj.weight/zero_point/subtract" ||  // u4
+            node->get_friendly_name() == "__module.model.layers.0.self_attn.q_proj/ov_ext::bit_linear/Subtract") {     // u2
+            std::cout << "****** before CpuSpecificOpSet node->get_friendly_name(): " << node->get_friendly_name() << std::endl;
+        }
+    }
+#endif
+
+#if 0
+    // Convert
+    for (const auto &node : cloned_model->get_ordered_ops()) {
+        if (node->get_friendly_name() == "__module.model.model.layers.0.self_attn.qkv_proj/ov_ext::linear/Convert" ||  // u4
+            node->get_friendly_name() == "__module.model.layers.0.self_attn.q_proj/ov_ext::bit_linear/Convert") {      // u2
+            std::cout << "****** before CpuSpecificOpSet node->get_friendly_name(): " << node->get_friendly_name() << std::endl;
         }
     }
 #endif
@@ -239,8 +251,20 @@ std::shared_ptr<ov::ICompiledModel> Plugin::compile_model(const std::shared_ptr<
     transformations.CpuSpecificOpSet();
 
 #if 0
+    // Subtract
     for (const auto &node : cloned_model->get_ordered_ops()) {
-        if (node->get_friendly_name() == "self.model.model.layers.0.self_attn.qkv_proj.weight/zero_point/subtract") {
+        if (node->get_friendly_name() == "self.model.model.layers.0.self_attn.qkv_proj.weight/zero_point/subtract" ||  // u4
+            node->get_friendly_name() == "__module.model.layers.0.self_attn.q_proj/ov_ext::bit_linear/Subtract") {     // u2
+            std::cout << "****** after CpuSpecificOpSet node->get_friendly_name(): " << node->get_friendly_name() << std::endl;
+        }
+    }
+#endif
+
+#if 0
+    // Convert
+    for (const auto &node : cloned_model->get_ordered_ops()) {
+        if (node->get_friendly_name() == "__module.model.model.layers.0.self_attn.qkv_proj/ov_ext::linear/Convert" ||  // u4
+            node->get_friendly_name() == "__module.model.layers.0.self_attn.q_proj/ov_ext::bit_linear/Convert") {      // u2
             std::cout << "****** after CpuSpecificOpSet node->get_friendly_name(): " << node->get_friendly_name() << std::endl;
         }
     }

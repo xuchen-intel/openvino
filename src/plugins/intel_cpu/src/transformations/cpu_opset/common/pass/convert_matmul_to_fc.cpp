@@ -82,7 +82,7 @@ ov::intel_cpu::ConvertMatMulToFC::ConvertMatMulToFC() {
                 return false;
             }
         }
-#if 0
+#if 1
         // Matmul
         if (matmul->get_friendly_name() == "__module.model.model.layers.0.self_attn.qkv_proj/ov_ext::linear/MatMul" ||  // u4
             matmul->get_friendly_name() == "__module.model.layers.0.self_attn.q_proj/ov_ext::bit_linear/MatMul") {     // u2

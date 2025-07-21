@@ -230,18 +230,19 @@ ov::pass::MarkDequantization::MarkDequantization(const element::TypeVector& prec
 
     // required zero points
     auto required_subtract_pattern = wrap_type<v1::Subtract>({input_pattern, zp_reshape_pattern});
-    auto pattern = std::make_shared<ov::pass::pattern::op::Or>(OutputVector{required_subtract_pattern, multiply_pattern});
+    auto required_convert_pattern = wrap_type<v0::Convert>({required_subtract_pattern}, consumers_count(1));
+    auto pattern = std::make_shared<ov::pass::pattern::op::Or>(OutputVector{multiply_pattern, required_convert_pattern});
 
     ov::matcher_pass_callback callback = [OV_CAPTURE_CPY_AND_THIS](Matcher& m) -> bool {
         const auto& pt_map = m.get_pattern_value_map();
         auto input = pt_map.at(input_pattern);
-        const auto multiply = m.get_match_root();
+        const auto node = m.get_match_root();
 
-        if (transformation_callback(multiply)) {
+        if (transformation_callback(node)) {
             return false;
         }
 
-#if 1
+#if 0
         if (pt_map.count(required_subtract_pattern)) {
             auto subtract = pt_map.at(required_subtract_pattern).get_node_shared_ptr();
             if (subtract->get_friendly_name() == "self.model.model.layers.0.self_attn.qkv_proj.weight/zero_point/subtract" ||     // 4-bit
@@ -251,9 +252,10 @@ ov::pass::MarkDequantization::MarkDequantization(const element::TypeVector& prec
         }
 #endif
 
-        bool is_required_subtract = pt_map.count(required_subtract_pattern);
-        if (is_required_subtract) {
+        bool is_required_convert = pt_map.count(required_convert_pattern);
+        if (is_required_convert) {
             set_rt_info(pt_map, mark_as_dequantization_node, {required_subtract_pattern}, {});
+            set_rt_info(pt_map, mark_as_decompression, {required_convert_pattern}, precisions);
             return false;
         } else {
             // Multiply and Subtract have to be marked as dq

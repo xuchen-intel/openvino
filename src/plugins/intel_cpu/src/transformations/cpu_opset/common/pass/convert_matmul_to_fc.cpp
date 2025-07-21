@@ -73,7 +73,7 @@ ov::intel_cpu::ConvertMatMulToFC::ConvertMatMulToFC() {
 #if 0
         // Matmul
         if (matmul->get_friendly_name() == "__module.model.model.layers.0.self_attn.qkv_proj/ov_ext::linear/MatMul" ||  // u4
-            matmul->get_friendly_name() == "__module.model.layers.0.self_attn.q_proj/ov_ext::bit_linear/MatMul") {     // u2
+            matmul->get_friendly_name() == "__module.model.layers.0.self_attn.q_proj/ov_ext::bit_linear/MatMul") {      // u2
             std::cout << "****** ConvertMatMulToFC 1.5 matmul->get_friendly_name(): " << matmul->get_friendly_name() << std::endl;
             std::cout << "****** is_decompression(convert_node): " << is_decompression(convert_node) << std::endl;
         }
@@ -85,7 +85,7 @@ ov::intel_cpu::ConvertMatMulToFC::ConvertMatMulToFC() {
 #if 1
         // Matmul
         if (matmul->get_friendly_name() == "__module.model.model.layers.0.self_attn.qkv_proj/ov_ext::linear/MatMul" ||  // u4
-            matmul->get_friendly_name() == "__module.model.layers.0.self_attn.q_proj/ov_ext::bit_linear/MatMul") {     // u2
+            matmul->get_friendly_name() == "__module.model.layers.0.self_attn.q_proj/ov_ext::bit_linear/MatMul") {      // u2
             std::cout << "****** ConvertMatMulToFC 2 matmul->get_friendly_name(): " << matmul->get_friendly_name() << std::endl;
         }
 #endif
@@ -205,14 +205,6 @@ ov::intel_cpu::ConvertMatMulToFC::ConvertMatMulToFC() {
                                                                      bias,
                                                                      matmul->get_output_element_type(0));
 
-#if 0
-        // Matmul
-        if (matmul->get_friendly_name() == "__module.model.model.layers.0.self_attn.qkv_proj/ov_ext::linear/MatMul" ||  // u4
-            matmul->get_friendly_name() == "__module.model.layers.0.self_attn.q_proj/ov_ext::bit_linear/MatMul") {     // u2
-            std::cout << "****** ConvertMatMulToFC 10 matmul->get_friendly_name(): " << matmul->get_friendly_name() << std::endl;
-        }
-#endif
-
         fc->set_friendly_name(matmul->get_friendly_name());
         /// todo: CVS-130863 Remove after fp16_compression is copyable
         if (ov::fp16_compression_is_disabled(matmul)) {
@@ -221,6 +213,15 @@ ov::intel_cpu::ConvertMatMulToFC::ConvertMatMulToFC() {
         new_ops.push_back(fc);
         ov::copy_runtime_info(matmul, new_ops);
         ov::replace_node(matmul, fc);
+
+#if 1
+        // Matmul
+        if (matmul->get_friendly_name() == "__module.model.model.layers.0.self_attn.qkv_proj/ov_ext::linear/MatMul" ||  // u4
+            matmul->get_friendly_name() == "__module.model.layers.0.self_attn.q_proj/ov_ext::bit_linear/MatMul") {     // u2
+            std::cout << "****** ConvertMatMulToFC 10 matmul->get_friendly_name(): " << matmul->get_friendly_name() << std::endl;
+        }
+#endif
+
         return true;
     };
 

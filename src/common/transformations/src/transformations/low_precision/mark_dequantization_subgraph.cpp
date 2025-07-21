@@ -252,8 +252,8 @@ ov::pass::MarkDequantization::MarkDequantization(const element::TypeVector& prec
         }
 #endif
 
-        bool is_required_convert = pt_map.count(required_convert_pattern);
-        if (is_required_convert) {
+        bool has_required_convert = pt_map.count(required_convert_pattern);
+        if (has_required_convert) {
             set_rt_info(pt_map, mark_as_dequantization_node, {required_subtract_pattern}, {});
             set_rt_info(pt_map, mark_as_decompression, {required_convert_pattern}, precisions);
             return false;

@@ -859,8 +859,8 @@ struct ConvertFrom2BitContext {
 template <typename T>
 struct ConvertFrom2BitPrecision;
 
-[[maybe_unused]] static int8_t get_u2(const uint8_t& val, uint8_t shift) {
-    return (val & (0x3 << shift)) >> shift;
+[[maybe_unused]] static uint8_t get_u2(const uint8_t& val, uint8_t shift) {
+    return static_cast<uint8_t>((val & (0x3 << shift)) >> shift);
 }
 
 template <typename src_t, typename dst_t>

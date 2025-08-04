@@ -101,8 +101,6 @@ ov::pass::ConvertFullyConnectedToFullyConnectedCompressed::ConvertFullyConnected
         const size_t OC = *(weights_shape.rbegin() + 1);
 
         const ov::Output<Node>& fc_input_a = fc->input_value(0);
-        std::shared_ptr<ov::Node> fc_input_b =
-            reshape_const_to_2d(pattern_map.at(weights_m).get_node_shared_ptr(), false);
         std::shared_ptr<ov::Node> fc_input_bias = pattern_map.at(bias_m).get_node_shared_ptr();
 
         bool has_required_convert = pattern_map.count(required_convert_m);
@@ -112,6 +110,8 @@ ov::pass::ConvertFullyConnectedToFullyConnectedCompressed::ConvertFullyConnected
             std::vector<std::shared_ptr<ov::Node>> result_nodes = {};
             ov::disable_constant_folding(fc_input_scale);
             result_nodes.push_back(fc_input_scale);
+            std::shared_ptr<ov::Node> fc_input_b =
+                reshape_const_to_2d(pattern_map.at(weights_m).get_node_shared_ptr(), false);
             std::shared_ptr<ov::Node> fc_input_zp =
                 reshape_const_to_2d(pattern_map.at(sub_const_m).get_node_shared_ptr(), false);
 
@@ -161,7 +161,8 @@ ov::pass::ConvertFullyConnectedToFullyConnectedCompressed::ConvertFullyConnected
             optional_zero_point = convert_u4const_to_u8(
                 reshape_const_to_2d(pattern_map.at(sub_const_m).get_node_shared_ptr(), merge_forward));
         }
-
+        std::shared_ptr<ov::Node> fc_input_b =
+            reshape_const_to_2d(pattern_map.at(weights_m).get_node_shared_ptr(), merge_forward);
         std::shared_ptr<ov::Node> fc_input_scale = scale;
         std::shared_ptr<ov::Node> fc_input_zp = optional_zero_point;
         std::vector<std::shared_ptr<ov::Node>> result_nodes = {};

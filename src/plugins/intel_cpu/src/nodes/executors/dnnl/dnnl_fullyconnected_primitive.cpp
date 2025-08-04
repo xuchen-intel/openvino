@@ -254,10 +254,10 @@ static DnnlPrimitiveAttrs createPrimitiveAttrs(const FCAttrs& attrs,
     }
 
     if (auto it = memory.find(ARG_WEI | ARG_ATTR_ZERO_POINTS); it != memory.end()) {
-        auto wei_precision = weiDesc->getPrecision();
-        auto dstPrc = wei_precision == ov::element::u2 ? ov::element::u2
-                      : useDynamicQuantization         ? ov::element::u8
-                                                       : ov::element::f32;
+        auto dstPrc = useDynamicQuantization ? ov::element::u8 : ov::element::f32;
+        if (weiDesc->getPrecision() == ov::element::u2) {
+            dstPrc = ov::element::u2;
+        }
         dnnlpoc.appendDecompressionZeroPointsLegacy(it->second, !attrs.weightsNonTransposed, dstPrc);
     }
 

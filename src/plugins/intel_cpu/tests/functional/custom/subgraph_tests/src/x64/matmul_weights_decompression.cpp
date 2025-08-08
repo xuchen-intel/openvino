@@ -78,7 +78,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_MatMulCompressedWeights_basic_u2,
                                             ::testing::ValuesIn(decompression_precisions),
                                             ::testing::Values(ov::element::dynamic),
                                             ::testing::Values(true),
-                                            ::testing::Values(DecompressionType::empty),
+                                            ::testing::Values(DecompressionType::scalar),
                                             ::testing::Values(DecompressionType::scalar),
                                             // todo: zero points converted to fp32 for reshape == true case
                                             ::testing::Values(false),

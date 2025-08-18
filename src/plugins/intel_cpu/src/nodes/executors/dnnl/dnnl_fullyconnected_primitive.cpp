@@ -176,11 +176,15 @@ static bool useDynamicQuantizationImpl(size_t dqGroupSize,
     // For dynamic quantization, VNNI accumulation requires weight to be unsigned.
     // To support dynamic quantization with weights symmetrically quantized as i8/i4
     // w/o zero-point, we will transform weight to u8/u4 weight with zp 128/8.
-    if (none_of(weightsDesc->getPrecision(), ov::element::u8, ov::element::u4) &&
+    if (none_of(weightsDesc->getPrecision(), ov::element::u8, ov::element::u4, ov::element::u2) &&
         !((any_of(weightsDesc->getPrecision(), ov::element::i8, ov::element::i4) && !zpPtr))) {
         return false;
     }
-    if (zpPtr && none_of(zpPtr->getDesc().getPrecision(), ov::element::u8, ov::element::u4, ov::element::dynamic)) {
+    if (zpPtr && none_of(zpPtr->getDesc().getPrecision(),
+                         ov::element::u8,
+                         ov::element::u4,
+                         ov::element::u2,
+                         ov::element::dynamic)) {
         return false;
     }
 

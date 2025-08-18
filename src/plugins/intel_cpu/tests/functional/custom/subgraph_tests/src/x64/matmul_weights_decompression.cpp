@@ -281,6 +281,21 @@ INSTANTIATE_TEST_SUITE_P(smoke_MatMulCompressedWeights_non_default_dyn_quant_gro
                                             ::testing::Values(true)),
                          MatmulWeightsDecompression::getTestCaseName);
 
+INSTANTIATE_TEST_SUITE_P(smoke_MatMulCompressedWeights_non_default_dyn_quant_group_sizes_u2,
+                         MatmulWeightsDecompression,
+                         ::testing::Combine(::testing::ValuesIn(input_shapes_basic_u2),
+                                            ::testing::Values(ov::element::u2),
+                                            ::testing::ValuesIn(decompression_precisions),
+                                            ::testing::Values(ov::element::dynamic),
+                                            ::testing::Values(true),
+                                            ::testing::Values(DecompressionType::scalar),
+                                            ::testing::Values(DecompressionType::scalar),
+                                            ::testing::Values(false),
+                                            ::testing::ValuesIn(filter_additional_config_dyn_quant()),
+                                            ::testing::ValuesIn(fusing_params_dyn_quant),
+                                            ::testing::Values(true)),
+                         MatmulWeightsDecompression::getTestCaseName);
+
 const std::vector<ov::test::ElementType> sym_weights_precisions_dyn_quant = {ov::element::i8, ov::element::i4};
 
 INSTANTIATE_TEST_SUITE_P(smoke_MatMulCompressedWeights_sym_non_default_dyn_quant_group_sizes,

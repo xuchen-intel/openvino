@@ -451,7 +451,7 @@ void Transformations::CpuSpecificOpSet() {
 void Transformations::PreLpt(const std::vector<ov::element::Type>& defaultPrecisions) {
     CPU_DEBUG_CAP_TRANSFORMATION_SCOPE(this, PreLpt);
 
-#if 1
+#if 0
     bool mark_dequant = true;
 #else
     bool mark_dequant = false;

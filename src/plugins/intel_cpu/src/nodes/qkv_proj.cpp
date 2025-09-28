@@ -442,7 +442,7 @@ bool QKVProjection::isSupportedOperation([[maybe_unused]] const std::shared_ptr<
                                          [[maybe_unused]] std::string& errorMessage,
                                          [[maybe_unused]] int concurrency,
                                          [[maybe_unused]] uint64_t fcDynamicQuantizationGroupSize) noexcept {
-#if 1
+#if 0
 #else
     return false;
 #endif

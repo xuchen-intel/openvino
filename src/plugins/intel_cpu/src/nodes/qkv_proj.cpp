@@ -442,6 +442,10 @@ bool QKVProjection::isSupportedOperation([[maybe_unused]] const std::shared_ptr<
                                          [[maybe_unused]] std::string& errorMessage,
                                          [[maybe_unused]] int concurrency,
                                          [[maybe_unused]] uint64_t fcDynamicQuantizationGroupSize) noexcept {
+#if 1
+#else
+    return false;
+#endif
 #if defined(OPENVINO_ARCH_X86_64)
     try {
         const auto node_qkv = ov::as_type_ptr<const QKVProjectionNode>(op);

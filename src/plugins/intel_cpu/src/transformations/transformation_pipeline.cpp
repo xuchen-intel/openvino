@@ -451,6 +451,12 @@ void Transformations::CpuSpecificOpSet() {
 void Transformations::PreLpt(const std::vector<ov::element::Type>& defaultPrecisions) {
     CPU_DEBUG_CAP_TRANSFORMATION_SCOPE(this, PreLpt);
 
+#if 1
+    bool mark_dequant = true;
+#else
+    bool mark_dequant = false;
+#endif
+
     // Decompression handling related transformations must be run separately from common preLPT pipeline
     // since there is used the same transformations as in LPT related transformations, but with the specific settings.
     // This must be done in order to keep compressed MatMul weights with decompression operations as is
@@ -465,6 +471,7 @@ void Transformations::PreLpt(const std::vector<ov::element::Type>& defaultPrecis
     CPU_REGISTER_PASS_ARM(decompression_handling_manager, ov::pass::TransposeMatMul);
     const auto& decompression_precisions =
         ov::intel_cpu::node::FullyConnected::getSupportedCompressedWeightsTypes(true);
+    if (mark_dequant) {
     CPU_REGISTER_PASS_COMMON(decompression_handling_manager,
                              ov::pass::MarkDequantization,
                              decompression_precisions,
@@ -476,6 +483,7 @@ void Transformations::PreLpt(const std::vector<ov::element::Type>& defaultPrecis
             return !is_decompression_multiply(node);
         },
         ov::pass::MarkDequantization);
+    }
 
     CPU_SET_CALLBACK_COMMON(
         decompression_handling_manager,
@@ -500,8 +508,10 @@ void Transformations::PreLpt(const std::vector<ov::element::Type>& defaultPrecis
 
     ov::pass::Manager manager("Plugin:CPU");
     manager.set_per_pass_validation(false);
+    if (mark_dequant) {
     if (useLpt) {
         CPU_REGISTER_PASS_COMMON(manager, ov::pass::MarkDequantization, defaultPrecisions);
+    }
     }
 
     auto get_convert_precisions = [&]() {

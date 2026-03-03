@@ -908,6 +908,42 @@ private:
 
     void heap_cmp_node(Xmm xmm_val_a, Xmm xmm_idx_a, Xmm xmm_val_b, Xmm xmm_idx_b, bool cmp_val = true) {
         compare_node_xmm(xmm_val_a, xmm_idx_a, xmm_val_b, xmm_idx_b, xmm_mask, heap_cmp_flg, _cmp_lt_os, cmp_val);
+
+        if (jcp_.stable && cmp_val) {
+            Xbyak::Label heap_cmp_done_label;
+
+            if (isa == cpu::x64::avx512_core) {
+                kmovw(reg_tmp_32, k_mask);
+            } else {
+                uni_vmovmskps(reg_tmp_32, xmm_mask);
+            }
+            and_(reg_tmp_32, 0x1);
+            cmp(reg_tmp_32, 0x0);
+            jne(heap_cmp_done_label, T_NEAR);
+
+            if (isFloatCompatible(data_type)) {
+                if (isa == cpu::x64::avx512_core) {
+                    vcmpps(k_mask, xmm_val_a, xmm_val_b, _cmp_eq_oq);
+                    kmovw(reg_tmp_32, k_mask);
+                } else {
+                    uni_vcmpps(xmm_mask, xmm_val_a, xmm_val_b, _cmp_eq_oq);
+                    uni_vmovmskps(reg_tmp_32, xmm_mask);
+                }
+                and_(reg_tmp_32, 0x1);
+                cmp(reg_tmp_32, 0x0);
+                je(heap_cmp_done_label, T_NEAR);
+            } else {
+                uni_vpxor(xmm_tmp, xmm_val_a, xmm_val_b);
+                uni_vmovq(reg_tmp_64, xmm_tmp);
+                cmp(reg_tmp_64, 0);
+                jne(heap_cmp_done_label, T_NEAR);
+            }
+
+            // Stable tie-break: for equal values, keep larger index as heap root (worse candidate).
+            // So swap when idx_a < idx_b.
+            compare_node_xmm(xmm_val_a, xmm_idx_a, xmm_val_b, xmm_idx_b, xmm_mask, _cmp_lt_os, _cmp_lt_os, false);
+            L(heap_cmp_done_label);
+        }
     }
 
     // n: node, c: child
@@ -2055,7 +2091,7 @@ void TopK::preset_params() {
 
     bool can_use_heap_sort =
         (layout == TopKLayoutType::topk_ncsp || layout == TopKLayoutType::topk_nspc) && topk_innermost;
-    bool use_bubble_sort = stable || !can_use_heap_sort;
+    bool use_bubble_sort = !can_use_heap_sort;
     if (isDynamicNode()) {
         if (use_bubble_sort) {
             algorithm = TopKAlgorithm::topk_bubble_sort;
@@ -2101,12 +2137,9 @@ void TopK::prepareParams() {
         // sufficient
         //           to keep all necessary data for sorting, no need to load and store frequently, use inplace bubble
         //           sort; (horizotal sorting cases not included)
-        // [case 2]: if stable sorting is required, bubble sort(topk_bubble_vector/topk_bubble_BLK_on_channel_verti)
-        // will be
-        //           applied currently, because among the implemented sorting algorithms, these bubble sort
-        //           implementations are the only stable ones;
-        // [case 3]: only when topk is imposed on innermost dimsension of planar(ncsp/nspc) layout, should heap sort be
-        // used; [case 4]: by default, use bitonic sort when alg_cost_bitonic < alg_cost_bubble, otherwise use bubble
+        // [case 2]: only when topk is imposed on innermost dimsension of planar(ncsp/nspc) layout, should heap sort
+        //           be used;
+        // [case 3]: by default, use bitonic sort when alg_cost_bitonic < alg_cost_bubble, otherwise use bubble
         // sort.
         //           alg_cost_bitonic = (N / 4) * logN * (logN + 1)
         //           alg_cost_bubble = K * (K - 1) / 2 + (N - K) * K
@@ -2119,8 +2152,12 @@ void TopK::prepareParams() {
                 algorithm = TopKAlgorithm::topk_bubble_sort;
                 bubble_inplace = !topk_innermost || top_k != 1;
             } else if (stable) {
-                algorithm = TopKAlgorithm::topk_bubble_sort;
-                bubble_inplace = false;
+                if ((layout == TopKLayoutType::topk_ncsp || layout == TopKLayoutType::topk_nspc) && topk_innermost) {
+                    algorithm = TopKAlgorithm::topk_heap_sort;
+                } else {
+                    algorithm = TopKAlgorithm::topk_bubble_sort;
+                    bubble_inplace = false;
+                }
             } else if ((layout == TopKLayoutType::topk_ncsp || layout == TopKLayoutType::topk_nspc) && topk_innermost) {
                 algorithm = TopKAlgorithm::topk_heap_sort;
             } else {
@@ -2327,9 +2364,14 @@ inline void TopK::prepare_original_idx() {
     bool shape_agnostic_alg =
         algorithm == TopKAlgorithm::topk_heap_sort || (algorithm == TopKAlgorithm::topk_bubble_sort && !bubble_inplace);
     if (shape_agnostic_alg) {
-        bool use_idx_seq = stable
-                               ? topk_innermost && (layout == TopKLayoutType::topk_blocked || (top_k == 1 && !stable))
-                               : topk_innermost;
+        bool use_idx_seq = false;
+        if (algorithm == TopKAlgorithm::topk_heap_sort) {
+            use_idx_seq = topk_innermost;
+        } else {
+            // Keep bubble-sort buffer selection behavior unchanged.
+            // stable + planar innermost bubble path requires block-style index buffer.
+            use_idx_seq = stable ? topk_innermost && (layout == TopKLayoutType::topk_blocked) : topk_innermost;
+        }
         if (use_idx_seq) {
             if (vec_idx_seq.empty()) {
                 vec_idx_seq.resize(axis_dim);

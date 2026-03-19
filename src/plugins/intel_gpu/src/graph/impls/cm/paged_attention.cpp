@@ -14,11 +14,15 @@
 #include "intel_gpu/graph/kernel_impl_params.hpp"
 #include "intel_gpu/primitives/paged_attention.hpp"
 #include "kv_cache_inst.h"
+#include "openvino/util/file_util.hpp"
 #include "openvino/core/partial_shape.hpp"
 #include "paged_attention_gen.hpp"
 #include "paged_attention_inst.h"
 #include "primitive_cm_base.hpp"
 #include "primitive_inst.h"
+
+#include <atomic>
+#include <cstdlib>
 
 #define DUMP_XATTN_INTERNALS 0
 #if DUMP_XATTN_INTERNALS
@@ -29,6 +33,80 @@
 #endif
 
 namespace ov::intel_gpu::cm {
+
+namespace {
+
+const char* stage_to_string(PagedAttentionStage stage) {
+    switch (stage) {
+    case PagedAttentionStage::UNKNOWN:
+        return "unknown";
+    case PagedAttentionStage::PREFILL:
+        return "prefill";
+    case PagedAttentionStage::GENERATE:
+        return "generate";
+    case PagedAttentionStage::MIXED:
+        return "mixed";
+    }
+    return "invalid";
+}
+
+std::string dump_root_with_separator(const char* dump_root_env) {
+    std::string dump_root = dump_root_env;
+    if (!dump_root.empty() && dump_root.back() != '/') {
+        dump_root.push_back('/');
+    }
+    return dump_root;
+}
+
+std::string dump_layout_suffix(const layout& mem_layout) {
+    std::string dims;
+    const auto mem_dims = mem_layout.get_dims();
+    for (size_t i = 0; i < mem_layout.get_rank(); i++) {
+        dims += "_" + std::to_string(mem_dims[i]);
+    }
+
+    return ov::element::Type(mem_layout.data_type).get_type_name() + dims + "__" + mem_layout.format.to_string();
+}
+
+void dump_memory_blob(const std::string& root,
+                      cldnn::stream& stream,
+                      const memory::ptr& mem,
+                      const std::string& impl_name,
+                      size_t execute_idx,
+                      PagedAttentionStage stage,
+                      const std::string& tensor_name) {
+    mem_lock<char, mem_lock_type::read> lock(mem, stream);
+    const auto& mem_layout = mem->get_layout();
+    const auto path = root + impl_name + "__exec_" + std::to_string(execute_idx) + "__" + stage_to_string(stage) + "__" + tensor_name + "__" + dump_layout_suffix(mem_layout) + ".bin";
+    ov::util::save_binary(path, lock.data(), mem->size());
+}
+
+void dump_kv_cache_state(primitive_inst& instance, PagedAttentionStage stage, const char* impl_name) {
+    const char* dump_root_env = std::getenv("DUMP_KV_CACHE_ROOT");
+    if (dump_root_env == nullptr || dump_root_env[0] == '\0') {
+        return;
+    }
+
+    static std::atomic<size_t> execute_counter{0};
+    const size_t execute_idx = execute_counter.fetch_add(1);
+    auto& pa_instance = static_cast<paged_attention_inst&>(instance);
+    auto& stream = instance.get_network().get_stream();
+    stream.finish();
+
+    try {
+        const auto root = dump_root_with_separator(dump_root_env);
+        dump_memory_blob(root, stream, pa_instance.key_cache_memory_ptr(), impl_name, execute_idx, stage, "key_cache");
+        dump_memory_blob(root, stream, pa_instance.value_cache_memory_ptr(), impl_name, execute_idx, stage, "value_cache");
+        dump_memory_blob(root, stream, pa_instance.past_lens_memory_ptr(), impl_name, execute_idx, stage, "past_lens");
+        dump_memory_blob(root, stream, pa_instance.subsequence_begins_memory_ptr(), impl_name, execute_idx, stage, "subsequence_begins");
+        dump_memory_blob(root, stream, pa_instance.block_indices_memory_ptr(), impl_name, execute_idx, stage, "block_indices");
+        dump_memory_blob(root, stream, pa_instance.block_indices_begins_memory_ptr(), impl_name, execute_idx, stage, "block_indices_begins");
+    } catch (const std::exception& e) {
+        std::cerr << "[dump_kv_cache_state] Failed to dump KV cache state for " << impl_name << ": " << e.what() << "\n";
+    }
+}
+
+}  // namespace
 
 class PagedAttentionCmImpl : public PrimitiveImplCM {
 public:
@@ -142,6 +220,8 @@ public:
     }
 
     event::ptr execute(const std::vector<event::ptr>& events, primitive_inst& instance) override {
+        std::fprintf(stderr, "###### inside PagedAttentionCmImpl::execute() 8 ######\n");
+
         const auto& params = *instance.get_impl_params();
         const auto desc = params.typed_desc<paged_attention>();
 
@@ -152,6 +232,7 @@ public:
         GPU_DEBUG_TRACE_DETAIL << "ov::intel_gpu::cm::PagedAttentionCmImpl::execute():  stage = " << static_cast<int>(rt_params->stage) << std::endl;
         std::vector<event::ptr> res_event = events;
         res_event = {execute_stage(res_event, instance, kv_cache_update)};
+        dump_kv_cache_state(instance, rt_params->stage, "cm");
 
         if (rt_params->stage == PagedAttentionStage::PREFILL || rt_params->stage == PagedAttentionStage::MIXED) {
             if (!bypass_xattn(params)) {

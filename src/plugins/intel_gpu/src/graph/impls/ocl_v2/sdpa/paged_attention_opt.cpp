@@ -10,9 +10,14 @@
 #include "paged_attention_opt.hpp"
 
 #include <array>
+#include <atomic>
+#include <cstdio>
 #include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <utility>
+
+#include "openvino/util/file_util.hpp"
 
 #include "../primitive_ocl_base.hpp"
 #include "common_utils/jitter.hpp"
@@ -31,6 +36,76 @@ constexpr ov::element::Type softmax_accumulator_type = ov::element::f32;
 constexpr size_t paged_attention_block_size = 16;
 constexpr size_t seq_len_partition_size = 256;
 constexpr size_t subgroup_size = 16;
+
+const char* stage_to_string(PagedAttentionStage stage) {
+    switch (stage) {
+    case PagedAttentionStage::UNKNOWN:
+        return "unknown";
+    case PagedAttentionStage::PREFILL:
+        return "prefill";
+    case PagedAttentionStage::GENERATE:
+        return "generate";
+    case PagedAttentionStage::MIXED:
+        return "mixed";
+    }
+    return "invalid";
+}
+
+std::string dump_root_with_separator(const char* dump_root_env) {
+    std::string dump_root = dump_root_env;
+    if (!dump_root.empty() && dump_root.back() != '/') {
+        dump_root.push_back('/');
+    }
+    return dump_root;
+}
+
+std::string dump_layout_suffix(const layout& mem_layout) {
+    std::string dims;
+    const auto mem_dims = mem_layout.get_dims();
+    for (size_t i = 0; i < mem_layout.get_rank(); i++) {
+        dims += "_" + std::to_string(mem_dims[i]);
+    }
+
+    return ov::element::Type(mem_layout.data_type).get_type_name() + dims + "__" + mem_layout.format.to_string();
+}
+
+void dump_memory_blob(const std::string& root,
+                      cldnn::stream& stream,
+                      const memory::ptr& mem,
+                      const std::string& impl_name,
+                      size_t execute_idx,
+                      PagedAttentionStage stage,
+                      const std::string& tensor_name) {
+    mem_lock<char, mem_lock_type::read> lock(mem, stream);
+    const auto& mem_layout = mem->get_layout();
+    const auto path = root + impl_name + "__exec_" + std::to_string(execute_idx) + "__" + stage_to_string(stage) + "__" + tensor_name + "__" + dump_layout_suffix(mem_layout) + ".bin";
+    ov::util::save_binary(path, lock.data(), mem->size());
+}
+
+void dump_kv_cache_state(primitive_inst& instance, PagedAttentionStage stage, const char* impl_name) {
+    const char* dump_root_env = std::getenv("DUMP_KV_CACHE_ROOT");
+    if (dump_root_env == nullptr || dump_root_env[0] == '\0') {
+        return;
+    }
+
+    static std::atomic<size_t> execute_counter{0};
+    const size_t execute_idx = execute_counter.fetch_add(1);
+    auto& pa_instance = static_cast<paged_attention_inst&>(instance);
+    auto& stream = instance.get_network().get_stream();
+    stream.finish();
+
+    try {
+        const auto root = dump_root_with_separator(dump_root_env);
+        dump_memory_blob(root, stream, pa_instance.key_cache_memory_ptr(), impl_name, execute_idx, stage, "key_cache");
+        dump_memory_blob(root, stream, pa_instance.value_cache_memory_ptr(), impl_name, execute_idx, stage, "value_cache");
+        dump_memory_blob(root, stream, pa_instance.past_lens_memory_ptr(), impl_name, execute_idx, stage, "past_lens");
+        dump_memory_blob(root, stream, pa_instance.subsequence_begins_memory_ptr(), impl_name, execute_idx, stage, "subsequence_begins");
+        dump_memory_blob(root, stream, pa_instance.block_indices_memory_ptr(), impl_name, execute_idx, stage, "block_indices");
+        dump_memory_blob(root, stream, pa_instance.block_indices_begins_memory_ptr(), impl_name, execute_idx, stage, "block_indices_begins");
+    } catch (const std::exception& e) {
+        std::cerr << "[dump_kv_cache_state] Failed to dump KV cache state for " << impl_name << ": " << e.what() << "\n";
+    }
+}
 
 inline bool get_kv_compressed(const RuntimeParams& params) {
     auto key_cache_layout = params.input_layouts[PagedAttentionInputIdx::KEY_CACHE];
@@ -1363,6 +1438,8 @@ public:
     }
 
     event::ptr execute(const std::vector<event::ptr>& events, primitive_inst& instance) override {
+        std::fprintf(stderr, "###### inside PagedAttentionOptImpl::execute() ######\n");
+        std::fflush(stderr);
         const auto& params = *instance.get_impl_params();
         const auto desc = params.typed_desc<paged_attention>();
         const bool has_scores_output = desc->has_scores_output();
@@ -1381,6 +1458,7 @@ public:
             }
         }
         res_event = {execute_stage(res_event, instance, kv_cache_update)};
+        dump_kv_cache_state(instance, rt_params->stage, "ocl");
 
         if (rt_params->stage == PagedAttentionStage::PREFILL) {
 #ifdef ENABLE_ONEDNN_FOR_GPU
@@ -1822,6 +1900,8 @@ public:
 std::unique_ptr<primitive_impl> PagedAttentionOpt::create_impl(const program_node& node, const kernel_impl_params& params) const {
     assert(node.is_type<paged_attention>());
     try {
+        std::fprintf(stderr, "###### inside PagedAttentionOpt::create_impl() ######\n");
+        std::fflush(stderr);
         return std::make_unique<PagedAttentionOptImpl>(params);
     } catch (const std::exception& e) {
         OPENVINO_THROW("Failed to create PagedAttentionOpt: ", e.what());

@@ -95,8 +95,10 @@ void dump_kv_cache_state(primitive_inst& instance, PagedAttentionStage stage, co
 
     try {
         const auto root = dump_root_with_separator(dump_root_env);
+        dump_memory_blob(root, stream, pa_instance.query_memory_ptr(), impl_name, execute_idx, stage, "query_input");
         dump_memory_blob(root, stream, pa_instance.key_memory_ptr(), impl_name, execute_idx, stage, "key_input");
         dump_memory_blob(root, stream, pa_instance.value_memory_ptr(), impl_name, execute_idx, stage, "value_input");
+        dump_memory_blob(root, stream, pa_instance.output_memory_ptr(), impl_name, execute_idx, stage, "output");
         dump_memory_blob(root, stream, pa_instance.key_cache_memory_ptr(), impl_name, execute_idx, stage, "key_cache");
         dump_memory_blob(root, stream, pa_instance.value_cache_memory_ptr(), impl_name, execute_idx, stage, "value_cache");
         dump_memory_blob(root, stream, pa_instance.past_lens_memory_ptr(), impl_name, execute_idx, stage, "past_lens");

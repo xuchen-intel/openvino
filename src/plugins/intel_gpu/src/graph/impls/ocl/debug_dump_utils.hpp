@@ -54,14 +54,11 @@ inline std::string trim_copy(const std::string& value) {
     return value.substr(first, last - first + 1);
 }
 
-inline bool should_dump_selected_output(const cldnn::primitive_inst& instance) {
-    const char* dump_root_env = std::getenv("DUMP_OCL_OUTPUTS_ROOT");
-    const char* filter_env = std::getenv("DUMP_OCL_OUTPUTS_FILTER");
-    if (dump_root_env == nullptr || dump_root_env[0] == '\0' || filter_env == nullptr || filter_env[0] == '\0') {
+inline bool matches_filter_list(const std::string& node_name, const char* filter_env) {
+    if (filter_env == nullptr || filter_env[0] == '\0') {
         return false;
     }
 
-    const auto& node_name = instance.get_node().id();
     const std::string filters = filter_env;
     size_t start = 0;
     while (start <= filters.size()) {
@@ -77,6 +74,44 @@ inline bool should_dump_selected_output(const cldnn::primitive_inst& instance) {
     }
 
     return false;
+}
+
+inline bool should_dump_selected_output(const cldnn::primitive_inst& instance) {
+    const char* dump_root_env = std::getenv("DUMP_OCL_OUTPUTS_ROOT");
+    const char* filter_env = std::getenv("DUMP_OCL_OUTPUTS_FILTER");
+    if (dump_root_env == nullptr || dump_root_env[0] == '\0' || filter_env == nullptr || filter_env[0] == '\0') {
+        return false;
+    }
+
+    return matches_filter_list(instance.get_node().id(), filter_env);
+}
+
+inline bool should_dump_selected_input(const cldnn::primitive_inst& instance) {
+    const char* dump_root_env = std::getenv("DUMP_OCL_OUTPUTS_ROOT");
+    const char* filter_env = std::getenv("DUMP_OCL_INPUTS_FILTER");
+    if (dump_root_env == nullptr || dump_root_env[0] == '\0') {
+        return false;
+    }
+
+    return matches_filter_list(instance.get_node().id(), filter_env);
+}
+
+inline void dump_memory(const std::string& root,
+                        const char* impl_name,
+                        size_t execute_idx,
+                        const std::string& sanitized_node_name,
+                        const std::string& tensor_name,
+                        const cldnn::memory::ptr& mem,
+                        cldnn::stream& stream) {
+    if (mem == nullptr) {
+        return;
+    }
+
+    cldnn::mem_lock<char, cldnn::mem_lock_type::read> lock(mem, stream);
+    const auto& mem_layout = mem->get_layout();
+    const auto path = root + impl_name + "__exec_" + std::to_string(execute_idx) + "__" + sanitized_node_name + "__" + tensor_name + "__" +
+                      layout_suffix(mem_layout) + ".bin";
+    ov::util::save_binary(path, lock.data(), mem->size());
 }
 
 inline void dump_selected_output(cldnn::primitive_inst& instance, const char* impl_name) {
@@ -95,15 +130,30 @@ inline void dump_selected_output(cldnn::primitive_inst& instance, const char* im
     try {
         const auto root = root_with_separator(dump_root_env);
         const auto sanitized_node_name = sanitize_node_name(instance.get_node().id());
+        if (should_dump_selected_input(instance)) {
+            for (size_t input_idx = 0; input_idx < instance.inputs_memory_count(); input_idx++) {
+                const auto tensor_name = instance.inputs_memory_count() == 1 ? std::string("input")
+                                                                             : "input_" + std::to_string(input_idx);
+                dump_memory(root,
+                            impl_name,
+                            execute_idx,
+                            sanitized_node_name,
+                            tensor_name,
+                            instance.input_memory_ptr(input_idx),
+                            stream);
+            }
+        }
+
         for (size_t output_idx = 0; output_idx < instance.outputs_memory_count(); output_idx++) {
-            const auto output_mem = instance.output_memory_ptr(output_idx);
-            cldnn::mem_lock<char, cldnn::mem_lock_type::read> lock(output_mem, stream);
-            const auto& mem_layout = output_mem->get_layout();
             const auto tensor_name = instance.outputs_memory_count() == 1 ? std::string("output")
                                                                            : "output_" + std::to_string(output_idx);
-            const auto path = root + impl_name + "__exec_" + std::to_string(execute_idx) + "__" + sanitized_node_name + "__" + tensor_name + "__" +
-                              layout_suffix(mem_layout) + ".bin";
-            ov::util::save_binary(path, lock.data(), output_mem->size());
+            dump_memory(root,
+                        impl_name,
+                        execute_idx,
+                        sanitized_node_name,
+                        tensor_name,
+                        instance.output_memory_ptr(output_idx),
+                        stream);
         }
     } catch (const std::exception& e) {
         std::cerr << "[dump_selected_output] Failed to dump GPU output for " << instance.get_node().id() << ": " << e.what() << "\n";

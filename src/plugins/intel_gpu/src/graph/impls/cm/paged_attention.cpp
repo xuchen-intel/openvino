@@ -18,6 +18,7 @@
 #include "openvino/core/partial_shape.hpp"
 #include "paged_attention_gen.hpp"
 #include "paged_attention_inst.h"
+#include "../ocl/debug_dump_utils.hpp"
 #include "primitive_cm_base.hpp"
 #include "primitive_inst.h"
 
@@ -264,6 +265,8 @@ public:
             res_event = {execute_stage(res_event, instance, pa_single_token)};
             res_event = {execute_stage(res_event, instance, pa_single_token_finalization)};
         }
+
+        cldnn::ocl::debug_dump::dump_selected_output(instance, "cm");
         return res_event[0];
     }
 

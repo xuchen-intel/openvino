@@ -7,6 +7,7 @@
 #include <atomic>
 #include <cctype>
 #include <cstdlib>
+#include <fstream>
 #include <string>
 
 #include "openvino/util/file_util.hpp"
@@ -114,6 +115,24 @@ inline void dump_memory(const std::string& root,
     ov::util::save_binary(path, lock.data(), mem->size());
 }
 
+inline void dump_dependency_info(const std::string& root,
+                                 const char* impl_name,
+                                 size_t execute_idx,
+                                 const cldnn::primitive_inst& instance,
+                                 const std::string& sanitized_node_name) {
+    const auto path = root + impl_name + "__exec_" + std::to_string(execute_idx) + "__" + sanitized_node_name + "__deps.txt";
+    std::ofstream out(path, std::ios::out | std::ios::trunc);
+    if (!out.is_open()) {
+        return;
+    }
+
+    out << "node=" << instance.id() << '\n';
+    for (size_t input_idx = 0; input_idx < instance.dependencies().size(); input_idx++) {
+        const auto& dep = instance.dependencies().at(input_idx);
+        out << "input_" << input_idx << "=" << dep.first->id() << ":output_" << dep.second << '\n';
+    }
+}
+
 inline void dump_selected_output(cldnn::primitive_inst& instance, const char* impl_name) {
     if (!should_dump_selected_output(instance)) {
         return;
@@ -130,6 +149,7 @@ inline void dump_selected_output(cldnn::primitive_inst& instance, const char* im
     try {
         const auto root = root_with_separator(dump_root_env);
         const auto sanitized_node_name = sanitize_node_name(instance.get_node().id());
+        dump_dependency_info(root, impl_name, execute_idx, instance, sanitized_node_name);
         if (should_dump_selected_input(instance)) {
             for (size_t input_idx = 0; input_idx < instance.inputs_memory_count(); input_idx++) {
                 const auto tensor_name = instance.inputs_memory_count() == 1 ? std::string("input")

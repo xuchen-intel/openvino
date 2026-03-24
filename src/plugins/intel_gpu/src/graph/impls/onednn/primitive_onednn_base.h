@@ -7,6 +7,7 @@
 #define ONEDNN_PRIMITIVE_SERIALIZATION
 
 #include "primitive_inst.h"
+#include "../ocl/debug_dump_utils.hpp"
 #include "intel_gpu/graph/serialization/binary_buffer.hpp"
 #include "intel_gpu/runtime/memory.hpp"
 #include "intel_gpu/runtime/file_util.hpp"
@@ -574,6 +575,7 @@ protected:
             }
         }
 
+        cldnn::ocl::debug_dump::dump_selected_output(instance, "onednn");
         return event;
     }
 

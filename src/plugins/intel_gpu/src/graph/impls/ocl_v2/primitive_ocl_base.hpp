@@ -13,6 +13,7 @@
 #include "intel_gpu/graph/kernel_impl_params.hpp"
 #include "intel_gpu/graph/network.hpp"
 #include "intel_gpu/graph/program.hpp"
+#include "../ocl/debug_dump_utils.hpp"
 #include "intel_gpu/graph/serialization/binary_buffer.hpp"
 #include "intel_gpu/graph/serialization/helpers.hpp"
 #include "intel_gpu/graph/serialization/set_serializer.hpp"
@@ -275,7 +276,9 @@ struct PrimitiveImplOCL : public cldnn::primitive_impl {
     cldnn::event::ptr execute(const std::vector<cldnn::event::ptr>& events, cldnn::primitive_inst& instance) override {
         cldnn::stream& stream = instance.get_network().get_stream();
         if (instance.can_be_optimized()) {
-            return stream.aggregate_events(events, events.size() > 1, instance.is_output());
+            auto event = stream.aggregate_events(events, events.size() > 1, instance.is_output());
+            cldnn::ocl::debug_dump::dump_selected_output(instance, "ocl_v2");
+            return event;
         }
 
         update_rt_params(instance);
@@ -283,7 +286,9 @@ struct PrimitiveImplOCL : public cldnn::primitive_impl {
         const auto& exec_stages = get_stages_execution_order(instance);
 
         if (exec_stages.size() == 1) {
-            return execute_stage(events, instance, *_stages[exec_stages[0]]);
+            auto event = execute_stage(events, instance, *_stages[exec_stages[0]]);
+            cldnn::ocl::debug_dump::dump_selected_output(instance, "ocl_v2");
+            return event;
         }
 
         std::vector<cldnn::event::ptr> tmp_events(events);
@@ -294,7 +299,9 @@ struct PrimitiveImplOCL : public cldnn::primitive_impl {
             all_events.push_back(tmp_events[0]);
         }
 
-        return stream.aggregate_events(all_events, true, instance.is_output());
+        auto event = stream.aggregate_events(all_events, true, instance.is_output());
+        cldnn::ocl::debug_dump::dump_selected_output(instance, "ocl_v2");
+        return event;
     }
 
     std::vector<std::shared_ptr<cldnn::kernel_string>> get_kernels_source() override {

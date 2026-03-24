@@ -5,6 +5,7 @@
 #include "intel_gpu/op/gemm.hpp"
 #include "intel_gpu/plugin/common_utils.hpp"
 #include "intel_gpu/graph/kernel_impl_params.hpp"
+#include "debug_dump_utils.hpp"
 #include "multi_stage_primitive.hpp"
 
 #include "kv_cache_inst.h"
@@ -158,13 +159,15 @@ protected:
             instance.get_input_layout(1).count() == 0) {
             stream& stream = instance.get_network().get_stream();
             stream.enqueue_barrier();
-            return instance.output_memory_ptr()->fill(stream, {}, false);
+            auto ev = instance.output_memory_ptr()->fill(stream, {}, false);
+            debug_dump::dump_selected_output(instance, "ocl");
+            return ev;
         }
 
-        if (need_indirect_load(instance))
-            return execute_stage(events, instance, indirect_gemm);
-        else
-            return execute_stage(events, instance, default_gemm);
+        auto ev = need_indirect_load(instance) ? execute_stage(events, instance, indirect_gemm)
+                                               : execute_stage(events, instance, default_gemm);
+        debug_dump::dump_selected_output(instance, "ocl");
+        return ev;
     }
 
 public:

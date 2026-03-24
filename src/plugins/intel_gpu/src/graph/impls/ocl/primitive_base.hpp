@@ -13,6 +13,7 @@
 #include "intel_gpu/graph/serialization/vector_serializer.hpp"
 #include "intel_gpu/graph/program.hpp"
 
+#include "debug_dump_utils.hpp"
 #include "primitive_inst.h"
 #include "kernel_selector_helper.h"
 #include "register.hpp"
@@ -244,7 +245,9 @@ protected:
                             typed_primitive_inst<PType>& instance) override {
         stream& stream = instance.get_network().get_stream();
         if (instance.can_be_optimized()) {
-            return stream.aggregate_events(events, events.size() > 1, instance.is_output());
+            auto ev = stream.aggregate_events(events, events.size() > 1, instance.is_output());
+            debug_dump::dump_selected_output(instance, "ocl");
+            return ev;
         }
         std::vector<event::ptr> tmp_events(events);
         std::vector<event::ptr> all_events;
@@ -280,11 +283,16 @@ protected:
             all_events.push_back(ev);
         }
 
-        if ((all_events.size() == 0) && (tmp_events.size() > 0))
-            return stream.aggregate_events(tmp_events);
+        if ((all_events.size() == 0) && (tmp_events.size() > 0)) {
+            auto ev = stream.aggregate_events(tmp_events);
+            debug_dump::dump_selected_output(instance, "ocl");
+            return ev;
+        }
 
         bool group_events = (all_events.size() > 1);
-        return stream.aggregate_events(all_events, group_events);
+        auto ev = stream.aggregate_events(all_events, group_events);
+        debug_dump::dump_selected_output(instance, "ocl");
+        return ev;
     }
 
     std::vector<std::shared_ptr<cldnn::kernel_string>> get_kernels_source() override {

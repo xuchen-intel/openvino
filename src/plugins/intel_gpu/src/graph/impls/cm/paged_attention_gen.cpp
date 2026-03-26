@@ -117,9 +117,12 @@ float get_xattn_thresh(const kernel_impl_params& params, const size_t seq_idx) {
     return thresh;
 }
 
-// Bypass xattn stages in the following conditions -
-// either threshold is larger than 1.0, or, q_len is too small
-// to compute xattn block_mask.
+// Bypass xattn stages in the following conditions:
+// 1. threshold requests bypass explicitly
+// 2. q_len is too small to form even a single stride group
+// 3. q_len is not aligned to STRIDE, because the estimator operates on
+//    full STRIDE-token groups only and would silently ignore the tail tokens
+//    when building the sparse mask.
 bool bypass_xattn(const kernel_impl_params& params) {
     bool bypass = false;
     bool allow_bypass = params.get_program().get_config().get_allow_bypass_xattn();
@@ -129,7 +132,8 @@ bool bypass_xattn(const kernel_impl_params& params) {
     }
 
     auto q_len = params.output_layouts[0].get_shape()[0];
-    bypass |= q_len < static_cast<size_t>(STRIDE);  //# will slient drop the tails which is less than `stride`
+    bypass |= q_len < static_cast<size_t>(STRIDE);
+    bypass |= (q_len % static_cast<size_t>(STRIDE)) != 0;
     return bypass;
 }
 

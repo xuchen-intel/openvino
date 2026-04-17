@@ -420,7 +420,6 @@ JitConstants PagedAttentionGeneratorSingleToken::get_jit_constants(const kernel_
         }
     } else {
         jit.make("KV_CACHE_COMPRESSION", 0);
-        jit.make("KV_CACHE_COMPRESSION_BY_TOKEN", 0);
     }
 
     return jit;

@@ -236,7 +236,7 @@ extern "C" _GENX_MAIN_ void KERNEL_NAME(
 
             #pragma unroll
             #if KV_CACHE_COMPRESSION
-                #if !USE_LSC_BLOCK_2D_DESC && KV_CACHE_COMPRESSION_BY_TOKEN && XE_ARCH==1
+                #if !USE_LSC_BLOCK_2D_DESC && KV_CACHE_COMPRESSION == 1 && XE_ARCH==1
                 for(int k = 0, ri = 0; k < HEAD_SIZE/4; k += (REG_K/4)*4, ri += 4 ) {
                 #else
                 for(int k = 0, ri = 0; k < HEAD_SIZE/4; k += REG_K/4, ri ++ ) {
@@ -245,7 +245,7 @@ extern "C" _GENX_MAIN_ void KERNEL_NAME(
                 for(int k = 0, ri = 0; k < HEAD_SIZE/2; k += REG_K/2, ri ++ ) {
             #endif
                 // matrix<half, REG_K, REG_N> Kt = 0;
-                #if !USE_LSC_BLOCK_2D_DESC && KV_CACHE_COMPRESSION && KV_CACHE_COMPRESSION_BY_TOKEN && XE_ARCH==1
+                #if !USE_LSC_BLOCK_2D_DESC && KV_CACHE_COMPRESSION == 1 && XE_ARCH==1
                 matrix<uint8_t, REG_N, REG_K*4> temp4; // 8 x 64
                 uint cur_kv_offset4 = kv_offset + kv_pos * kv_stride + k * 4;
                 #pragma unroll
@@ -337,14 +337,22 @@ extern "C" _GENX_MAIN_ void KERNEL_NAME(
                     for(int kk = 0; kk < REG_N; kk++) {
                         cm_svm_block_read<uint8_t, REG_K>((svmptr_t)(key + cur_kv_offset + kk * kv_stride), temp[kk].format<uint8_t>());
                     }
-                    #if KV_CACHE_COMPRESSION_BY_TOKEN
+                    #if KV_CACHE_COMPRESSION == 1
                     matrix<half, REG_N, REG_K> KtNormal = temp;
                     KtNormal = KtNormal - temp_zp;
                     KtNormal = cm_mul<half>(KtNormal, temp_scale);
                     #else
+                    uint group_idx = (kv_pos / SUB_GROUP_SIZE);
                     vector<half, REG_K> temp_scale, temp_zp;
-                    temp_scale.select<REG_K, 1>(0) = scale_vec.select<REG_K, 1>(k * 4);
-                    temp_zp.select<REG_K, 1>(0) = zp_vec.select<REG_K, 1>(k * 4);
+                    svmptr_t scale_ptr = (svmptr_t)(key + k_scale_zp_offset
+                                        + group_idx * HEAD_SIZE * sizeof(half)
+                                        + k * 4 * sizeof(half));
+                    svmptr_t zp_ptr = (svmptr_t)(key + k_scale_zp_offset
+                                        + GROUPS_PER_BLOCK * HEAD_SIZE * sizeof(half)
+                                        + group_idx * HEAD_SIZE * sizeof(half)
+                                        + k * 4 * sizeof(half));
+                    cm_svm_block_read<half, REG_K>(scale_ptr, temp_scale);
+                    cm_svm_block_read<half, REG_K>(zp_ptr, temp_zp);
                     matrix<half, REG_N, REG_K> KtNormal;
                     #pragma unroll
                     for(int kk = 0; kk < REG_N; kk++) {

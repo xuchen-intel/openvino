@@ -279,7 +279,7 @@ public:
         } else {
             const auto subsequence_begins = read_i32_input(params, PagedAttentionInputIdx::SUBSEQUENCE_BEGINS);
             const auto past_lens = read_i32_input(params, PagedAttentionInputIdx::PAST_LENS);
-            const auto wg_seq_len = PagedAttentionGeneratorMultiToken::get_wg_seq_len(params);
+            const auto wg_seq_len = PagedAttentionGeneratorMultiToken::get_wg_seq_len(params, desc->k_head_size);
             const bool use_split_mixed = rt_params->stage == PagedAttentionStage::MIXED && m_mixed_route_mode == MixedRouteMode::SPLIT;
             for (size_t subsequence_id = 0; subsequence_id + 1 < subsequence_begins.size(); ++subsequence_id) {
                 const auto q_len = static_cast<size_t>(std::max<int32_t>(subsequence_begins[subsequence_id + 1] - subsequence_begins[subsequence_id], 0));
@@ -319,6 +319,7 @@ public:
 
     void prepare_multi_token_mapping(primitive_inst& instance) {
         const auto& params = *instance.get_impl_params();
+        const auto desc = params.typed_desc<paged_attention>();
         auto rt_params = static_cast<PagedAttentionRuntimeParams*>(m_rt_params.get());
         OPENVINO_ASSERT(rt_params != nullptr);
         if (rt_params->multi_token_wg_count == 0) {
@@ -328,7 +329,7 @@ public:
 
         const auto subsequence_begins = read_i32_input(params, PagedAttentionInputIdx::SUBSEQUENCE_BEGINS);
 
-        const auto wg_seq_len = static_cast<int32_t>(PagedAttentionGeneratorMultiToken::get_wg_seq_len(params));
+        const auto wg_seq_len = static_cast<int32_t>(PagedAttentionGeneratorMultiToken::get_wg_seq_len(params, desc->k_head_size));
         auto mapping_mem = instance.get_intermediates_memories()[PagedAttentionInternBuffIdx::MULTI_TOKEN_WG_MAPPING];
         mem_lock<int32_t, mem_lock_type::write> mapping_lock(mapping_mem, stream);
         const size_t expected_mapping_size = rt_params->multi_token_wg_count * 2;
@@ -383,6 +384,7 @@ public:
 
     void prepare_split_mixed_selected_ids_and_mapping(primitive_inst& instance) {
         const auto& params = *instance.get_impl_params();
+        const auto desc = params.typed_desc<paged_attention>();
         auto rt_params = static_cast<PagedAttentionRuntimeParams*>(m_rt_params.get());
         OPENVINO_ASSERT(rt_params != nullptr);
         OPENVINO_ASSERT(rt_params->stage == PagedAttentionStage::MIXED && m_mixed_route_mode == MixedRouteMode::SPLIT,
@@ -406,7 +408,7 @@ public:
                         ", got ",
                         mapping_mem->count());
 
-        const int32_t wg_seq_len = static_cast<int32_t>(PagedAttentionGeneratorMultiToken::get_wg_seq_len(params));
+        const int32_t wg_seq_len = static_cast<int32_t>(PagedAttentionGeneratorMultiToken::get_wg_seq_len(params, desc->k_head_size));
         size_t selected_count = 0;
         size_t mapping_idx = 0;
 

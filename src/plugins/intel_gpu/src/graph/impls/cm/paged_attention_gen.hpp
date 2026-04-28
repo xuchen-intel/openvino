@@ -203,6 +203,19 @@ public:
         return _wg_size * get_q_step(params);
     }
 
+    // Partitioning-aware overload: head_size=256 splits work across 4 cooperative workers
+    // per team, so each work-group only covers 4 query slices (4 * q_step tokens).
+    // For other head_sizes, the work-group covers _wg_size * q_step tokens (same as the
+    // base overload). Use this overload for kernel JIT constants; use the base overload
+    // for xattn meta calculations and mappings that care about WG-level block boundaries.
+    static size_t get_wg_seq_len(const kernel_impl_params& params, size_t head_size) {
+        if (head_size == 256) {
+            constexpr size_t num_groups = 4;
+            return num_groups * get_q_step(params);
+        }
+        return get_wg_seq_len(params);
+    }
+
     [[nodiscard]] Arguments get_arguments_desc(const kernel_impl_params& params) const override;
     [[nodiscard]] JitConstants get_jit_constants(const kernel_impl_params& params) const override;
     [[nodiscard]] DispatchDataFunc get_dispatch_data_func() const override;

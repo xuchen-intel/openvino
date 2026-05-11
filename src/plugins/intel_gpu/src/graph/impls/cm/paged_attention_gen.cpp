@@ -355,7 +355,7 @@ JitConstants PagedAttentionGeneratorMultiToken::get_jit_constants(const kernel_i
     } else {
         jit.make("CMPA_BLOCK_SZ", PA_KV_CACHE_BLOCK_SIZE_LEGACY);
     }
-    jit.make("CMPA_WG_SEQ_LEN", get_wg_seq_len(params));
+    jit.make("CMPA_WG_SEQ_LEN", get_wg_seq_len(params, desc->k_head_size));
 
     return jit;
 }
@@ -376,7 +376,7 @@ DispatchDataFunc PagedAttentionGeneratorMultiToken::get_dispatch_data_func() con
         const size_t q_len = out_shape[0];
 
         const size_t q_step = get_q_step(params);
-        const size_t wg_seq_len = get_wg_seq_len(params);
+        const size_t wg_seq_len = get_wg_seq_len(params, desc->k_head_size);
         const size_t wg_count = align_to(q_len, wg_seq_len) / wg_seq_len;
 
         wgs.global = {batch, heads_num, wg_count * WG_SIZE};
@@ -775,7 +775,11 @@ DispatchDataFunc XAttentionEstimateFindBlock::get_dispatch_data_func() const {
 JitConstants XAttentionEstimatePostProc::get_jit_constants(const kernel_impl_params& params) const {
     auto jit = XAttentionEstimateGeneratorBase::get_jit_constants(params);
 
-    jit.make("MERGED_Q_NUM", PagedAttentionGeneratorMultiToken::get_wg_seq_len(params) / _xattn_block_size);
+    // XAttention estimation uses _xattn_block_size, independent of head_size partitioning
+    constexpr size_t wg_size = 16;
+    constexpr size_t q_step_xe2 = 16;
+    const size_t xattn_wg_seq_len = (_xattn_block_size == 256) ? (4 * q_step_xe2) : (wg_size * q_step_xe2);
+    jit.make("MERGED_Q_NUM", xattn_wg_seq_len / _xattn_block_size);
 
     return jit;
 }

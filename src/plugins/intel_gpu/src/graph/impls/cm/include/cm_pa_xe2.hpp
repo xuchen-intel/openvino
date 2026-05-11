@@ -676,6 +676,13 @@ void pa_kernel_lsc_prefetch_f16(
     matrix<float, rO_half_rows_f16, REG_M * REG_N> rO_hi;
     bool first_active = true;
 
+    // Allocate SLM for accumulating partial attention scores across groups
+    constexpr int slm_size_per_wi = kv_step;  // Each work-item contributes kv_step floats
+    constexpr int total_slm_size = slm_size_per_wi * wg_local_size * sizeof(float);
+    CM_STATIC_WARNING(total_slm_size <= 4096, "SLM size exceeds limit");
+    cm_slm_init(total_slm_size);
+    auto slm_St = cm_slm_alloc(total_slm_size);
+
 #if SPARSE_BLOCK_SIZE > 1
     constexpr int sb_shift = (SPARSE_BLOCK_SIZE == 128) ? 7 : (SPARSE_BLOCK_SIZE == 256) ? 8 : -1;
     auto skip_by = [&](const bool* base, int kv_pos) -> bool {
@@ -806,16 +813,13 @@ void pa_kernel_lsc_prefetch_f16(
 
         // Accumulate partial attention scores across groups using SLM
         // Each group computed partial K@Q using 1/4 of head_size, now sum to get full scores
-        CM_STATIC_WARNING(sizeof(float) * kv_step * wg_local_size <= 4096, "SLM size exceeds limit");
-        constexpr int slm_size_per_wi = kv_step;  // Each work-item contributes kv_step floats
-        cm_slm_init(slm_size_per_wi * wg_local_size * sizeof(float));
 
         // Write partial scores to SLM
         int slm_offset = wg_local_id * slm_size_per_wi * sizeof(float);
-        cm_store_slm<float, kv_step>(slm_offset, St.format<float>());
+        cm_slm_block_write(slm_St, slm_offset, St.format<float>());
 
         // Barrier to ensure all work-items have written their partial scores
-        cm_slm_fence(CM_GLOBAL_COHERENT_FENCE);
+        cm_slm_fence(CM_LOCAL_BARRIER);
         cm_barrier();
 
         // Group leader (first work-item in each group of 4) accumulates partial scores
@@ -829,7 +833,7 @@ void pa_kernel_lsc_prefetch_f16(
                 int peer_wg_id = hw_group_id * group_size + i;
                 int peer_slm_offset = peer_wg_id * slm_size_per_wi * sizeof(float);
                 vector<float, kv_step> peer_St;
-                cm_load_slm<float, kv_step>(peer_slm_offset, peer_St);
+                cm_slm_block_read(slm_St, peer_slm_offset, peer_St);
                 full_St = cm_add<float>(full_St, peer_St);
             }
 
@@ -843,10 +847,10 @@ void pa_kernel_lsc_prefetch_f16(
         if (group_local_id != 0) {
             int leader_wg_id = hw_group_id * group_size;
             int leader_slm_offset = leader_wg_id * slm_size_per_wi * sizeof(float);
-            cm_load_slm<float, kv_step>(leader_slm_offset, St.format<float>());
+            cm_slm_block_read(slm_St, leader_slm_offset, St.format<float>());
         } else {
             // Group leader writes back accumulated scores to SLM for others to read
-            cm_store_slm<float, kv_step>(slm_offset, St.format<float>());
+            cm_slm_block_write(slm_St, slm_offset, St.format<float>());
         }
 
         cm_barrier();
@@ -1060,16 +1064,13 @@ void pa_kernel_lsc_prefetch_f16(
 
         // Accumulate partial attention scores across groups using SLM
         // Each group computed partial K@Q using 1/4 of head_size, now sum to get full scores
-        CM_STATIC_WARNING(sizeof(float) * kv_step * wg_local_size <= 4096, "SLM size exceeds limit");
-        constexpr int slm_size_per_wi = kv_step;  // Each work-item contributes kv_step floats
-        cm_slm_init(slm_size_per_wi * wg_local_size * sizeof(float));
 
         // Write partial scores to SLM
         int slm_offset = wg_local_id * slm_size_per_wi * sizeof(float);
-        cm_store_slm<float, kv_step>(slm_offset, St.format<float>());
+        cm_slm_block_write(slm_St, slm_offset, St.format<float>());
 
         // Barrier to ensure all work-items have written their partial scores
-        cm_slm_fence(CM_GLOBAL_COHERENT_FENCE);
+        cm_slm_fence(CM_LOCAL_BARRIER);
         cm_barrier();
 
         // Group leader (first work-item in each group of 4) accumulates partial scores
@@ -1083,7 +1084,7 @@ void pa_kernel_lsc_prefetch_f16(
                 int peer_wg_id = hw_group_id * group_size + i;
                 int peer_slm_offset = peer_wg_id * slm_size_per_wi * sizeof(float);
                 vector<float, kv_step> peer_St;
-                cm_load_slm<float, kv_step>(peer_slm_offset, peer_St);
+                cm_slm_block_read(slm_St, peer_slm_offset, peer_St);
                 full_St = cm_add<float>(full_St, peer_St);
             }
 
@@ -1097,10 +1098,10 @@ void pa_kernel_lsc_prefetch_f16(
         if (group_local_id != 0) {
             int leader_wg_id = hw_group_id * group_size;
             int leader_slm_offset = leader_wg_id * slm_size_per_wi * sizeof(float);
-            cm_load_slm<float, kv_step>(leader_slm_offset, St.format<float>());
+            cm_slm_block_read(slm_St, leader_slm_offset, St.format<float>());
         } else {
             // Group leader writes back accumulated scores to SLM for others to read
-            cm_store_slm<float, kv_step>(slm_offset, St.format<float>());
+            cm_slm_block_write(slm_St, slm_offset, St.format<float>());
         }
 
         cm_barrier();

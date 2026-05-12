@@ -762,7 +762,7 @@ void pa_lsc_f16(
 
         // Compute K@Q from SLM
         uint slm_read_offset = slm_buff_id_read * slm_buff_size;
-        auto St = ugemm_KQ<head_size / REG_K>(slm_K, rQ, slm_read_offset);
+        matrix<float, kv_step, q_step> St = ugemm_KQ(slm_K, rQ, slm_read_offset);
 
         // Apply causal mask
         if constexpr (use_causal_mask) {

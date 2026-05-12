@@ -624,6 +624,8 @@ void pa_lsc_u8(
     }
 }
 
+#else
+
 // F16 SLM-based implementation for head_size=256 to reduce register pressure
 // Adapted from pa_lsc_u8 but without compression
 template<bool use_causal_mask, int num_heads, int num_kv_heads, int head_size, int is_q_fused = 0>
@@ -837,8 +839,6 @@ void pa_lsc_f16(
         cm_store(b2dO.set_block_y(REG_M), cur_O_f16.format<half, num_P_tiles, REG_M * REG_N>().row(1));
     }
 }
-
-#else
 
 template<bool use_causal_mask, int num_heads, int num_kv_heads, int head_size, int is_qkv_fused, int wg_local_size>
 void pa_kernel_lsc_prefetch_f16(

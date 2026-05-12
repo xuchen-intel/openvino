@@ -653,14 +653,19 @@ void pa_kernel_lsc_prefetch_f16(
     constexpr uint v_pitch = k_pitch;
 
     // Partition work-items into 4 groups along head_size dimension to utilize all 1024 GRFs
+    // Hardware execution: 16 work-items execute in 4 waves of 4 threads each
+    // Wave 0: work-items 0,1,2,3 run in parallel on physical threads 0,1,2,3
+    // Wave 1: work-items 4,5,6,7 run in parallel on physical threads 0,1,2,3
+    // etc.
+    // Work-items within same wave cooperate on same queries but different head_size chunks
     constexpr int num_hw_groups = 4;
     static_assert(wg_local_size == 16, "wg_local_size must be 16");
     static_assert(head_size % num_hw_groups == 0, "head_size must be divisible by num_hw_groups");
-    constexpr int group_size = wg_local_size / num_hw_groups;  // 4 work-items per group
+    constexpr int group_size = wg_local_size / num_hw_groups;  // 4 work-items per wave
     constexpr int head_size_per_group = head_size / num_hw_groups;  // 256/4 = 64
 
-    int hw_group_id = wg_local_id / group_size;  // 0,1,2,3
-    int group_local_id = wg_local_id % group_size;  // 0-3 within group
+    int hw_group_id = wg_local_id % group_size;  // 0,1,2,3 - physical thread ID within wave
+    int wave_id = wg_local_id / group_size;  // 0,1,2,3 - which wave this work-item belongs to
 
     vector<float, q_step> cur_max;
     vector<float, q_step> cur_sum;
@@ -792,6 +797,32 @@ void pa_kernel_lsc_prefetch_f16(
                         Kmat[k].format<int32_t>());
                 }
             }
+
+        // Store partial St to SLM for this work-item
+        // SLM layout: [wg_local_id][kv_step * q_step floats]
+        // Each work-item in a wave processes same query tokens but different head_size chunk
+        int slm_offset_bytes = wg_local_id * kv_step * q_step * sizeof(float);
+        cm_slm_block_write(slm_St, slm_offset_bytes, St.format<float>());
+
+        // Barrier: ensure all work-items in this wave have written their partial St
+        cm_slm_fence(CM_GLOBAL_COHERENT_FENCE);
+        cm_barrier();
+
+        // Accumulate partial St from all 4 work-items within the same wave
+        // Wave 0: work-items 0,1,2,3 accumulate from each other
+        // Wave 1: work-items 4,5,6,7 accumulate from each other
+        // etc.
+        St = 0.0f;
+        int wave_base = wave_id * group_size;  // Starting work-item ID for this wave
+        #pragma unroll
+        for(int g = 0; g < num_hw_groups; g++) {
+            int src_wi = wave_base + g;  // Work-item within same wave
+            int src_slm_offset_bytes = src_wi * kv_step * q_step * sizeof(float);
+            matrix<float, kv_step, q_step> partial_st;
+            cm_slm_block_read(slm_St, GENX_NONE, src_slm_offset_bytes, partial_st.format<float>());
+            St += partial_st;
+        }
+
         }
         if constexpr (use_causal_mask) {
             // since kv_step == q_step == 16, causal_left is n*kv_step
@@ -809,51 +840,7 @@ void pa_kernel_lsc_prefetch_f16(
         for(int p = kv_tokens; p < kv_step; p++) St[p] = -3.4e38f;
         //show(St);
 
-        // Accumulate partial attention scores across groups using SLM
-        // Each group computed partial K@Q using 1/4 of head_size, now sum to get full scores
-        // St is matrix<float, kv_step, q_step>, total elements = kv_step * q_step
-
-        // Write partial scores to SLM
-        int slm_offset = wg_local_id * slm_size_per_wi * q_step * sizeof(float);
-        cm_slm_block_write(slm_St, slm_offset, St.format<float>());
-
-        // Barrier to ensure all work-items have written their partial scores
-        cm_slm_fence(CM_LOCAL_BARRIER);
-        cm_barrier();
-
-        // Group leader (first work-item in each group of 4) accumulates partial scores
-        if (group_local_id == 0) {
-            // Start with this work-item's partial scores (full matrix)
-            matrix<float, kv_step, q_step> full_St = St;
-
-            // Add partial scores from other 3 work-items in the same physical thread group
-            #pragma unroll
-            for (int i = 1; i < group_size; i++) {
-                int peer_wg_id = hw_group_id * group_size + i;
-                int peer_slm_offset = peer_wg_id * slm_size_per_wi * q_step * sizeof(float);
-                matrix<float, kv_step, q_step> peer_St;
-                cm_slm_block_read(slm_St, peer_slm_offset, peer_St.format<float>());
-                full_St = cm_add<float>(full_St, peer_St);
-            }
-
-            St = full_St;
-        }
-
-        // Barrier to ensure group leader finished accumulation before others read
-        cm_barrier();
-
-        // Broadcast accumulated scores from group leader to all work-items in the group
-        if (group_local_id != 0) {
-            int leader_wg_id = hw_group_id * group_size;
-            int leader_slm_offset = leader_wg_id * slm_size_per_wi * q_step * sizeof(float);
-            cm_slm_block_read(slm_St, leader_slm_offset, St.format<float>());
-        } else {
-            // Group leader writes back accumulated scores to SLM for others to read
-            cm_slm_block_write(slm_St, slm_offset, St.format<float>());
-        }
-
-        cm_barrier();
-
+        // Now St contains the full K@Q scores accumulated from all 4 groups
         auto max_comp = online_softmax_update(St, cur_max, cur_sum);
 
         matrix<half, REG_N, REG_K> P;
@@ -1019,7 +1006,8 @@ void pa_kernel_lsc_prefetch_f16(
         #endif
             b2dK.set_base_ptr((reinterpret_cast<half*>(k_cache_base)+cur_block_id*blk_stride));
             b2dK.set_block_y(kv_pos%CMPA_BLOCK_SZ);
-            // Load K chunk for this group (group_head_offset = hw_group_id * head_size_per_group)
+
+            // Each work-item loads its 1/4 chunk of K and computes partial K@Q
             cm_load<lsc::Normal>(Kmat.format<half>(), b2dK.set_block_x(group_head_offset));
             // sometimes KV cache would be filled with random Nan, so need to clean up the unused key data.
             if ((kv_pos + kv_step) > kv_stop) {
@@ -1027,6 +1015,8 @@ void pa_kernel_lsc_prefetch_f16(
                 for (int r = valid_rows; r < kv_step; r++)
                     Kmat.format<half, num_K*REG_M, REG_N>().row(r) = 0.f;
             }
+
+            // QK0: compute partial K@Q with this group's Q chunk
             #pragma unroll
             for(int k = 0; k < num_K; k++)
                 St2.row(k) = cm_dpas<CM_PRECISION_HF, CM_PRECISION_HF, SystolicDepth, RepeatCount, float>(
@@ -1048,6 +1038,32 @@ void pa_kernel_lsc_prefetch_f16(
                         Kmat[k].format<int32_t>());
                 }
             }
+
+        // Store partial St to SLM for this work-item
+        // SLM layout: [wg_local_id][kv_step * q_step floats]
+        // Each work-item in a wave processes same query tokens but different head_size chunk
+        int slm_offset_bytes = wg_local_id * kv_step * q_step * sizeof(float);
+        cm_slm_block_write(slm_St, slm_offset_bytes, St.format<float>());
+
+        // Barrier: ensure all work-items in this wave have written their partial St
+        cm_slm_fence(CM_GLOBAL_COHERENT_FENCE);
+        cm_barrier();
+
+        // Accumulate partial St from all 4 work-items within the same wave
+        // Wave 0: work-items 0,1,2,3 accumulate from each other
+        // Wave 1: work-items 4,5,6,7 accumulate from each other
+        // etc.
+        St = 0.0f;
+        int wave_base = wave_id * group_size;  // Starting work-item ID for this wave
+        #pragma unroll
+        for(int g = 0; g < num_hw_groups; g++) {
+            int src_wi = wave_base + g;  // Work-item within same wave
+            int src_slm_offset_bytes = src_wi * kv_step * q_step * sizeof(float);
+            matrix<float, kv_step, q_step> partial_st;
+            cm_slm_block_read(slm_St, GENX_NONE, src_slm_offset_bytes, partial_st.format<float>());
+            St += partial_st;
+        }
+
         }
         if constexpr (use_causal_mask) {
             // since kv_step == q_step == 16, causal_left is n*kv_step
@@ -1065,51 +1081,7 @@ void pa_kernel_lsc_prefetch_f16(
         for(int p = kv_tokens; p < kv_step; p++) St[p] = -3.4e38f;
         //show(St);
 
-        // Accumulate partial attention scores across groups using SLM
-        // Each group computed partial K@Q using 1/4 of head_size, now sum to get full scores
-        // St is matrix<float, kv_step, q_step>, total elements = kv_step * q_step
-
-        // Write partial scores to SLM
-        int slm_offset = wg_local_id * slm_size_per_wi * q_step * sizeof(float);
-        cm_slm_block_write(slm_St, slm_offset, St.format<float>());
-
-        // Barrier to ensure all work-items have written their partial scores
-        cm_slm_fence(CM_LOCAL_BARRIER);
-        cm_barrier();
-
-        // Group leader (first work-item in each group of 4) accumulates partial scores
-        if (group_local_id == 0) {
-            // Start with this work-item's partial scores (full matrix)
-            matrix<float, kv_step, q_step> full_St = St;
-
-            // Add partial scores from other 3 work-items in the same physical thread group
-            #pragma unroll
-            for (int i = 1; i < group_size; i++) {
-                int peer_wg_id = hw_group_id * group_size + i;
-                int peer_slm_offset = peer_wg_id * slm_size_per_wi * q_step * sizeof(float);
-                matrix<float, kv_step, q_step> peer_St;
-                cm_slm_block_read(slm_St, peer_slm_offset, peer_St.format<float>());
-                full_St = cm_add<float>(full_St, peer_St);
-            }
-
-            St = full_St;
-        }
-
-        // Barrier to ensure group leader finished accumulation before others read
-        cm_barrier();
-
-        // Broadcast accumulated scores from group leader to all work-items in the group
-        if (group_local_id != 0) {
-            int leader_wg_id = hw_group_id * group_size;
-            int leader_slm_offset = leader_wg_id * slm_size_per_wi * q_step * sizeof(float);
-            cm_slm_block_read(slm_St, leader_slm_offset, St.format<float>());
-        } else {
-            // Group leader writes back accumulated scores to SLM for others to read
-            cm_slm_block_write(slm_St, slm_offset, St.format<float>());
-        }
-
-        cm_barrier();
-
+        // Now St contains the full K@Q scores accumulated from all 4 groups
         auto max_comp = online_softmax_update(St, cur_max, cur_sum);
 
         matrix<half, REG_N, REG_K> P;

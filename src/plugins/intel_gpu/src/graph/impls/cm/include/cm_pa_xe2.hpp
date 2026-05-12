@@ -632,6 +632,7 @@ template<bool use_causal_mask, int num_heads, int num_kv_heads, int head_size, i
 void pa_lsc_f16(
     uint slm_K,
     uint slm_V,
+    uint slm_O,
     int wg_local_id,
     int local_size,
     int q_start,
@@ -649,6 +650,11 @@ void pa_lsc_f16(
     int32_t past_lens,
     int32_t* block_indices [[type("svmptr_t")]]) {
 
+    // Debug: print when pa_lsc_f16 is called
+    if (wg_local_id == 0 && q_start == 0) {
+        cm_printf(">>> pa_lsc_f16 INVOKED WITH SLM_O: head_size=%d, q_len=%d, kv_len=%d, local_size=%d\n", head_size, q_len, kv_len, local_size);
+    }
+
     constexpr uint o_pitch = (num_heads * head_size * sizeof(half));
     constexpr uint q_pitch = is_q_fused
         ? ((num_heads + num_kv_heads * 2) * head_size * sizeof(half))
@@ -664,10 +670,15 @@ void pa_lsc_f16(
 
     constexpr int num_P_tiles = REG_N / REG_M;
     matrix<half, head_size / REG_K, REG_K * REG_N> rQ;
-    constexpr int rO_half_rows = head_size / 2 / REG_N * num_P_tiles;
-    static_assert(head_size % (2 * REG_N) == 0, "head_size must be divisible by 2*REG_N for rO split");
-    matrix<float, rO_half_rows, REG_M * REG_N> rO_lo;
-    matrix<float, rO_half_rows, REG_M * REG_N> rO_hi;
+
+    // SLM-based rO to reduce register pressure
+    // Layout: per work-item [q_step][head_size] in float
+    constexpr uint slm_O_per_wi = q_step * head_size * sizeof(float);
+    uint slm_O_base = slm_O + wg_local_id * slm_O_per_wi;
+
+    // Tile buffer for processing rO in chunks (saves 256 GRFs!)
+    constexpr int rO_tile_rows = 4; // Process 4 output dims at a time
+    matrix<float, rO_tile_rows, q_step> rO_tile;
     bool first_active = true;
 
     auto q_tokens_left = q_len;
@@ -676,6 +687,15 @@ void pa_lsc_f16(
 
     if (q_tokens_left < 0) q_tokens_left = 0;
     if (q_tokens_left > q_step) q_tokens_left = q_step;
+
+    // Initialize SLM rO to zero
+    {
+        matrix<float, q_step, REG_N> zero_init;
+        zero_init = 0.0f;
+        for (int h = 0; h < head_size; h += REG_N) {
+            cm_slm_block_write(slm_O_base, h * q_step * sizeof(float), zero_init.format<float>());
+        }
+    }
 
     // Load Q
     if (q_tokens_left > 0) {
@@ -786,54 +806,87 @@ void pa_lsc_f16(
         matrix<half, REG_N, REG_K> P;
         Transpose2DMatrix(St, P);
 
-        // Compute P@V from SLM
-        if (first_active) {
-            ugemm_PV0<num_P_tiles, rO_half_rows>(slm_V, P, rO_lo, slm_read_offset);
-            ugemm_PV0<num_P_tiles, rO_half_rows>(slm_V, P, rO_hi, slm_read_offset + head_size / 2 * REG_K * sizeof(half));
-            first_active = false;
-        } else {
-            ugemm_PV1<num_P_tiles, rO_half_rows>(slm_V, P, max_comp, rO_lo, slm_read_offset);
-            ugemm_PV1<num_P_tiles, rO_half_rows>(slm_V, P, max_comp, rO_hi, slm_read_offset + head_size / 2 * REG_K * sizeof(half));
+        // Compute P@V from SLM and accumulate to SLM rO in tiles
+        // Process output dimensions in tiles of rO_tile_rows to reduce register pressure
+        auto P2 = P.format<half, num_P_tiles, REG_M * REG_K>();
+
+        for (int h_out = 0; h_out < head_size; h_out += rO_tile_rows) {
+            // Load V tile from SLM (reuse existing slm_V data)
+            matrix<half, REG_K / 2, rO_tile_rows * 2> Vmat_tile;
+
+            // Load V values for this output dimension tile
+            for (int h = 0; h < rO_tile_rows; h += REG_N) {
+                cm_slm_block_read(Vmat_tile.select<REG_K/2, 1, REG_N, 1>(0, h).format<half>(),
+                                 slm_V, slm_read_offset + (h_out + h) * REG_K * sizeof(half));
+            }
+
+            // Compute P @ V_tile
+            rO_tile = 0.0f;
+            #pragma unroll
+            for (int p = 0; p < num_P_tiles; p++) {
+                for (int h = 0; h < rO_tile_rows / REG_N; h++) {
+                    auto Vmat_slice = Vmat_tile.select<REG_K/2, 1, REG_N*2, 1>(0, h * REG_N);
+                    rO_tile.select<REG_M, 1, REG_N, 1>(h * REG_M, 0) =
+                        cm_dpas<CM_PRECISION_HF, CM_PRECISION_HF, SystolicDepth, RepeatCount, float>(
+                            rO_tile.select<REG_M, 1, REG_N, 1>(h * REG_M, 0),
+                            Vmat_slice.format<int32_t>(),
+                            P2.row(p).format<int32_t>());
+                }
+            }
+
+            // Read-modify-write to SLM rO
+            matrix<float, rO_tile_rows, q_step> rO_accum;
+            if (!first_active) {
+                // Read existing accumulation
+                for (int h = 0; h < rO_tile_rows; h += REG_N) {
+                    cm_slm_block_read(rO_accum.select<REG_N, 1, q_step, 1>(h, 0).format<float>(),
+                                     slm_O_base, (h_out + h) * q_step * sizeof(float));
+                }
+                // Scale and add
+                rO_accum = rO_accum * max_comp + rO_tile;
+            } else {
+                rO_accum = rO_tile;
+            }
+
+            // Write back
+            for (int h = 0; h < rO_tile_rows; h += REG_N) {
+                cm_slm_block_write(slm_O_base, (h_out + h) * q_step * sizeof(float),
+                                  rO_accum.select<REG_N, 1, q_step, 1>(h, 0).format<float>());
+            }
         }
 
+        first_active = false;
         slm_buff_id_read = slm_buff_id_write;
     }
 
     if (q_tokens_left == 0) return;
 
-    // Save output
+    // Save output - read from SLM rO and normalize
     matrix<half, num_P_tiles * REG_M, REG_N> cur_O_f16;
+    matrix<float, REG_N, q_step> rO_read_tile;
     cur_sum = cm_inv(cur_sum);
 
     lsc::block_2d_desc<half, 1, REG_M, REG_N> b2dO(o_base, q_tokens_left - 1, head_size * sizeof(half) - 1, o_pitch - 1, 0, 0);
 
-    // Store lower half
+    // Read from SLM and store
     #pragma unroll
-    for (int k = 0, ri = 0; k < head_size / 2; k += REG_N, ri += num_P_tiles) {
-        #pragma unroll
-        for (int p = 0; p < num_P_tiles; p++) {
-            auto cO = rO_lo[ri + p].format<float, REG_M, REG_N>();
-            #pragma unroll
-            for (int r = 0; r < cO.n_rows(); r++) {
-                cur_O_f16[r + p * REG_M] = cm_mul<float>(cO.row(r), cur_sum[r + p * REG_M]);
-            }
-        }
-        b2dO.set_block_x(k);
-        cm_store(b2dO.set_block_y(0), cur_O_f16.format<half, num_P_tiles, REG_M * REG_N>().row(0));
-        cm_store(b2dO.set_block_y(REG_M), cur_O_f16.format<half, num_P_tiles, REG_M * REG_N>().row(1));
-    }
+    for (int k = 0; k < head_size; k += REG_N) {
+        // Read REG_N rows from SLM rO
+        cm_slm_block_read(rO_read_tile.format<float>(), slm_O_base, k * q_step * sizeof(float));
 
-    // Store upper half
-    #pragma unroll
-    for (int k = head_size / 2, ri = 0; k < head_size; k += REG_N, ri += num_P_tiles) {
+        // Normalize and convert to half
         #pragma unroll
         for (int p = 0; p < num_P_tiles; p++) {
-            auto cO = rO_hi[ri + p].format<float, REG_M, REG_N>();
             #pragma unroll
-            for (int r = 0; r < cO.n_rows(); r++) {
-                cur_O_f16[r + p * REG_M] = cm_mul<float>(cO.row(r), cur_sum[r + p * REG_M]);
+            for (int r = 0; r < REG_M; r++) {
+                int q_idx = r + p * REG_M;
+                #pragma unroll
+                for (int h = 0; h < REG_N; h++) {
+                    cur_O_f16[q_idx][h] = (half)(rO_read_tile[h][q_idx] * cur_sum[q_idx]);
+                }
             }
         }
+
         b2dO.set_block_x(k);
         cm_store(b2dO.set_block_y(0), cur_O_f16.format<half, num_P_tiles, REG_M * REG_N>().row(0));
         cm_store(b2dO.set_block_y(REG_M), cur_O_f16.format<half, num_P_tiles, REG_M * REG_N>().row(1));
@@ -857,6 +910,12 @@ void pa_kernel_lsc_prefetch_f16(
     svmptr_t o_base [[type("svmptr_t")]],
     int32_t past_lens,
     int32_t* block_indices [[type("svmptr_t")]]) {
+
+    // Debug: print when pa_kernel_lsc_prefetch_f16 is called
+    if (wg_local_id == 0 && q_start == 0) {
+        cm_printf(">>> pa_kernel_lsc_prefetch_f16 INVOKED: head_size=%d, q_len=%d, kv_len=%d\n", head_size, q_len, kv_len);
+    }
+
     constexpr uint o_pitch = (num_heads * head_size * sizeof(half));
     constexpr uint q_pitch = is_qkv_fused ? ((num_heads + num_kv_heads*2) * head_size * sizeof(half)) : o_pitch;
     // constexpr uint k_pitch = is_qkv_fused ? q_pitch : (num_kv_heads * head_size * sizeof(half));

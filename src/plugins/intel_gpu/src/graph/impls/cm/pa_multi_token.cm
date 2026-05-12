@@ -188,13 +188,16 @@ extern "C" _GENX_MAIN_ void KERNEL_NAME(
 #if CMFLA_HEAD_SIZE == 256
     constexpr uint K_SLM_SIZE = (kv_step * head_size * sizeof(half));
     constexpr uint V_SLM_SIZE = (kv_step * head_size * sizeof(half));
-    cm_slm_init(K_SLM_SIZE + V_SLM_SIZE);
+    constexpr uint O_SLM_SIZE = (head_size * q_step * sizeof(float) * local_size); // Per-work-item output accumulators
+    cm_slm_init(K_SLM_SIZE + V_SLM_SIZE + O_SLM_SIZE);
     auto slm_K_f16 = cm_slm_alloc(K_SLM_SIZE);
     auto slm_V_f16 = cm_slm_alloc(V_SLM_SIZE);
+    auto slm_O = cm_slm_alloc(O_SLM_SIZE);
 
     pa_lsc_f16<is_causal, num_heads, num_kv_heads, head_size, 0>(
                             slm_K_f16,
                             slm_V_f16,
+                            slm_O,
                             wg_local_id,
                             local_size,
                             q_start_sg,

@@ -652,20 +652,20 @@ void pa_kernel_lsc_prefetch_f16(
     constexpr uint k_pitch =  head_size * sizeof(half);
     constexpr uint v_pitch = k_pitch;
 
-    // Partition work-items into 4 groups along head_size dimension to utilize all 1024 GRFs
-    // Hardware execution: 16 work-items execute in 4 waves of 4 threads each
-    // Wave 0: work-items 0,1,2,3 run in parallel on physical threads 0,1,2,3
-    // Wave 1: work-items 4,5,6,7 run in parallel on physical threads 0,1,2,3
-    // etc.
-    // Work-items within same wave cooperate on same queries but different head_size chunks
-    constexpr int num_hw_groups = 4;
+    // Head_size dimension partitioning - only enabled for head_size=256
+    // to reduce register pressure from 427 GRFs to ~256 GRFs
+    constexpr bool enable_head_size_partition = (head_size == 256);
+    constexpr int num_hw_groups = enable_head_size_partition ? 4 : 1;
+    constexpr int group_size = wg_local_size / num_hw_groups;  // 4 or 16
+    constexpr int head_size_per_group = head_size / num_hw_groups;  // 64 or full head_size
+
     static_assert(wg_local_size == 16, "wg_local_size must be 16");
     static_assert(head_size % num_hw_groups == 0, "head_size must be divisible by num_hw_groups");
-    constexpr int group_size = wg_local_size / num_hw_groups;  // 4 work-items per wave
-    constexpr int head_size_per_group = head_size / num_hw_groups;  // 256/4 = 64
 
-    int hw_group_id = wg_local_id % group_size;  // 0,1,2,3 - physical thread ID within wave
-    int wave_id = wg_local_id / group_size;  // 0,1,2,3 - which wave this work-item belongs to
+    // For head_size=256: partition into 4 waves, work-items within wave cooperate
+    // For other sizes: no partitioning, hw_group_id always 0
+    int hw_group_id = enable_head_size_partition ? (wg_local_id % group_size) : 0;
+    int wave_id = enable_head_size_partition ? (wg_local_id / group_size) : wg_local_id;
 
     vector<float, q_step> cur_max;
     vector<float, q_step> cur_sum;
@@ -798,29 +798,28 @@ void pa_kernel_lsc_prefetch_f16(
                 }
             }
 
-        // Store partial St to SLM for this work-item
-        // SLM layout: [wg_local_id][kv_step * q_step floats]
-        // Each work-item in a wave processes same query tokens but different head_size chunk
-        int slm_offset_bytes = wg_local_id * kv_step * q_step * sizeof(float);
-        cm_slm_block_write(slm_St, slm_offset_bytes, St.format<float>());
+        // Head_size partitioning: synchronize and accumulate partial St across wave
+        // Only needed for head_size=256 where work-items cooperate
+        if constexpr (enable_head_size_partition) {
+            // Store partial St to SLM for this work-item
+            int slm_offset_bytes = wg_local_id * kv_step * q_step * sizeof(float);
+            cm_slm_block_write(slm_St, slm_offset_bytes, St.format<float>());
 
-        // Barrier: ensure all work-items in this wave have written their partial St
-        cm_slm_fence(CM_GLOBAL_COHERENT_FENCE);
-        cm_barrier();
+            // Barrier: ensure all work-items in this wave have written their partial St
+            cm_slm_fence(CM_GLOBAL_COHERENT_FENCE);
+            cm_barrier();
 
-        // Accumulate partial St from all 4 work-items within the same wave
-        // Wave 0: work-items 0,1,2,3 accumulate from each other
-        // Wave 1: work-items 4,5,6,7 accumulate from each other
-        // etc.
-        St = 0.0f;
-        int wave_base = wave_id * group_size;  // Starting work-item ID for this wave
-        #pragma unroll
-        for(int g = 0; g < num_hw_groups; g++) {
-            int src_wi = wave_base + g;  // Work-item within same wave
-            int src_slm_offset_bytes = src_wi * kv_step * q_step * sizeof(float);
-            matrix<float, kv_step, q_step> partial_st;
-            cm_slm_block_read(slm_St, GENX_NONE, src_slm_offset_bytes, partial_st.format<float>());
-            St += partial_st;
+            // Accumulate partial St from all 4 work-items within the same wave
+            St = 0.0f;
+            int wave_base = wave_id * group_size;
+            #pragma unroll
+            for(int g = 0; g < num_hw_groups; g++) {
+                int src_wi = wave_base + g;
+                int src_slm_offset_bytes = src_wi * kv_step * q_step * sizeof(float);
+                matrix<float, kv_step, q_step> partial_st;
+                cm_slm_block_read(slm_St, GENX_NONE, src_slm_offset_bytes, partial_st.format<float>());
+                St += partial_st;
+            }
         }
 
         }
@@ -1039,29 +1038,28 @@ void pa_kernel_lsc_prefetch_f16(
                 }
             }
 
-        // Store partial St to SLM for this work-item
-        // SLM layout: [wg_local_id][kv_step * q_step floats]
-        // Each work-item in a wave processes same query tokens but different head_size chunk
-        int slm_offset_bytes = wg_local_id * kv_step * q_step * sizeof(float);
-        cm_slm_block_write(slm_St, slm_offset_bytes, St.format<float>());
+        // Head_size partitioning: synchronize and accumulate partial St across wave
+        // Only needed for head_size=256 where work-items cooperate
+        if constexpr (enable_head_size_partition) {
+            // Store partial St to SLM for this work-item
+            int slm_offset_bytes = wg_local_id * kv_step * q_step * sizeof(float);
+            cm_slm_block_write(slm_St, slm_offset_bytes, St.format<float>());
 
-        // Barrier: ensure all work-items in this wave have written their partial St
-        cm_slm_fence(CM_GLOBAL_COHERENT_FENCE);
-        cm_barrier();
+            // Barrier: ensure all work-items in this wave have written their partial St
+            cm_slm_fence(CM_GLOBAL_COHERENT_FENCE);
+            cm_barrier();
 
-        // Accumulate partial St from all 4 work-items within the same wave
-        // Wave 0: work-items 0,1,2,3 accumulate from each other
-        // Wave 1: work-items 4,5,6,7 accumulate from each other
-        // etc.
-        St = 0.0f;
-        int wave_base = wave_id * group_size;  // Starting work-item ID for this wave
-        #pragma unroll
-        for(int g = 0; g < num_hw_groups; g++) {
-            int src_wi = wave_base + g;  // Work-item within same wave
-            int src_slm_offset_bytes = src_wi * kv_step * q_step * sizeof(float);
-            matrix<float, kv_step, q_step> partial_st;
-            cm_slm_block_read(slm_St, GENX_NONE, src_slm_offset_bytes, partial_st.format<float>());
-            St += partial_st;
+            // Accumulate partial St from all 4 work-items within the same wave
+            St = 0.0f;
+            int wave_base = wave_id * group_size;
+            #pragma unroll
+            for(int g = 0; g < num_hw_groups; g++) {
+                int src_wi = wave_base + g;
+                int src_slm_offset_bytes = src_wi * kv_step * q_step * sizeof(float);
+                matrix<float, kv_step, q_step> partial_st;
+                cm_slm_block_read(slm_St, GENX_NONE, src_slm_offset_bytes, partial_st.format<float>());
+                St += partial_st;
+            }
         }
 
         }

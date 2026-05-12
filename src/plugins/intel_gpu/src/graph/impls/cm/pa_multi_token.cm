@@ -89,7 +89,11 @@ extern "C" _GENX_MAIN_ void KERNEL_NAME(
     int past_q_lens = past_lens[0];
     kv_start = 0;
     kv_seq_len = q_len + past_q_lens;
-    q_start_sg = (wg_id * local_size + wg_local_id) * q_step;
+    // For head_size partitioning: work-items within a wave (0-3, 4-7, 8-11, 12-15)
+    // cooperate on the same query slice but different head_size chunks
+    constexpr int wave_size = 4;
+    int wave_id = wg_local_id / wave_size;
+    q_start_sg = (wg_id * local_size / wave_size + wave_id) * q_step;
     q_len_sg = q_step;
     if (q_start_sg + q_len_sg > q_len) {
         q_len_sg = q_len - q_start_sg;

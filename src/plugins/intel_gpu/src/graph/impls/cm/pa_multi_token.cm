@@ -89,7 +89,17 @@ extern "C" _GENX_MAIN_ void KERNEL_NAME(
     int past_q_lens = past_lens[0];
     kv_start = 0;
     kv_seq_len = q_len + past_q_lens;
+
+    // For head_size=256 with SLM optimization: work-items cooperate on same queries
+    // Similar to I8 compression path
+#if head_size == 256 && !KV_CACHE_COMPRESSION
+    constexpr int group_size = 4;
+    int wave_id = wg_local_id % group_size;
+    q_start_sg = (wg_id * group_size + wave_id) * q_step;
+#else
     q_start_sg = (wg_id * local_size + wg_local_id) * q_step;
+#endif
+
     q_len_sg = q_step;
     if (q_start_sg + q_len_sg > q_len) {
         q_len_sg = q_len - q_start_sg;
@@ -183,6 +193,46 @@ extern "C" _GENX_MAIN_ void KERNEL_NAME(
 #ifndef CM_HAS_LSC_UNTYPED_2D
     uint v_offset_bytes = kv_offset * sizeof(half);
 #endif
+
+    // For head_size=256: use SLM-based path (pa_lsc_f16) to reduce register pressure
+#if head_size == 256
+    constexpr uint K_SLM_SIZE = (kv_step * head_size * sizeof(half));
+    constexpr uint V_SLM_SIZE = (kv_step * head_size * sizeof(half));
+    cm_slm_init(K_SLM_SIZE + V_SLM_SIZE);
+    auto slm_K_f16 = cm_slm_alloc(K_SLM_SIZE);
+    auto slm_V_f16 = cm_slm_alloc(V_SLM_SIZE);
+
+    pa_lsc_f16<is_causal, num_heads, num_kv_heads, head_size, 0>(
+                            slm_K_f16,
+                            slm_V_f16,
+                            wg_local_id,
+                            local_size,
+                            q_start_sg, //q_start for SG,
+                            kv_stop,
+                            q_len_sg, //q_step,
+                            kv_seq_len, //kv_len,
+#ifdef CM_HAS_LSC_UNTYPED_2D
+                            reinterpret_cast<svmptr_t>(query + q_offset),
+#else
+                            q_gather,
+                            q_offset_bytes,
+#endif
+                            reinterpret_cast<svmptr_t>(k_cache + kv_offset),
+#ifdef CM_HAS_LSC_UNTYPED_2D
+                            reinterpret_cast<svmptr_t>(v_cache + kv_offset),
+#else
+                            v_cache_stateful,
+                            v_offset_bytes,
+#endif
+#if SPARSE_BLOCK_SIZE > 1
+                            reinterpret_cast<svmptr_t>(block_mask_base),
+                            reinterpret_cast<svmptr_t>(wg_block_mask_base),
+#endif
+                            reinterpret_cast<svmptr_t>(output + q_offset),
+                            past_q_lens,
+                            block_indices);
+#else
+    // For other head_sizes: use original non-SLM path
     pa_kernel_lsc_prefetch_f16<is_causal, num_heads, num_kv_heads, head_size, 0, 16>(
                             wg_local_id,
                             q_start_sg, //q_start for SG,

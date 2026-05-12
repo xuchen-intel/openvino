@@ -624,6 +624,220 @@ void pa_lsc_u8(
     }
 }
 
+// F16 SLM-based implementation for head_size=256 to reduce register pressure
+// Adapted from pa_lsc_u8 but without compression
+template<bool use_causal_mask, int num_heads, int num_kv_heads, int head_size, int is_q_fused = 0>
+void pa_lsc_f16(
+    uint slm_K,
+    uint slm_V,
+    int wg_local_id,
+    int local_size,
+    int q_start,
+    int kv_stop,
+    int q_len,
+    int kv_len,
+    svmptr_t q_base [[type("svmptr_t")]],
+    svmptr_t k_cache_base [[type("svmptr_t")]],
+    svmptr_t v_cache_base [[type("svmptr_t")]],
+#if SPARSE_BLOCK_SIZE > 1
+    svmptr_t sparse_mask_base [[type("svmptr_t")]],
+    svmptr_t wg_sparse_mask_base [[type("svmptr_t")]],
+#endif
+    svmptr_t o_base [[type("svmptr_t")]],
+    int32_t past_lens,
+    int32_t* block_indices [[type("svmptr_t")]]) {
+
+    constexpr uint o_pitch = (num_heads * head_size * sizeof(half));
+    constexpr uint q_pitch = is_q_fused
+        ? ((num_heads + num_kv_heads * 2) * head_size * sizeof(half))
+        : o_pitch;
+
+    constexpr uint kv_pitch = head_size * sizeof(half);  // F16, not U8
+
+    vector<float, q_step> cur_max;
+    vector<float, q_step> cur_sum;
+
+    cur_max = -3e38f;
+    cur_sum = 0;
+
+    constexpr int num_P_tiles = REG_N / REG_M;
+    matrix<half, head_size / REG_K, REG_K * REG_N> rQ;
+    constexpr int rO_half_rows = head_size / 2 / REG_N * num_P_tiles;
+    static_assert(head_size % (2 * REG_N) == 0, "head_size must be divisible by 2*REG_N for rO split");
+    matrix<float, rO_half_rows, REG_M * REG_N> rO_lo;
+    matrix<float, rO_half_rows, REG_M * REG_N> rO_hi;
+    bool first_active = true;
+
+    auto q_tokens_left = q_len;
+    static_assert(q_step == REG_N);
+    static_assert(kv_step == REG_K);
+
+    if (q_tokens_left < 0) q_tokens_left = 0;
+    if (q_tokens_left > q_step) q_tokens_left = q_step;
+
+    // ---- Load Q ----
+    if (q_tokens_left > 0) {
+        lsc::block_2d_desc<uint, 1, REG_N, REG_K / 2> b2dQ(
+            reinterpret_cast<uint*>(q_base),
+            q_tokens_left - 1,
+            head_size * sizeof(half) - 1,
+            q_pitch - 1,
+            0, 0);
+
+        #pragma unroll
+        for (int k = 0, ri = 0; k < head_size / 2; k += REG_K / 2, ri++) {
+            cm_load<lsc::Transpose>(rQ[ri].format<uint>(), b2dQ.set_block_x(k));
+            rQ[ri].format<half>() = cm_mul<half>(rQ[ri].format<half>(), (half)scale_factor);
+        }
+    }
+
+    lsc::block_2d_desc<half, 1, kv_step, REG_K> b2dK(
+        k_cache_base, CMPA_BLOCK_SZ - 1, head_size * sizeof(half) - 1, kv_pitch - 1, 0, 0);
+    lsc::block_2d_desc<half, 1, REG_K, REG_N> b2dV(
+        v_cache_base, CMPA_BLOCK_SZ - 1, head_size * sizeof(half) - 1, kv_pitch - 1, 0, 0);
+
+    constexpr int blk_stride = CMFLA_NUM_KV_HEADS * CMFLA_HEAD_SIZE * CMPA_BLOCK_SZ;
+
+    int causal_left = q_start + past_lens;
+
+    constexpr uint slm_buff_size = kv_step * head_size * sizeof(half);
+    int slm_buff_id_write = 0;
+    int slm_buff_id_read  = 0;
+
+    // Main loop over KV blocks - cooperatively load K/V into SLM
+    for (int kv_pos = 0; kv_pos < kv_stop; kv_pos += kv_step) {
+        int cur_block_id = block_indices[kv_pos / CMPA_BLOCK_SZ];
+        int kv_pos_in_block = kv_pos % CMPA_BLOCK_SZ;
+        int kv_left = kv_stop - kv_pos;
+        if (kv_left > kv_step) kv_left = kv_step;
+
+        uint slm_offset = slm_buff_id_write * slm_buff_size;
+
+        // Work-items cooperatively load K and V into SLM
+        if (wg_local_id < local_size / 2) {
+            // First half of work-items load K
+            matrix<half, kv_step, REG_K> kmat;
+
+            b2dK.set_base_ptr(reinterpret_cast<half*>(k_cache_base + cur_block_id * blk_stride));
+            b2dK.set_block_y(kv_pos_in_block);
+
+            for (int k = REG_K * wg_local_id; k < head_size; k += REG_K * (local_size / 2)) {
+                cm_load<lsc::Normal>(kmat.format<half>(), b2dK.set_block_x(k));
+
+                if (kv_left < kv_step) {
+                    for (int r = kv_step - 1; r >= kv_left; r--) kmat[r] = 0;
+                }
+
+                cm_slm_block_write(slm_K, slm_offset + k * kv_step * sizeof(half), kmat.format<half>());
+            }
+        } else {
+            // Second half of work-items load V
+            matrix<half, REG_K / 2, REG_N * 2> VmatVNNI;
+
+            b2dV.set_base_ptr(reinterpret_cast<half*>(v_cache_base + cur_block_id * blk_stride));
+            b2dV.set_block_y(kv_pos_in_block);
+
+            #pragma unroll
+            for (int k = REG_N * (wg_local_id - (local_size / 2));
+                 k < head_size;
+                 k += REG_N * (local_size / 2)) {
+
+                cm_load<lsc::VNNI>(VmatVNNI.format<half>(), b2dV.set_block_x(k));
+
+                if (kv_left < kv_step) {
+                    auto valid_rows_vnni = (kv_left + 1) / 2;
+                    for (int r = valid_rows_vnni; r < kv_step / 2; r++) VmatVNNI[r] = 0.f;
+                    if (kv_left % 2 == 1)
+                        VmatVNNI.row(valid_rows_vnni - 1).select<REG_N, 2>(1) = 0.f;
+                }
+
+                cm_slm_block_write(slm_V, slm_offset + k * REG_K * sizeof(half), VmatVNNI.format<half>());
+            }
+        }
+
+        cm_slm_fence(CM_GLOBAL_COHERENT_FENCE);
+        cm_barrier();
+
+        // Compute K@Q from SLM
+        uint slm_read_offset = slm_buff_id_read * slm_buff_size;
+        auto St = ugemm_KQ<head_size / REG_K>(slm_K, rQ, slm_read_offset);
+
+        // Apply causal mask
+        if constexpr (use_causal_mask) {
+            if (causal_left == 0) {
+                apply_causal_mask<1>(St);
+            } else if (causal_left < 0) {
+                St = -3.4e38f;
+            } else if (causal_left < kv_step) {
+                for (int p = causal_left; p < kv_step; p++) St[p] = -3.4e38f;
+            }
+            causal_left -= kv_step;
+        }
+
+        // Mask KV tails
+        int kv_tokens = kv_stop - kv_pos;
+        for (int p = kv_tokens; p < kv_step; p++) St[p] = -3.4e38f;
+
+        // Online softmax update
+        auto max_comp = online_softmax_update(St, cur_max, cur_sum);
+
+        matrix<half, REG_N, REG_K> P;
+        Transpose2DMatrix(St, P);
+
+        // Compute P@V from SLM
+        if (first_active) {
+            ugemm_PV0<num_P_tiles, rO_half_rows>(slm_V, P, rO_lo, slm_read_offset);
+            ugemm_PV0<num_P_tiles, rO_half_rows>(slm_V, P, rO_hi, slm_read_offset + head_size / 2 * REG_K * sizeof(half));
+            first_active = false;
+        } else {
+            ugemm_PV1<num_P_tiles, rO_half_rows>(slm_V, P, max_comp, rO_lo, slm_read_offset);
+            ugemm_PV1<num_P_tiles, rO_half_rows>(slm_V, P, max_comp, rO_hi, slm_read_offset + head_size / 2 * REG_K * sizeof(half));
+        }
+
+        slm_buff_id_read = slm_buff_id_write;
+    }
+
+    if (q_tokens_left == 0) return;
+
+    // Save output
+    matrix<half, num_P_tiles * REG_M, REG_N> cur_O_f16;
+    cur_sum = cm_inv(cur_sum);
+
+    lsc::block_2d_desc<half, 1, REG_M, REG_N> b2dO(o_base, q_tokens_left - 1, head_size * sizeof(half) - 1, o_pitch - 1, 0, 0);
+
+    // Store lower half
+    #pragma unroll
+    for (int k = 0, ri = 0; k < head_size / 2; k += REG_N, ri += num_P_tiles) {
+        #pragma unroll
+        for (int p = 0; p < num_P_tiles; p++) {
+            auto cO = rO_lo[ri + p].format<float, REG_M, REG_N>();
+            #pragma unroll
+            for (int r = 0; r < cO.n_rows(); r++) {
+                cur_O_f16[r + p * REG_M] = cm_mul<float>(cO.row(r), cur_sum[r + p * REG_M]);
+            }
+        }
+        b2dO.set_block_x(k);
+        cm_store(b2dO.set_block_y(0), cur_O_f16.format<half, num_P_tiles, REG_M * REG_N>().row(0));
+        cm_store(b2dO.set_block_y(REG_M), cur_O_f16.format<half, num_P_tiles, REG_M * REG_N>().row(1));
+    }
+
+    // Store upper half
+    #pragma unroll
+    for (int k = head_size / 2, ri = 0; k < head_size; k += REG_N, ri += num_P_tiles) {
+        #pragma unroll
+        for (int p = 0; p < num_P_tiles; p++) {
+            auto cO = rO_hi[ri + p].format<float, REG_M, REG_N>();
+            #pragma unroll
+            for (int r = 0; r < cO.n_rows(); r++) {
+                cur_O_f16[r + p * REG_M] = cm_mul<float>(cO.row(r), cur_sum[r + p * REG_M]);
+            }
+        }
+        b2dO.set_block_x(k);
+        cm_store(b2dO.set_block_y(0), cur_O_f16.format<half, num_P_tiles, REG_M * REG_N>().row(0));
+        cm_store(b2dO.set_block_y(REG_M), cur_O_f16.format<half, num_P_tiles, REG_M * REG_N>().row(1));
+    }
+}
+
 #else
 
 template<bool use_causal_mask, int num_heads, int num_kv_heads, int head_size, int is_qkv_fused, int wg_local_size>

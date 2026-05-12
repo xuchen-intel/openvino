@@ -652,20 +652,19 @@ void pa_kernel_lsc_prefetch_f16(
     constexpr uint k_pitch =  head_size * sizeof(half);
     constexpr uint v_pitch = k_pitch;
 
-    // Head_size dimension partitioning - only enabled for head_size=256
-    // to reduce register pressure from 427 GRFs to ~256 GRFs
-    constexpr bool enable_head_size_partition = (head_size == 256);
-    constexpr int num_hw_groups = enable_head_size_partition ? 4 : 1;
-    constexpr int group_size = wg_local_size / num_hw_groups;  // 4 or 16
-    constexpr int head_size_per_group = head_size / num_hw_groups;  // 64 or full head_size
+    // Head_size dimension partitioning - DISABLED
+    // TODO: Requires restructuring kernel launch grid to make work-items cooperate on same queries
+    // Current issue: Each work-item processes different query slices (wg_local_id determines query offset)
+    // so they can't cooperate by synchronizing partial K@Q results
+    constexpr bool enable_head_size_partition = false;
+    constexpr int num_hw_groups = 1;
+    constexpr int group_size = wg_local_size;
+    constexpr int head_size_per_group = head_size;
 
     static_assert(wg_local_size == 16, "wg_local_size must be 16");
-    static_assert(head_size % num_hw_groups == 0, "head_size must be divisible by num_hw_groups");
 
-    // For head_size=256: partition into 4 waves, work-items within wave cooperate
-    // For other sizes: no partitioning, hw_group_id always 0
-    int hw_group_id = enable_head_size_partition ? (wg_local_id % group_size) : 0;
-    int wave_id = enable_head_size_partition ? (wg_local_id / group_size) : wg_local_id;
+    int hw_group_id = 0;
+    int wave_id = wg_local_id;
 
     vector<float, q_step> cur_max;
     vector<float, q_step> cur_sum;

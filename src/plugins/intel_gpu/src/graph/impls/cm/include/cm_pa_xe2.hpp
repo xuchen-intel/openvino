@@ -652,19 +652,22 @@ void pa_kernel_lsc_prefetch_f16(
     constexpr uint k_pitch =  head_size * sizeof(half);
     constexpr uint v_pitch = k_pitch;
 
-    // Head_size dimension partitioning - DISABLED
-    // TODO: Requires restructuring kernel launch grid to make work-items cooperate on same queries
-    // Current issue: Each work-item processes different query slices (wg_local_id determines query offset)
-    // so they can't cooperate by synchronizing partial K@Q results
-    constexpr bool enable_head_size_partition = false;
-    constexpr int num_hw_groups = 1;
-    constexpr int group_size = wg_local_size;
-    constexpr int head_size_per_group = head_size;
+    // Head_size dimension partitioning
+    // Query distribution: work-item i processes queries [i*16:(i+1)*16]
+    // Head_size partitioning: work-items [i, i+4, i+8, i+12] process same queries with different head_size chunks
+    // Example: work-items 0,4,8,12 all process queries [0:16] with head_size chunks [0:64],[64:128],[128:192],[192:256]
+    constexpr bool enable_head_size_partition = (head_size == 256);
+    constexpr int num_hw_groups = enable_head_size_partition ? 4 : 1;
+    constexpr int group_size = enable_head_size_partition ? 4 : wg_local_size;
+    constexpr int head_size_per_group = head_size / num_hw_groups;
 
     static_assert(wg_local_size == 16, "wg_local_size must be 16");
+    static_assert(head_size % num_hw_groups == 0, "head_size must be divisible by num_hw_groups");
 
-    int hw_group_id = 0;
-    int wave_id = wg_local_id;
+    // wave_id: which query slice (0-3) = wg_local_id % 4
+    // hw_group_id: which head_size chunk (0-3) = wg_local_id / 4
+    int wave_id = enable_head_size_partition ? (wg_local_id % group_size) : wg_local_id;
+    int hw_group_id = enable_head_size_partition ? (wg_local_id / group_size) : 0;
 
     vector<float, q_step> cur_max;
     vector<float, q_step> cur_sum;
@@ -797,23 +800,23 @@ void pa_kernel_lsc_prefetch_f16(
                 }
             }
 
-        // Head_size partitioning: synchronize and accumulate partial St across wave
-        // Only needed for head_size=256 where work-items cooperate
+        // Head_size partitioning: synchronize and accumulate partial St
+        // Work-items with same wave_id (processing same query slice) accumulate across head_size chunks
         if constexpr (enable_head_size_partition) {
             // Store partial St to SLM for this work-item
             int slm_offset_bytes = wg_local_id * kv_step * q_step * sizeof(float);
             cm_slm_block_write(slm_St, slm_offset_bytes, St.format<float>());
 
-            // Barrier: ensure all work-items in this wave have written their partial St
+            // Barrier: ensure all work-items have written their partial St
             cm_slm_fence(CM_GLOBAL_COHERENT_FENCE);
             cm_barrier();
 
-            // Accumulate partial St from all 4 work-items within the same wave
+            // Accumulate partial St from all 4 head_size chunks for this query slice
+            // Work-items [wave_id, wave_id+4, wave_id+8, wave_id+12] cooperate
             St = 0.0f;
-            int wave_base = wave_id * group_size;
             #pragma unroll
             for(int g = 0; g < num_hw_groups; g++) {
-                int src_wi = wave_base + g;
+                int src_wi = wave_id + g * group_size;  // Same query slice, different head_size chunk
                 int src_slm_offset_bytes = src_wi * kv_step * q_step * sizeof(float);
                 matrix<float, kv_step, q_step> partial_st;
                 cm_slm_block_read(slm_St, GENX_NONE, src_slm_offset_bytes, partial_st.format<float>());
@@ -1037,23 +1040,23 @@ void pa_kernel_lsc_prefetch_f16(
                 }
             }
 
-        // Head_size partitioning: synchronize and accumulate partial St across wave
-        // Only needed for head_size=256 where work-items cooperate
+        // Head_size partitioning: synchronize and accumulate partial St
+        // Work-items with same wave_id (processing same query slice) accumulate across head_size chunks
         if constexpr (enable_head_size_partition) {
             // Store partial St to SLM for this work-item
             int slm_offset_bytes = wg_local_id * kv_step * q_step * sizeof(float);
             cm_slm_block_write(slm_St, slm_offset_bytes, St.format<float>());
 
-            // Barrier: ensure all work-items in this wave have written their partial St
+            // Barrier: ensure all work-items have written their partial St
             cm_slm_fence(CM_GLOBAL_COHERENT_FENCE);
             cm_barrier();
 
-            // Accumulate partial St from all 4 work-items within the same wave
+            // Accumulate partial St from all 4 head_size chunks for this query slice
+            // Work-items [wave_id, wave_id+4, wave_id+8, wave_id+12] cooperate
             St = 0.0f;
-            int wave_base = wave_id * group_size;
             #pragma unroll
             for(int g = 0; g < num_hw_groups; g++) {
-                int src_wi = wave_base + g;
+                int src_wi = wave_id + g * group_size;  // Same query slice, different head_size chunk
                 int src_slm_offset_bytes = src_wi * kv_step * q_step * sizeof(float);
                 matrix<float, kv_step, q_step> partial_st;
                 cm_slm_block_read(slm_St, GENX_NONE, src_slm_offset_bytes, partial_st.format<float>());

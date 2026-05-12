@@ -628,6 +628,7 @@ void pa_lsc_u8(
 
 template<bool use_causal_mask, int num_heads, int num_kv_heads, int head_size, int is_qkv_fused, int wg_local_size>
 void pa_kernel_lsc_prefetch_f16(
+    uint slm_St_base,
     int wg_local_id,
     int q_start,
     int kv_stop, //
@@ -676,13 +677,6 @@ void pa_kernel_lsc_prefetch_f16(
     matrix<float, rO_half_rows_f16, REG_M * REG_N> rO_hi;
     bool first_active = true;
 
-    // Allocate SLM for accumulating partial attention scores across groups
-    constexpr int slm_size_per_wi = kv_step;  // Each work-item contributes kv_step floats
-    constexpr int total_slm_size = slm_size_per_wi * wg_local_size * sizeof(float);
-    CM_STATIC_WARNING(total_slm_size <= 4096, "SLM size exceeds limit");
-    cm_slm_init(total_slm_size);
-    auto slm_St = cm_slm_alloc(total_slm_size);
-
 #if SPARSE_BLOCK_SIZE > 1
     constexpr int sb_shift = (SPARSE_BLOCK_SIZE == 128) ? 7 : (SPARSE_BLOCK_SIZE == 256) ? 8 : -1;
     auto skip_by = [&](const bool* base, int kv_pos) -> bool {
@@ -729,6 +723,10 @@ void pa_kernel_lsc_prefetch_f16(
     // ====================================================================================
     // Optimized block-granular sparse pipeline when SPARSE_BLOCK_SIZE == WG_SEQ_LEN
     // ====================================================================================
+    // Use SLM passed from kernel for accumulating partial attention scores across groups
+    constexpr int slm_size_per_wi = kv_step * q_step;  // St matrix size
+    auto slm_St = slm_St_base;
+
     constexpr int kv_block = SPARSE_BLOCK_SIZE;
     for (int kv_blk = 0; kv_blk < kv_stop; kv_blk += kv_block) {
         int blk_end = kv_blk + kv_block;
@@ -813,9 +811,10 @@ void pa_kernel_lsc_prefetch_f16(
 
         // Accumulate partial attention scores across groups using SLM
         // Each group computed partial K@Q using 1/4 of head_size, now sum to get full scores
+        // St is matrix<float, kv_step, q_step>, total elements = kv_step * q_step
 
         // Write partial scores to SLM
-        int slm_offset = wg_local_id * slm_size_per_wi * sizeof(float);
+        int slm_offset = wg_local_id * slm_size_per_wi * q_step * sizeof(float);
         cm_slm_block_write(slm_St, slm_offset, St.format<float>());
 
         // Barrier to ensure all work-items have written their partial scores
@@ -824,20 +823,20 @@ void pa_kernel_lsc_prefetch_f16(
 
         // Group leader (first work-item in each group of 4) accumulates partial scores
         if (group_local_id == 0) {
-            // Start with this work-item's partial scores
-            vector<float, kv_step> full_St = St.format<float>();
+            // Start with this work-item's partial scores (full matrix)
+            matrix<float, kv_step, q_step> full_St = St;
 
             // Add partial scores from other 3 work-items in the same physical thread group
             #pragma unroll
             for (int i = 1; i < group_size; i++) {
                 int peer_wg_id = hw_group_id * group_size + i;
-                int peer_slm_offset = peer_wg_id * slm_size_per_wi * sizeof(float);
-                vector<float, kv_step> peer_St;
-                cm_slm_block_read(slm_St, peer_slm_offset, peer_St);
+                int peer_slm_offset = peer_wg_id * slm_size_per_wi * q_step * sizeof(float);
+                matrix<float, kv_step, q_step> peer_St;
+                cm_slm_block_read(slm_St, peer_slm_offset, peer_St.format<float>());
                 full_St = cm_add<float>(full_St, peer_St);
             }
 
-            St = full_St.format<float, kv_step>();
+            St = full_St;
         }
 
         // Barrier to ensure group leader finished accumulation before others read
@@ -846,7 +845,7 @@ void pa_kernel_lsc_prefetch_f16(
         // Broadcast accumulated scores from group leader to all work-items in the group
         if (group_local_id != 0) {
             int leader_wg_id = hw_group_id * group_size;
-            int leader_slm_offset = leader_wg_id * slm_size_per_wi * sizeof(float);
+            int leader_slm_offset = leader_wg_id * slm_size_per_wi * q_step * sizeof(float);
             cm_slm_block_read(slm_St, leader_slm_offset, St.format<float>());
         } else {
             // Group leader writes back accumulated scores to SLM for others to read
@@ -868,7 +867,7 @@ void pa_kernel_lsc_prefetch_f16(
         if (first_active) {
             auto P2 = P.format<half, num_P_tiles, REG_M * REG_K>();
             // PV0 lower half - Each group loads its 1/4 chunk of V
-            int group_head_offset = hw_group_id * head_size_per_group;
+            // group_head_offset already declared at function scope
             #pragma unroll
             for(int k = 0, ri = 0; k < head_size_per_group / 2; k += REG_N, ri += num_P_tiles) {
                 matrix<half, REG_K/2, REG_N*2> Vmat;
@@ -919,7 +918,7 @@ void pa_kernel_lsc_prefetch_f16(
         else {
             auto P2 = P.format<half, num_P_tiles, REG_M * REG_K>();
             // PV1 lower half - Each group loads its 1/4 chunk of V
-            int group_head_offset = hw_group_id * head_size_per_group;
+            // group_head_offset already declared at function scope
             #pragma unroll
             for(int k = 0, ri=0; k < head_size_per_group / 2; k += REG_N, ri += num_P_tiles) {
                 matrix<half, REG_K/2, REG_N*2> Vmat;
@@ -990,6 +989,10 @@ void pa_kernel_lsc_prefetch_f16(
     // ========================================================================
     // Legacy per-step pipeline for any SPARSE_BLOCK_SIZE (including 1)
     // ======================================================================
+    // Use SLM passed from kernel for accumulating partial attention scores across groups
+    constexpr int slm_size_per_wi = kv_step * q_step;  // St matrix size
+    auto slm_St = slm_St_base;
+
     for(int kv_pos = 0; kv_pos < kv_stop; kv_pos += kv_step) {
         auto cur_block_id = block_indices[kv_pos / CMPA_BLOCK_SZ];
         //For the last step, duplicate prefetch here.
@@ -1064,9 +1067,10 @@ void pa_kernel_lsc_prefetch_f16(
 
         // Accumulate partial attention scores across groups using SLM
         // Each group computed partial K@Q using 1/4 of head_size, now sum to get full scores
+        // St is matrix<float, kv_step, q_step>, total elements = kv_step * q_step
 
         // Write partial scores to SLM
-        int slm_offset = wg_local_id * slm_size_per_wi * sizeof(float);
+        int slm_offset = wg_local_id * slm_size_per_wi * q_step * sizeof(float);
         cm_slm_block_write(slm_St, slm_offset, St.format<float>());
 
         // Barrier to ensure all work-items have written their partial scores
@@ -1075,20 +1079,20 @@ void pa_kernel_lsc_prefetch_f16(
 
         // Group leader (first work-item in each group of 4) accumulates partial scores
         if (group_local_id == 0) {
-            // Start with this work-item's partial scores
-            vector<float, kv_step> full_St = St.format<float>();
+            // Start with this work-item's partial scores (full matrix)
+            matrix<float, kv_step, q_step> full_St = St;
 
             // Add partial scores from other 3 work-items in the same physical thread group
             #pragma unroll
             for (int i = 1; i < group_size; i++) {
                 int peer_wg_id = hw_group_id * group_size + i;
-                int peer_slm_offset = peer_wg_id * slm_size_per_wi * sizeof(float);
-                vector<float, kv_step> peer_St;
-                cm_slm_block_read(slm_St, peer_slm_offset, peer_St);
+                int peer_slm_offset = peer_wg_id * slm_size_per_wi * q_step * sizeof(float);
+                matrix<float, kv_step, q_step> peer_St;
+                cm_slm_block_read(slm_St, peer_slm_offset, peer_St.format<float>());
                 full_St = cm_add<float>(full_St, peer_St);
             }
 
-            St = full_St.format<float, kv_step>();
+            St = full_St;
         }
 
         // Barrier to ensure group leader finished accumulation before others read
@@ -1097,7 +1101,7 @@ void pa_kernel_lsc_prefetch_f16(
         // Broadcast accumulated scores from group leader to all work-items in the group
         if (group_local_id != 0) {
             int leader_wg_id = hw_group_id * group_size;
-            int leader_slm_offset = leader_wg_id * slm_size_per_wi * sizeof(float);
+            int leader_slm_offset = leader_wg_id * slm_size_per_wi * q_step * sizeof(float);
             cm_slm_block_read(slm_St, leader_slm_offset, St.format<float>());
         } else {
             // Group leader writes back accumulated scores to SLM for others to read
@@ -1119,7 +1123,7 @@ void pa_kernel_lsc_prefetch_f16(
         if (first_active) {
             auto P2 = P.format<half, num_P_tiles, REG_M * REG_K>();
             // PV0 lower half - Each group loads its 1/4 chunk of V
-            int group_head_offset = hw_group_id * head_size_per_group;
+            // group_head_offset already declared at function scope
             #pragma unroll
             for(int k = 0, ri = 0; k < head_size_per_group / 2; k += REG_N, ri += num_P_tiles) {
                 matrix<half, REG_K/2, REG_N*2> Vmat;
@@ -1170,7 +1174,7 @@ void pa_kernel_lsc_prefetch_f16(
         else {
             auto P2 = P.format<half, num_P_tiles, REG_M * REG_K>();
             // PV1 lower half - Each group loads its 1/4 chunk of V
-            int group_head_offset = hw_group_id * head_size_per_group;
+            // group_head_offset already declared at function scope
             #pragma unroll
             for(int k = 0, ri=0; k < head_size_per_group / 2; k += REG_N, ri += num_P_tiles) {
                 matrix<half, REG_K/2, REG_N*2> Vmat;
@@ -1253,7 +1257,7 @@ void pa_kernel_lsc_prefetch_f16(
     lsc::block_2d_desc<half, 1, REG_M, REG_N> b2dO(o_base, q_tokens_left - 1, head_size*sizeof(half) - 1, o_pitch - 1, 0, 0);
 
     // Each group stores its 1/4 chunk of output
-    int group_head_offset = hw_group_id * head_size_per_group;
+    // group_head_offset already declared at function scope
 
     // Store lower half of group's chunk from rO_lo
     #pragma unroll

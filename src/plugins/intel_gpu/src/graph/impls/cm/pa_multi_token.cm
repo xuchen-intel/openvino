@@ -90,10 +90,17 @@ extern "C" _GENX_MAIN_ void KERNEL_NAME(
     kv_start = 0;
     kv_seq_len = q_len + past_q_lens;
 
-    // Query distribution stays the same for all head_sizes
-    // Each work-item processes its slice of tokens based on wg_local_id
-    // For head_size=256, work-items cooperate on head_size chunks (handled in cm_pa_xe2.hpp)
-    q_start_sg = (wg_id * local_size + wg_local_id) * q_step;
+    // For head_size=256: work-items cooperate on head_size partitioning
+    // Work-items with same (wg_local_id % 4) process the same query slice with different head_size chunks
+    // For other head_sizes: each work-item processes its own query slice
+    if constexpr (head_size == 256) {
+        constexpr int group_size = 4;
+        int wave_id = wg_local_id % group_size;  // 0-3
+        q_start_sg = (wg_id * group_size + wave_id) * q_step;
+    } else {
+        q_start_sg = (wg_id * local_size + wg_local_id) * q_step;
+    }
+
     q_len_sg = q_step;
     if (q_start_sg + q_len_sg > q_len) {
         q_len_sg = q_len - q_start_sg;

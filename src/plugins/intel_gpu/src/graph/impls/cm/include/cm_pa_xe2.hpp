@@ -652,22 +652,23 @@ void pa_kernel_lsc_prefetch_f16(
     constexpr uint k_pitch =  head_size * sizeof(half);
     constexpr uint v_pitch = k_pitch;
 
-    // Head_size dimension partitioning
-    // Query distribution: work-item i processes queries [i*16:(i+1)*16]
-    // Head_size partitioning: work-items [i, i+4, i+8, i+12] process same queries with different head_size chunks
-    // Example: work-items 0,4,8,12 all process queries [0:16] with head_size chunks [0:64],[64:128],[128:192],[192:256]
-    constexpr bool enable_head_size_partition = (head_size == 256);
-    constexpr int num_hw_groups = enable_head_size_partition ? 4 : 1;
-    constexpr int group_size = enable_head_size_partition ? 4 : wg_local_size;
-    constexpr int head_size_per_group = head_size / num_hw_groups;
+    // Head_size dimension partitioning - DISABLED due to architectural constraints
+    // Current kernel design: work-item i processes query slice [i*16:(i+1)*16]
+    // This maximizes query-dimension parallelism for large prefills
+    // Head_size partitioning would require work-items to process SAME queries but different head_size chunks
+    // This conflicts with current query distribution and would require:
+    //   1. Restructuring kernel grid launch (4× more work-groups for head_size=256)
+    //   2. Modifying all call sites
+    //   3. Sacrificing query-dimension parallelism for head_size-dimension parallelism
+    constexpr bool enable_head_size_partition = false;
+    constexpr int num_hw_groups = 1;
+    constexpr int group_size = wg_local_size;
+    constexpr int head_size_per_group = head_size;
 
     static_assert(wg_local_size == 16, "wg_local_size must be 16");
-    static_assert(head_size % num_hw_groups == 0, "head_size must be divisible by num_hw_groups");
 
-    // wave_id: which query slice (0-3) = wg_local_id % 4
-    // hw_group_id: which head_size chunk (0-3) = wg_local_id / 4
-    int wave_id = enable_head_size_partition ? (wg_local_id % group_size) : wg_local_id;
-    int hw_group_id = enable_head_size_partition ? (wg_local_id / group_size) : 0;
+    int wave_id = wg_local_id;
+    int hw_group_id = 0;
 
     vector<float, q_step> cur_max;
     vector<float, q_step> cur_sum;

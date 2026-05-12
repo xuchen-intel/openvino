@@ -89,8 +89,6 @@ extern "C" _GENX_MAIN_ void KERNEL_NAME(
     int past_q_lens = past_lens[0];
     kv_start = 0;
     kv_seq_len = q_len + past_q_lens;
-
-    // Query distribution: each work-item processes its slice based on wg_local_id
     q_start_sg = (wg_id * local_size + wg_local_id) * q_step;
     q_len_sg = q_step;
     if (q_start_sg + q_len_sg > q_len) {
@@ -181,19 +179,11 @@ extern "C" _GENX_MAIN_ void KERNEL_NAME(
                             past_q_lens,
                             block_indices);
 #else
-    // Allocate SLM for accumulating partial attention scores across groups in F16 mode
-    constexpr int slm_size_per_wi_f16 = kv_step * q_step;  // St matrix size
-    constexpr int wg_size_f16 = 16;  // work-group size is always 16
-    constexpr int total_slm_size_f16 = slm_size_per_wi_f16 * wg_size_f16 * sizeof(float);
-    cm_slm_init(total_slm_size_f16);
-    auto slm_St_f16 = cm_slm_alloc(total_slm_size_f16);
-
     uint kv_offset = hkv*head_size*pa_block_sz;
 #ifndef CM_HAS_LSC_UNTYPED_2D
     uint v_offset_bytes = kv_offset * sizeof(half);
 #endif
     pa_kernel_lsc_prefetch_f16<is_causal, num_heads, num_kv_heads, head_size, 0, 16>(
-                            slm_St_f16,
                             wg_local_id,
                             q_start_sg, //q_start for SG,
                             kv_stop,

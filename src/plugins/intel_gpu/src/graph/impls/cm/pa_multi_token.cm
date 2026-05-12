@@ -183,6 +183,46 @@ extern "C" _GENX_MAIN_ void KERNEL_NAME(
 #ifndef CM_HAS_LSC_UNTYPED_2D
     uint v_offset_bytes = kv_offset * sizeof(half);
 #endif
+
+    // For head_size=256: use SLM-based path to reduce register pressure
+#if CMFLA_HEAD_SIZE == 256
+    constexpr uint K_SLM_SIZE = (kv_step * head_size * sizeof(half));
+    constexpr uint V_SLM_SIZE = (kv_step * head_size * sizeof(half));
+    cm_slm_init(K_SLM_SIZE + V_SLM_SIZE);
+    auto slm_K_f16 = cm_slm_alloc(K_SLM_SIZE);
+    auto slm_V_f16 = cm_slm_alloc(V_SLM_SIZE);
+
+    pa_lsc_f16<is_causal, num_heads, num_kv_heads, head_size, 0>(
+                            slm_K_f16,
+                            slm_V_f16,
+                            wg_local_id,
+                            local_size,
+                            q_start_sg,
+                            kv_stop,
+                            q_len_sg,
+                            kv_seq_len,
+#ifdef CM_HAS_LSC_UNTYPED_2D
+                            reinterpret_cast<svmptr_t>(query + q_offset),
+#else
+                            q_gather,
+                            q_offset_bytes,
+#endif
+                            reinterpret_cast<svmptr_t>(k_cache + kv_offset),
+#ifdef CM_HAS_LSC_UNTYPED_2D
+                            reinterpret_cast<svmptr_t>(v_cache + kv_offset),
+#else
+                            v_cache_stateful,
+                            v_offset_bytes,
+#endif
+#if SPARSE_BLOCK_SIZE > 1
+                            reinterpret_cast<svmptr_t>(block_mask_base),
+                            reinterpret_cast<svmptr_t>(wg_block_mask_base),
+#endif
+                            reinterpret_cast<svmptr_t>(output + q_offset),
+                            past_q_lens,
+                            block_indices);
+#else
+    // For other head_sizes: use original non-SLM path
     pa_kernel_lsc_prefetch_f16<is_causal, num_heads, num_kv_heads, head_size, 0, 16>(
                             wg_local_id,
                             q_start_sg, //q_start for SG,
@@ -209,6 +249,7 @@ extern "C" _GENX_MAIN_ void KERNEL_NAME(
                             reinterpret_cast<svmptr_t>(output + q_offset),
                             past_q_lens,
                             block_indices);
+#endif
 #endif
 }
 } // namespace KERNEL_NAME

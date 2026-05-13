@@ -147,12 +147,6 @@ extern "C" _GENX_MAIN_ void KERNEL_NAME(
     uint q_offset = (q_start_sg*num_heads + h)*head_size;
     uint q_offset_bytes = q_offset * sizeof(half);
 
-    // DEBUG: Check offset calculation for multi-work-group
-    if (batch == 0 && h == 0 && wg_local_id < 4) {
-        printf("WG=%d WI=%d q_start_sg=%d q_offset=%d actual_wg_seq_len=%d wg_seq_len=%d\n",
-               wg_id, wg_local_id, q_start_sg, q_offset, actual_wg_seq_len, wg_seq_len);
-    }
-
 #if SPARSE_BLOCK_SIZE > 1
     bool *block_mask_base, *wg_block_mask_base;
     //# sparse_block_mask [num_heads, num_q_blocks, num_k_blocks]

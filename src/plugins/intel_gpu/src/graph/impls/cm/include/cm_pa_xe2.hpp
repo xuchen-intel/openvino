@@ -764,7 +764,7 @@ void pa_kernel_lsc_prefetch_f16(
 
             prefetch_K.set_base_ptr((reinterpret_cast<half*>(k_cache_base)+prefetch_block_id*blk_stride));
             prefetch_K.set_block_y((prefetch_kv_pos + wg_local_id) % CMPA_BLOCK_SZ);
-            cm_prefetch<CacheHint::Cached, CacheHint::Cached>(prefetch_K.set_block_x(0));
+            cm_prefetch<CacheHint::Cached, CacheHint::Cached>(prefetch_K.set_block_x(group_head_offset));
 
             if (skip_compute(kv_pos)) {
                 if constexpr (use_causal_mask)
@@ -773,7 +773,7 @@ void pa_kernel_lsc_prefetch_f16(
             }
             b2dK.set_base_ptr((reinterpret_cast<half*>(k_cache_base)+cur_block_id*blk_stride));
             b2dK.set_block_y(kv_pos%CMPA_BLOCK_SZ);
-            cm_load<lsc::Normal>(Kmat.format<half>(), b2dK.set_block_x(0));
+            cm_load<lsc::Normal>(Kmat.format<half>(), b2dK.set_block_x(group_head_offset));
             // sometimes KV cache would be filled with random Nan, so need to clean up the unused key data.
             if ((kv_pos + kv_step) > kv_stop) {
                 auto valid_rows = kv_stop - kv_pos;
@@ -788,9 +788,10 @@ void pa_kernel_lsc_prefetch_f16(
                                 Kmat[k].format<int32_t>());
 
             #pragma unroll
-            for(int ri = 1; ri < head_size/REG_K; ri++) {
-                cm_prefetch<CacheHint::Cached, CacheHint::Cached>(prefetch_K.set_block_x(ri*REG_K));
-                cm_load<lsc::Normal>(Kmat.format<half>(), b2dK.set_block_x(ri*REG_K));
+            for(int ri = 1; ri < head_size_per_group/REG_K; ri++) {
+                int k_offset = group_head_offset + ri*REG_K;
+                cm_prefetch<CacheHint::Cached, CacheHint::Cached>(prefetch_K.set_block_x(k_offset));
+                cm_load<lsc::Normal>(Kmat.format<half>(), b2dK.set_block_x(k_offset));
                 #pragma unroll
                 for(int k = 0; k < num_K; k++) {
                     St2.row(k) = cm_dpas<CM_PRECISION_HF, CM_PRECISION_HF, SystolicDepth, RepeatCount, float>(

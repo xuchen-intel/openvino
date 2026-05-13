@@ -95,11 +95,14 @@ extern "C" _GENX_MAIN_ void KERNEL_NAME(
     // Work-items [4,5,6,7] process queries [16:32], each handling different head_size chunk
     // This groups consecutive work-items together so they execute in same wave for optimal register usage
     // For other head_sizes: each work-item processes its own query slice independently
+    int actual_wg_seq_len = wg_seq_len;  // Actual tokens processed by this work-group
     if constexpr (head_size == 256) {
         constexpr int group_size = 4;  // 4 threads per group
         constexpr int num_groups = 4;  // 4 groups per work-group (16 work-items / 4 = 4)
         int wave_id = wg_local_id / group_size;  // 0-3, which group (query slice)
         q_start_sg = (wg_id * num_groups + wave_id) * q_step;
+        // Update actual_wg_seq_len to reflect tokens processed per work-group with head_size partitioning
+        actual_wg_seq_len = num_groups * q_step;  // 4 * 16 = 64 tokens per work-group
     } else {
         q_start_sg = (wg_id * local_size + wg_local_id) * q_step;
     }
@@ -136,7 +139,7 @@ extern "C" _GENX_MAIN_ void KERNEL_NAME(
         Causal masking is applied inside kernel based on individual query positions (q_start parameter).
     */
         // kv_stop covers entire work-group's query range for KV cache prefetching
-        kv_stop = (wg_id + 1) * wg_seq_len + past_q_lens;
+        kv_stop = (wg_id + 1) * actual_wg_seq_len + past_q_lens;
         if (kv_stop > kv_seq_len) kv_stop = kv_seq_len;
     }
 

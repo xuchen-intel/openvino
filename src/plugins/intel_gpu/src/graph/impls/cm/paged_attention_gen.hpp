@@ -173,19 +173,21 @@ public:
         return 16;  // For Xe2+
     }
 
-    static size_t get_wg_seq_len(const kernel_impl_params& params) {
-        auto desc = params.typed_desc<paged_attention>();
-        const size_t head_size = desc->v_head_size;
-
-        // For head_size=256: use head_size partitioning where each work-group processes only 4 wave_ids (not 16 work-items)
+    static size_t get_wg_seq_len(const kernel_impl_params& params, size_t xattn_block_size = 1) {
+        // For xattn_block_size=256: use head_size partitioning where each work-group processes only 4 wave_ids (not 16 work-items)
         // Each wave_id handles q_step tokens, so wg_seq_len = 4 * q_step
-        if (head_size == 256) {
+        if (xattn_block_size == 256) {
             constexpr size_t group_size = 4;  // Number of wave_ids per work-group
             return group_size * get_q_step(params);
         }
 
         // For other head_sizes: each work-item processes its own queries
         return WG_SIZE * get_q_step(params);
+    }
+
+    // Instance method that uses _xattn_block_size
+    size_t get_wg_seq_len(const kernel_impl_params& params) const {
+        return get_wg_seq_len(params, _xattn_block_size);
     }
 
     [[nodiscard]] Arguments get_arguments_desc(const kernel_impl_params& params) const override;

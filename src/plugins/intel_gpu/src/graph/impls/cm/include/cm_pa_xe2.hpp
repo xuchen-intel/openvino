@@ -653,9 +653,10 @@ void pa_kernel_lsc_prefetch_f16(
     constexpr uint v_pitch = k_pitch;
 
     // Head_size dimension partitioning
-    // Query distribution: work-item i processes queries [i*16:(i+1)*16]
-    // Head_size partitioning: work-items [i, i+4, i+8, i+12] process same queries with different head_size chunks
-    // Example: work-items 0,4,8,12 all process queries [0:16] with head_size chunks [0:64],[64:128],[128:192],[192:256]
+    // Consecutive work-items cooperate on same queries for optimal register utilization
+    // Work-items [0,1,2,3] process queries [0:16] with head_size chunks [0:64],[64:128],[128:192],[192:256]
+    // Work-items [4,5,6,7] process queries [16:32] with head_size chunks [0:64],[64:128],[128:192],[192:256]
+    // This ensures threads executing together can utilize all physical thread registers simultaneously
     constexpr bool enable_head_size_partition = (head_size == 256);
     constexpr int num_hw_groups = enable_head_size_partition ? 4 : 1;
     constexpr int group_size = enable_head_size_partition ? 4 : wg_local_size;
@@ -664,10 +665,10 @@ void pa_kernel_lsc_prefetch_f16(
     static_assert(wg_local_size == 16, "wg_local_size must be 16");
     static_assert(head_size % num_hw_groups == 0, "head_size must be divisible by num_hw_groups");
 
-    // wave_id: which query slice (0-3) = wg_local_id % 4
-    // hw_group_id: which head_size chunk (0-3) = wg_local_id / 4
-    int wave_id = enable_head_size_partition ? (wg_local_id % group_size) : wg_local_id;
-    int hw_group_id = enable_head_size_partition ? (wg_local_id / group_size) : 0;
+    // wave_id: which group of queries (0-3) = wg_local_id / 4
+    // hw_group_id: which head_size chunk within group (0-3) = wg_local_id % 4
+    int wave_id = enable_head_size_partition ? (wg_local_id / group_size) : wg_local_id;
+    int hw_group_id = enable_head_size_partition ? (wg_local_id % group_size) : 0;
 
     vector<float, q_step> cur_max;
     vector<float, q_step> cur_sum;

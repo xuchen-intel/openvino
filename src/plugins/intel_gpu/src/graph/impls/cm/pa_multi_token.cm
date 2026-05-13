@@ -132,11 +132,11 @@ extern "C" _GENX_MAIN_ void KERNEL_NAME(
         ---------------------------------
         each grid can be [q_len_per_trunk, q_len_per_trunk].
         For each trunk, [q_len_per_trunk, past_q_lens] must be calculated. Such as: `20`,`21`. but for the 22,
-        casual mask optimization can be applied. Different queries have different kv_stop.
-        With head_size=256 partitioning, multiple work-items process same queries, so kv_stop is per-query-slice.
+        casual mask optimization can be applied. kv_stop is at work-group level for prefetching efficiency.
+        Causal masking is applied inside kernel based on individual query positions (q_start parameter).
     */
-        // kv_stop should be based on the END of the query slice being processed
-        kv_stop = q_start_sg + q_len_sg + past_q_lens;
+        // kv_stop covers entire work-group's query range for KV cache prefetching
+        kv_stop = (wg_id + 1) * wg_seq_len + past_q_lens;
         if (kv_stop > kv_seq_len) kv_stop = kv_seq_len;
     }
 

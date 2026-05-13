@@ -677,8 +677,9 @@ void pa_lsc_f16(
     uint slm_O_base = slm_O + wg_local_id * slm_O_per_wi;
 
     // Tile buffer for processing rO in chunks (saves 256 GRFs!)
-    constexpr int rO_tile_rows = 4; // Process 4 output dims at a time
-    matrix<float, rO_tile_rows, q_step> rO_tile;
+    // Process REG_M rows at a time (one DPAS output tile)
+    constexpr int rO_tile_rows = REG_M; // = 8
+    matrix<float, rO_tile_rows, REG_N> rO_tile; // 8x16 = 128 elements = 512 bytes
     bool first_active = true;
 
     auto q_tokens_left = q_len;
@@ -807,51 +808,44 @@ void pa_lsc_f16(
         Transpose2DMatrix(St, P);
 
         // Compute P@V from SLM and accumulate to SLM rO in tiles
-        // Process output dimensions in tiles of rO_tile_rows to reduce register pressure
+        // Process output head dimensions in tiles to reduce register pressure
         auto P2 = P.format<half, num_P_tiles, REG_M * REG_K>();
 
-        for (int h_out = 0; h_out < head_size; h_out += rO_tile_rows) {
-            // Load V tile from SLM (reuse existing slm_V data)
-            matrix<half, REG_K / 2, rO_tile_rows * 2> Vmat_tile;
+        // Iterate over head_size in steps of REG_N (16)
+        for (int h_out = 0; h_out < head_size; h_out += REG_N) {
+            // Load V tile from SLM: [kv_step=16 x REG_N=16] in VNNI format
+            matrix<half, REG_K / 2, REG_N * 2> Vmat;
+            cm_slm_block_read(slm_V, GENX_NONE, slm_read_offset + h_out * REG_K * sizeof(half), Vmat.format<half>());
 
-            // Load V values for this output dimension tile
-            for (int h = 0; h < rO_tile_rows; h += REG_N) {
-                cm_slm_block_read(Vmat_tile.select<REG_K/2, 1, REG_N, 1>(0, h).format<half>(),
-                                 slm_V, slm_read_offset + (h_out + h) * REG_K * sizeof(half));
-            }
-
-            // Compute P @ V_tile
-            rO_tile = 0.0f;
+            // Compute P @ V for each query tile (num_P_tiles = 2)
             #pragma unroll
             for (int p = 0; p < num_P_tiles; p++) {
-                for (int h = 0; h < rO_tile_rows / REG_N; h++) {
-                    auto Vmat_slice = Vmat_tile.select<REG_K/2, 1, REG_N*2, 1>(0, h * REG_N);
-                    rO_tile.select<REG_M, 1, REG_N, 1>(h * REG_M, 0) =
-                        cm_dpas<CM_PRECISION_HF, CM_PRECISION_HF, SystolicDepth, RepeatCount, float>(
-                            rO_tile.select<REG_M, 1, REG_N, 1>(h * REG_M, 0),
-                            Vmat_slice.format<int32_t>(),
-                            P2.row(p).format<int32_t>());
-                }
-            }
+                // DPAS: rO_tile[REG_M x REG_N] = V[REG_K/2 x REG_N*2] @ P[REG_M x REG_K]
+                rO_tile =
+                    cm_dpas<CM_PRECISION_HF, CM_PRECISION_HF, SystolicDepth, RepeatCount, float>(
+                        0,
+                        Vmat.format<int32_t>(),
+                        P2.row(p).format<int32_t>());
 
-            // Read-modify-write to SLM rO
-            matrix<float, rO_tile_rows, q_step> rO_accum;
-            if (!first_active) {
-                // Read existing accumulation
-                for (int h = 0; h < rO_tile_rows; h += REG_N) {
-                    cm_slm_block_read(rO_accum.select<REG_N, 1, q_step, 1>(h, 0).format<float>(),
-                                     slm_O_base, (h_out + h) * q_step * sizeof(float));
-                }
-                // Scale and add
-                rO_accum = rO_accum * max_comp + rO_tile;
-            } else {
-                rO_accum = rO_tile;
-            }
+                // Read-modify-write to SLM rO
+                matrix<float, REG_M, REG_N> rO_accum;
+                uint slm_rO_offset = (h_out * q_step + p * REG_M * REG_N) * sizeof(float);
 
-            // Write back
-            for (int h = 0; h < rO_tile_rows; h += REG_N) {
-                cm_slm_block_write(slm_O_base, (h_out + h) * q_step * sizeof(float),
-                                  rO_accum.select<REG_N, 1, q_step, 1>(h, 0).format<float>());
+                if (!first_active) {
+                    // Read existing value, scale by max_comp, and add
+                    cm_slm_block_read(slm_O_base, GENX_NONE, slm_rO_offset, rO_accum.format<float>());
+                    // Scale each column by corresponding max_comp element
+                    #pragma unroll
+                    for (int r = 0; r < REG_M; r++) {
+                        int q_idx = r + p * REG_M;
+                        rO_accum.row(r) = rO_accum.row(r) * max_comp[q_idx] + rO_tile.row(r);
+                    }
+                } else {
+                    rO_accum = rO_tile;
+                }
+
+                // Write back
+                cm_slm_block_write(slm_O_base, slm_rO_offset, rO_accum.format<float>());
             }
         }
 
@@ -861,28 +855,30 @@ void pa_lsc_f16(
 
     if (q_tokens_left == 0) return;
 
-    // Save output - read from SLM rO and normalize
+    // Save output - read from SLM rO, normalize, and write to memory
     matrix<half, num_P_tiles * REG_M, REG_N> cur_O_f16;
-    matrix<float, REG_N, q_step> rO_read_tile;
+    matrix<float, REG_M, REG_N> rO_read_tile;
     cur_sum = cm_inv(cur_sum);
 
     lsc::block_2d_desc<half, 1, REG_M, REG_N> b2dO(o_base, q_tokens_left - 1, head_size * sizeof(half) - 1, o_pitch - 1, 0, 0);
 
     // Read from SLM and store
+    // SLM layout: [head_size][q_step], but we wrote it as [head_dim][query_tile]
     #pragma unroll
     for (int k = 0; k < head_size; k += REG_N) {
-        // Read REG_N rows from SLM rO
-        cm_slm_block_read(rO_read_tile.format<float>(), slm_O_base, k * q_step * sizeof(float));
-
-        // Normalize and convert to half
         #pragma unroll
         for (int p = 0; p < num_P_tiles; p++) {
+            // Read one tile: [REG_M x REG_N]
+            uint slm_rO_offset = (k * q_step + p * REG_M * REG_N) * sizeof(float);
+            cm_slm_block_read(slm_O_base, GENX_NONE, slm_rO_offset, rO_read_tile.format<float>());
+
+            // Normalize and convert to half
             #pragma unroll
             for (int r = 0; r < REG_M; r++) {
                 int q_idx = r + p * REG_M;
                 #pragma unroll
                 for (int h = 0; h < REG_N; h++) {
-                    cur_O_f16[q_idx][h] = (half)(rO_read_tile[h][q_idx] * cur_sum[q_idx]);
+                    cur_O_f16[q_idx][h] = (half)(rO_read_tile[r][h] * cur_sum[q_idx]);
                 }
             }
         }

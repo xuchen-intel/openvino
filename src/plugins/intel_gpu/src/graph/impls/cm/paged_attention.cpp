@@ -99,10 +99,9 @@ public:
         rt_params->q_block_pad = q_block_pad;
         rt_params->k_block_pad = k_block_pad;
 
-        const size_t merged_q_num = PagedAttentionGeneratorMultiToken::get_wg_seq_len(params, block_size) / block_size;
-        rt_params->q_block_pad_merged = ceil_div(q_block_pad, merged_q_num);
-
         const size_t head_size = desc->k_head_size;
+        const size_t merged_q_num = PagedAttentionGeneratorMultiToken::get_wg_seq_len(params, head_size) / block_size;
+        rt_params->q_block_pad_merged = ceil_div(q_block_pad, merged_q_num);
 
         const auto M = q_len / STRIDE;  //# will slient drop the tails which is less than `stride`
         const auto K = STRIDE * head_size;

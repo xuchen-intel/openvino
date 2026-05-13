@@ -997,7 +997,7 @@ void pa_kernel_lsc_prefetch_f16(
 
             prefetch_K.set_base_ptr((reinterpret_cast<half*>(k_cache_base)+prefetch_block_id*blk_stride));
             prefetch_K.set_block_y((prefetch_kv_pos + wg_local_id) % CMPA_BLOCK_SZ);
-            cm_prefetch<CacheHint::Cached, CacheHint::Cached>(prefetch_K.set_block_x(0));
+            cm_prefetch<CacheHint::Cached, CacheHint::Cached>(prefetch_K.set_block_x(group_head_offset));
 
         #if SPARSE_BLOCK_SIZE > 1
             if (skip_compute(kv_pos)) {

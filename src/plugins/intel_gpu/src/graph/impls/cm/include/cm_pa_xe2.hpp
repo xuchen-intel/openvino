@@ -814,11 +814,11 @@ void pa_kernel_lsc_prefetch_f16(
             cm_barrier();
 
             // Accumulate partial St from all 4 head_size chunks for this query slice
-            // Work-items [wave_id, wave_id+4, wave_id+8, wave_id+12] cooperate
+            // Work-items [wave_id*4, wave_id*4+1, wave_id*4+2, wave_id*4+3] cooperate
             St = 0.0f;
             #pragma unroll
             for(int g = 0; g < num_hw_groups; g++) {
-                int src_wi = wave_id + g * group_size;  // Same query slice, different head_size chunk
+                int src_wi = wave_id * group_size + g;  // Same query slice (wave_id), different head_size chunk (g)
                 int src_slm_offset_bytes = src_wi * kv_step * q_step * sizeof(float);
                 matrix<float, kv_step, q_step> partial_st;
                 cm_slm_block_read(slm_St, GENX_NONE, src_slm_offset_bytes, partial_st.format<float>());
@@ -1054,11 +1054,11 @@ void pa_kernel_lsc_prefetch_f16(
             cm_barrier();
 
             // Accumulate partial St from all 4 head_size chunks for this query slice
-            // Work-items [wave_id, wave_id+4, wave_id+8, wave_id+12] cooperate
+            // Work-items [wave_id*4, wave_id*4+1, wave_id*4+2, wave_id*4+3] cooperate
             St = 0.0f;
             #pragma unroll
             for(int g = 0; g < num_hw_groups; g++) {
-                int src_wi = wave_id + g * group_size;  // Same query slice, different head_size chunk
+                int src_wi = wave_id * group_size + g;  // Same query slice (wave_id), different head_size chunk (g)
                 int src_slm_offset_bytes = src_wi * kv_step * q_step * sizeof(float);
                 matrix<float, kv_step, q_step> partial_st;
                 cm_slm_block_read(slm_St, GENX_NONE, src_slm_offset_bytes, partial_st.format<float>());

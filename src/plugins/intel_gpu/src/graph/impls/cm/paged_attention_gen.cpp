@@ -376,7 +376,7 @@ DispatchDataFunc PagedAttentionGeneratorMultiToken::get_dispatch_data_func() con
         const size_t q_len = out_shape[0];
 
         const size_t q_step = get_q_step(params);
-        const size_t wg_seq_len = get_wg_seq_len(params);
+        const size_t wg_seq_len = get_wg_seq_len(params, xattn_block_size);
         const size_t wg_count = align_to(q_len, wg_seq_len) / wg_seq_len;
 
         wgs.global = {batch, heads_num, wg_count * WG_SIZE};
@@ -775,7 +775,7 @@ DispatchDataFunc XAttentionEstimateFindBlock::get_dispatch_data_func() const {
 JitConstants XAttentionEstimatePostProc::get_jit_constants(const kernel_impl_params& params) const {
     auto jit = XAttentionEstimateGeneratorBase::get_jit_constants(params);
 
-    jit.make("MERGED_Q_NUM", PagedAttentionGeneratorMultiToken::get_wg_seq_len(params) / _xattn_block_size);
+    jit.make("MERGED_Q_NUM", PagedAttentionGeneratorMultiToken::get_wg_seq_len(params, _xattn_block_size) / _xattn_block_size);
 
     return jit;
 }

@@ -173,7 +173,7 @@ public:
         return 16;  // For Xe2+
     }
 
-    static size_t get_wg_seq_len(const kernel_impl_params& params, size_t xattn_block_size = 1) {
+    static size_t get_wg_seq_len(const kernel_impl_params& params, size_t xattn_block_size) {
         // For xattn_block_size=256: use head_size partitioning where each work-group processes only 4 wave_ids (not 16 work-items)
         // Each wave_id handles q_step tokens, so wg_seq_len = 4 * q_step
         if (xattn_block_size == 256) {

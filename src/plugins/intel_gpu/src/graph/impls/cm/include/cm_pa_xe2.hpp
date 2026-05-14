@@ -658,17 +658,16 @@ void pa_kernel_lsc_prefetch_f16(
     // Work-items [4,5,6,7] process queries [16:32] with head_size chunks [0:64],[64:128],[128:192],[192:256]
     // This ensures threads executing together can utilize all physical thread registers simultaneously
     constexpr bool enable_head_size_partition = (head_size == 256);
-    constexpr int num_hw_groups = enable_head_size_partition ? 4 : 1;
-    constexpr int group_size = enable_head_size_partition ? 4 : wg_local_size;
-    constexpr int head_size_per_group = head_size / num_hw_groups;
+    constexpr int num_head_size_group = enable_head_size_partition ? 4 : 1;
+    constexpr int head_size_per_group = head_size / num_head_size_group;
 
     static_assert(wg_local_size == 16, "wg_local_size must be 16");
-    static_assert(head_size % num_hw_groups == 0, "head_size must be divisible by num_hw_groups");
+    static_assert(head_size % num_head_size_group == 0, "head_size must be divisible by num_head_size_group");
 
-    // wave_id: which group of queries (0-3) = wg_local_id / 4
-    // hw_group_id: which head_size chunk within group (0-3) = wg_local_id % 4
-    int wave_id = enable_head_size_partition ? (wg_local_id / group_size) : wg_local_id;
-    int hw_group_id = enable_head_size_partition ? (wg_local_id % group_size) : 0;
+    // wave_id: which group of queries (0-3) = wg_local_id / num_head_size_group
+    // hw_group_id: which head_size chunk within group (0-3) = wg_local_id % num_head_size_group
+    int wave_id = enable_head_size_partition ? (wg_local_id / num_head_size_group) : wg_local_id;
+    int hw_group_id = enable_head_size_partition ? (wg_local_id % num_head_size_group) : 0;
 
     vector<float, q_step> cur_max;
     vector<float, q_step> cur_sum;
@@ -817,8 +816,8 @@ void pa_kernel_lsc_prefetch_f16(
             // Work-items [wave_id*4, wave_id*4+1, wave_id*4+2, wave_id*4+3] cooperate
             St = 0.0f;
             #pragma unroll
-            for(int g = 0; g < num_hw_groups; g++) {
-                int src_wi = wave_id * group_size + g;  // Same query slice (wave_id), different head_size chunk (g)
+            for(int g = 0; g < num_head_size_group; g++) {
+                int src_wi = wave_id * num_head_size_group + g;  // Same query slice (wave_id), different head_size chunk (g)
                 int src_slm_offset_bytes = src_wi * kv_step * q_step * sizeof(float);
                 matrix<float, kv_step, q_step> partial_st;
                 cm_slm_block_read(slm_St, GENX_NONE, src_slm_offset_bytes, partial_st.format<float>());
@@ -1057,8 +1056,8 @@ void pa_kernel_lsc_prefetch_f16(
             // Work-items [wave_id*4, wave_id*4+1, wave_id*4+2, wave_id*4+3] cooperate
             St = 0.0f;
             #pragma unroll
-            for(int g = 0; g < num_hw_groups; g++) {
-                int src_wi = wave_id * group_size + g;  // Same query slice (wave_id), different head_size chunk (g)
+            for(int g = 0; g < num_head_size_group; g++) {
+                int src_wi = wave_id * num_head_size_group + g;  // Same query slice (wave_id), different head_size chunk (g)
                 int src_slm_offset_bytes = src_wi * kv_step * q_step * sizeof(float);
                 matrix<float, kv_step, q_step> partial_st;
                 cm_slm_block_read(slm_St, GENX_NONE, src_slm_offset_bytes, partial_st.format<float>());

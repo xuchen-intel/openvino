@@ -658,16 +658,16 @@ void pa_kernel_lsc_prefetch_f16(
     // Work-items [4,5,6,7] process queries [16:32] with head_size chunks [0:64],[64:128],[128:192],[192:256]
     // This ensures threads executing together can utilize all physical thread registers simultaneously
     constexpr bool enable_head_size_partition = (head_size == 256);
-    constexpr int num_head_size_group = enable_head_size_partition ? 4 : 1;
-    constexpr int head_size_per_group = head_size / num_head_size_group;
+    constexpr int num_team = enable_head_size_partition ? 4 : 1;
+    constexpr int process_head_size = head_size / num_team;
 
     static_assert(wg_local_size == 16, "wg_local_size must be 16");
-    static_assert(head_size % num_head_size_group == 0, "head_size must be divisible by num_head_size_group");
+    static_assert(head_size % num_team == 0, "head_size must be divisible by num_team");
 
-    // team_id: which cooperative thread group (0-3) = wg_local_id / num_head_size_group
-    // worker_id: which thread within the team (0-3) = wg_local_id % num_head_size_group
-    int team_id = enable_head_size_partition ? (wg_local_id / num_head_size_group) : wg_local_id;
-    int worker_id = enable_head_size_partition ? (wg_local_id % num_head_size_group) : 0;
+    // team_id: which cooperative thread group (0-3) = wg_local_id / num_team
+    // worker_id: which thread within the team (0-3) = wg_local_id % num_team
+    int team_id = enable_head_size_partition ? (wg_local_id / num_team) : wg_local_id;
+    int worker_id = enable_head_size_partition ? (wg_local_id % num_team) : 0;
 
     vector<float, q_step> cur_max;
     vector<float, q_step> cur_sum;
@@ -677,9 +677,9 @@ void pa_kernel_lsc_prefetch_f16(
     constexpr int num_P_tiles = REG_N / REG_M;
 
     // Each group only allocates 1/4 of head_size
-    matrix<half, head_size_per_group/REG_K, REG_K*REG_N> rQ;
-    constexpr int rO_half_rows_f16 = head_size_per_group / 2 / REG_N * num_P_tiles;
-    static_assert(head_size_per_group % (2 * REG_N) == 0, "head_size_per_group must be divisible by 2*REG_N for rO split");
+    matrix<half, process_head_size/REG_K, REG_K*REG_N> rQ;
+    constexpr int rO_half_rows_f16 = process_head_size / 2 / REG_N * num_P_tiles;
+    static_assert(process_head_size % (2 * REG_N) == 0, "process_head_size must be divisible by 2*REG_N for rO split");
     matrix<float, rO_half_rows_f16, REG_M * REG_N> rO_lo;
     matrix<float, rO_half_rows_f16, REG_M * REG_N> rO_hi;
     bool first_active = true;
@@ -707,11 +707,11 @@ void pa_kernel_lsc_prefetch_f16(
     if (q_tokens_left > q_step) q_tokens_left = q_step;
 
     // Each group loads its chunk of Q (1/4 of head_size)
-    int group_head_offset = worker_id * head_size_per_group;
+    int group_head_offset = worker_id * process_head_size;
     if (q_tokens_left > 0) {
         lsc::block_2d_desc<uint, 1, REG_N, REG_K/2> b2dQ(reinterpret_cast<uint*>(q_base), q_tokens_left - 1, head_size*sizeof(half) - 1, q_pitch - 1, 0, group_head_offset);
         #pragma unroll
-        for(int k = 0, ri = 0; k < head_size_per_group/2; k += REG_K/2, ri++) {
+        for(int k = 0, ri = 0; k < process_head_size/2; k += REG_K/2, ri++) {
             cm_load<lsc::Transpose>(rQ[ri].format<uint>(), b2dQ.set_block_x(k));
             rQ[ri].format<half>() = cm_mul<half>(rQ[ri].format<half>(), (half)scale_factor);
         }
@@ -788,7 +788,7 @@ void pa_kernel_lsc_prefetch_f16(
                                 Kmat[k].format<int32_t>());
 
             #pragma unroll
-            for(int ri = 1; ri < head_size_per_group/REG_K; ri++) {
+            for(int ri = 1; ri < process_head_size/REG_K; ri++) {
                 int k_offset = group_head_offset + ri*REG_K;
                 cm_prefetch<CacheHint::Cached, CacheHint::Cached>(prefetch_K.set_block_x(k_offset));
                 cm_load<lsc::Normal>(Kmat.format<half>(), b2dK.set_block_x(k_offset));
@@ -816,8 +816,8 @@ void pa_kernel_lsc_prefetch_f16(
             // Work-items [team_id*4, team_id*4+1, team_id*4+2, team_id*4+3] cooperate
             St = 0.0f;
             #pragma unroll
-            for(int g = 0; g < num_head_size_group; g++) {
-                int src_wi = team_id * num_head_size_group + g;  // Same query slice (team_id), different head_size chunk (g)
+            for(int g = 0; g < num_team; g++) {
+                int src_wi = team_id * num_team + g;  // Same query slice (team_id), different head_size chunk (g)
                 int src_slm_offset_bytes = src_wi * kv_step * q_step * sizeof(float);
                 matrix<float, kv_step, q_step> partial_st;
                 cm_slm_block_read(slm_St, GENX_NONE, src_slm_offset_bytes, partial_st.format<float>());
@@ -858,7 +858,7 @@ void pa_kernel_lsc_prefetch_f16(
             // PV0 lower half - Each group loads its 1/4 chunk of V
             // group_head_offset already declared at function scope
             #pragma unroll
-            for(int k = 0, ri = 0; k < head_size_per_group / 2; k += REG_N, ri += num_P_tiles) {
+            for(int k = 0, ri = 0; k < process_head_size / 2; k += REG_N, ri += num_P_tiles) {
                 matrix<half, REG_K/2, REG_N*2> Vmat;
                 int v_offset = group_head_offset + k;
                 cm_prefetch<CacheHint::Cached, CacheHint::Cached>(prefetch_V.set_block_x(v_offset));
@@ -881,7 +881,7 @@ void pa_kernel_lsc_prefetch_f16(
             }
             // PV0 upper half - Second half of this group's chunk
             #pragma unroll
-            for(int k = head_size_per_group / 2, ri = 0; k < head_size_per_group; k += REG_N, ri += num_P_tiles) {
+            for(int k = process_head_size / 2, ri = 0; k < process_head_size; k += REG_N, ri += num_P_tiles) {
                 matrix<half, REG_K/2, REG_N*2> Vmat;
                 int v_offset = group_head_offset + k;
                 cm_prefetch<CacheHint::Cached, CacheHint::Cached>(prefetch_V.set_block_x(v_offset));
@@ -909,7 +909,7 @@ void pa_kernel_lsc_prefetch_f16(
             // PV1 lower half - Each group loads its 1/4 chunk of V
             // group_head_offset already declared at function scope
             #pragma unroll
-            for(int k = 0, ri=0; k < head_size_per_group / 2; k += REG_N, ri += num_P_tiles) {
+            for(int k = 0, ri=0; k < process_head_size / 2; k += REG_N, ri += num_P_tiles) {
                 matrix<half, REG_K/2, REG_N*2> Vmat;
 
                 int v_offset = group_head_offset + k;
@@ -941,7 +941,7 @@ void pa_kernel_lsc_prefetch_f16(
             }
             // PV1 upper half - Second half of this group's chunk
             #pragma unroll
-            for(int k = head_size_per_group / 2, ri=0; k < head_size_per_group; k += REG_N, ri += num_P_tiles) {
+            for(int k = process_head_size / 2, ri=0; k < process_head_size; k += REG_N, ri += num_P_tiles) {
                 matrix<half, REG_K/2, REG_N*2> Vmat;
 
                 int v_offset = group_head_offset + k;
@@ -1028,7 +1028,7 @@ void pa_kernel_lsc_prefetch_f16(
 
             // Load remaining K chunks for this group
             #pragma unroll
-            for(int ri = 1; ri < head_size_per_group/REG_K; ri++) {
+            for(int ri = 1; ri < process_head_size/REG_K; ri++) {
                 int k_offset = group_head_offset + ri*REG_K;
                 cm_prefetch<CacheHint::Cached, CacheHint::Cached>(prefetch_K.set_block_x(k_offset));
                 cm_load<lsc::Normal>(Kmat.format<half>(), b2dK.set_block_x(k_offset));
@@ -1056,8 +1056,8 @@ void pa_kernel_lsc_prefetch_f16(
             // Work-items [team_id*4, team_id*4+1, team_id*4+2, team_id*4+3] cooperate
             St = 0.0f;
             #pragma unroll
-            for(int g = 0; g < num_head_size_group; g++) {
-                int src_wi = team_id * num_head_size_group + g;  // Same query slice (team_id), different head_size chunk (g)
+            for(int g = 0; g < num_team; g++) {
+                int src_wi = team_id * num_team + g;  // Same query slice (team_id), different head_size chunk (g)
                 int src_slm_offset_bytes = src_wi * kv_step * q_step * sizeof(float);
                 matrix<float, kv_step, q_step> partial_st;
                 cm_slm_block_read(slm_St, GENX_NONE, src_slm_offset_bytes, partial_st.format<float>());
@@ -1098,7 +1098,7 @@ void pa_kernel_lsc_prefetch_f16(
             // PV0 lower half - Each group loads its 1/4 chunk of V
             // group_head_offset already declared at function scope
             #pragma unroll
-            for(int k = 0, ri = 0; k < head_size_per_group / 2; k += REG_N, ri += num_P_tiles) {
+            for(int k = 0, ri = 0; k < process_head_size / 2; k += REG_N, ri += num_P_tiles) {
                 matrix<half, REG_K/2, REG_N*2> Vmat;
                 int v_offset = group_head_offset + k;
                 cm_prefetch<CacheHint::Cached, CacheHint::Cached>(prefetch_V.set_block_x(v_offset));
@@ -1121,7 +1121,7 @@ void pa_kernel_lsc_prefetch_f16(
             }
             // PV0 upper half - Second half of this group's chunk
             #pragma unroll
-            for(int k = head_size_per_group / 2, ri = 0; k < head_size_per_group; k += REG_N, ri += num_P_tiles) {
+            for(int k = process_head_size / 2, ri = 0; k < process_head_size; k += REG_N, ri += num_P_tiles) {
                 matrix<half, REG_K/2, REG_N*2> Vmat;
                 int v_offset = group_head_offset + k;
                 cm_prefetch<CacheHint::Cached, CacheHint::Cached>(prefetch_V.set_block_x(v_offset));
@@ -1149,7 +1149,7 @@ void pa_kernel_lsc_prefetch_f16(
             // PV1 lower half - Each group loads its 1/4 chunk of V
             // group_head_offset already declared at function scope
             #pragma unroll
-            for(int k = 0, ri=0; k < head_size_per_group / 2; k += REG_N, ri += num_P_tiles) {
+            for(int k = 0, ri=0; k < process_head_size / 2; k += REG_N, ri += num_P_tiles) {
                 matrix<half, REG_K/2, REG_N*2> Vmat;
 
                 int v_offset = group_head_offset + k;
@@ -1181,7 +1181,7 @@ void pa_kernel_lsc_prefetch_f16(
             }
             // PV1 upper half - Second half of this group's chunk
             #pragma unroll
-            for(int k = head_size_per_group / 2, ri=0; k < head_size_per_group; k += REG_N, ri += num_P_tiles) {
+            for(int k = process_head_size / 2, ri=0; k < process_head_size; k += REG_N, ri += num_P_tiles) {
                 matrix<half, REG_K/2, REG_N*2> Vmat;
 
                 int v_offset = group_head_offset + k;
@@ -1234,7 +1234,7 @@ void pa_kernel_lsc_prefetch_f16(
 
     // Store lower half of group's chunk from rO_lo
     #pragma unroll
-    for(int k = 0, ri=0; k < head_size_per_group / 2; k += REG_N, ri += num_P_tiles) {
+    for(int k = 0, ri=0; k < process_head_size / 2; k += REG_N, ri += num_P_tiles) {
         #pragma unroll
         for(int p = 0; p < num_P_tiles; p++) {
             auto cO = rO_lo[ri + p].format<float, REG_M, REG_N>();
@@ -1251,7 +1251,7 @@ void pa_kernel_lsc_prefetch_f16(
 
     // Store upper half of group's chunk from rO_hi
     #pragma unroll
-    for(int k = head_size_per_group / 2, ri=0; k < head_size_per_group; k += REG_N, ri += num_P_tiles) {
+    for(int k = process_head_size / 2, ri=0; k < process_head_size; k += REG_N, ri += num_P_tiles) {
         #pragma unroll
         for(int p = 0; p < num_P_tiles; p++) {
             auto cO = rO_hi[ri + p].format<float, REG_M, REG_N>();

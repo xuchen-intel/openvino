@@ -99,11 +99,11 @@ public:
         rt_params->q_block_pad = q_block_pad;
         rt_params->k_block_pad = k_block_pad;
 
-        // XAttention merged_q_num uses xattn_block_size, independent of head_size partitioning
+        // XAttention uses original wg_seq_len calculation (no head_size partitioning)
         constexpr size_t wg_size = 16;
-        constexpr size_t q_step_xe2 = 16;
-        const size_t xattn_wg_seq_len = (block_size == 256) ? (4 * q_step_xe2) : (wg_size * q_step_xe2);
-        const size_t merged_q_num = xattn_wg_seq_len / block_size;
+        const size_t q_step = (params.get_device_info().arch < gpu_arch::xe2) ? 8 : 16;
+        const size_t xattn_wg_seq_len = wg_size * q_step;  // 16 * 16 = 256 for Xe2
+        const size_t merged_q_num = xattn_wg_seq_len / block_size;  // 256/128=2 or 256/256=1
         rt_params->q_block_pad_merged = ceil_div(q_block_pad, merged_q_num);
 
         const size_t head_size = desc->k_head_size;

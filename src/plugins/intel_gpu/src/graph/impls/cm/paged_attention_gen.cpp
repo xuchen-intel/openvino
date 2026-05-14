@@ -775,10 +775,9 @@ DispatchDataFunc XAttentionEstimateFindBlock::get_dispatch_data_func() const {
 JitConstants XAttentionEstimatePostProc::get_jit_constants(const kernel_impl_params& params) const {
     auto jit = XAttentionEstimateGeneratorBase::get_jit_constants(params);
 
-    // XAttention estimation uses _xattn_block_size, independent of head_size partitioning
-    constexpr size_t wg_size = 16;
-    constexpr size_t q_step_xe2 = 16;
-    const size_t xattn_wg_seq_len = (_xattn_block_size == 256) ? (4 * q_step_xe2) : (wg_size * q_step_xe2);
+    // XAttention uses original wg_seq_len calculation (no head_size partitioning)
+    const size_t q_step = PagedAttentionGeneratorMultiToken::get_q_step(params);
+    const size_t xattn_wg_seq_len = WG_SIZE * q_step;  // 16 * 16 = 256 for Xe2
     jit.make("MERGED_Q_NUM", xattn_wg_seq_len / _xattn_block_size);
 
     return jit;

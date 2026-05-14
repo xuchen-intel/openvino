@@ -99,8 +99,8 @@ extern "C" _GENX_MAIN_ void KERNEL_NAME(
     if constexpr (head_size == 256) {
         constexpr int group_size = 4;  // 4 threads per group
         int num_groups = local_size / group_size;  // Number of groups per work-group
-        int wave_id = wg_local_id / group_size;  // Which group (query slice)
-        q_start_sg = (wg_id * num_groups + wave_id) * q_step;
+        int team_id = wg_local_id / group_size;  // Which cooperative thread group (query slice)
+        q_start_sg = (wg_id * num_groups + team_id) * q_step;
         // Update actual_wg_seq_len to reflect tokens processed per work-group with head_size partitioning
         actual_wg_seq_len = num_groups * q_step;  // num_groups * q_step tokens per work-group
     } else {

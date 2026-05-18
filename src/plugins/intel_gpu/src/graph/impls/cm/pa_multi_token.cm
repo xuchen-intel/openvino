@@ -63,11 +63,14 @@ extern "C" _GENX_MAIN_ void KERNEL_NAME(
     constexpr uint K_SLM_SIZE = (4*kv_step * head_size * sizeof(half));
     constexpr uint V_SLM_SIZE = (4*kv_step * head_size * sizeof(half));
     constexpr uint Q_SLM_SIZE = 0;
+    constexpr int wg_size_u8 = 16;
+    constexpr uint St_SLM_SIZE = (head_size == 256) ? (wg_size_u8 * kv_step * q_step * sizeof(float)) : 0;
 
-    cm_slm_init(K_SLM_SIZE + V_SLM_SIZE + Q_SLM_SIZE);
+    cm_slm_init(K_SLM_SIZE + V_SLM_SIZE + Q_SLM_SIZE + St_SLM_SIZE);
 
     auto slm_K = cm_slm_alloc(K_SLM_SIZE);
     auto slm_V = cm_slm_alloc(V_SLM_SIZE);
+    auto slm_St = cm_slm_alloc(St_SLM_SIZE);
 
 #endif
     auto batch = cm_group_id(0);
@@ -169,6 +172,7 @@ extern "C" _GENX_MAIN_ void KERNEL_NAME(
     pa_lsc_u8<is_causal, num_heads, num_kv_heads, head_size, 0>(
                             slm_K,
                             slm_V,
+                            slm_St,
                             wg_local_id,
                             local_size,
                             q_start_sg, //q_start for SG,

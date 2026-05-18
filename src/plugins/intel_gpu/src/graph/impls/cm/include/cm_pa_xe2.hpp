@@ -717,23 +717,22 @@ void pa_kernel_lsc_prefetch_f16(
     constexpr uint k_pitch =  head_size * sizeof(half);
     constexpr uint v_pitch = k_pitch;
 
-    // Head_size dimension partitioning
-    // Consecutive work-items cooperate on same queries for optimal register utilization
-    // Work-items [0,1,2,3] process queries [0:16] with head_size chunks [0:64],[64:128],[128:192],[192:256]
-    // Work-items [4,5,6,7] process queries [16:32] with head_size chunks [0:64],[64:128],[128:192],[192:256]
-    // This ensures threads executing together can utilize all physical thread registers simultaneously
+    // Head_size dimension partitioning (2 workers per team)
+    // Work-items [0,1] process queries [0:16] with head_size chunks [0:128],[128:256]
+    // Work-items [2,3] process queries [16:32] with head_size chunks [0:128],[128:256]
+    // etc. 8 teams of 2 workers each
     constexpr bool enable_head_size_partition = (head_size == 256);
-    constexpr int num_team = enable_head_size_partition ? 4 : wg_local_size;
+    constexpr int num_team = enable_head_size_partition ? 8 : wg_local_size;
     constexpr int num_worker = wg_local_size / num_team;
     constexpr int process_head_size = head_size / num_worker;
 
     static_assert(wg_local_size == 16, "wg_local_size must be 16");
     static_assert(head_size % num_worker == 0, "head_size must be divisible by num_worker");
 
-    // team_id: which cooperative thread group (0-3) = wg_local_id / num_team
-    // worker_id: which thread within the team (0-3) = wg_local_id % num_team
-    int team_id = enable_head_size_partition ? (wg_local_id / num_team) : wg_local_id;
-    int worker_id = enable_head_size_partition ? (wg_local_id % num_team) : 0;
+    // team_id: which query slice (0-7) = wg_local_id / num_worker
+    // worker_id: which head_size chunk (0-1) = wg_local_id % num_worker
+    int team_id = enable_head_size_partition ? (wg_local_id / num_worker) : wg_local_id;
+    int worker_id = enable_head_size_partition ? (wg_local_id % num_worker) : 0;
 
     vector<float, q_step> cur_max;
     vector<float, q_step> cur_sum;

@@ -94,13 +94,15 @@ extern "C" _GENX_MAIN_ void KERNEL_NAME(
     kv_seq_len = q_len + past_q_lens;
 
     // For head_size=256: consecutive work-items cooperate on head_size partitioning
-    // Work-items [0,1,2,3] process queries [0:16], each handling different head_size chunk
-    // Work-items [4,5,6,7] process queries [16:32], each handling different head_size chunk
-    // This groups consecutive work-items together so they execute in same wave for optimal register usage
+    // fp16: 2 workers per team (8 teams), u8: 4 workers per team (4 teams)
     // For other head_sizes: each work-item processes its own query slice independently
     int actual_wg_seq_len = wg_seq_len;  // Actual tokens processed by this work-group
     if constexpr (head_size == 256) {
-        constexpr int group_size = 4;  // 4 threads per group
+#if KV_CACHE_COMPRESSION
+        constexpr int group_size = 4;  // u8: 4 threads per group
+#else
+        constexpr int group_size = 2;  // fp16: 2 threads per group
+#endif
         int num_groups = local_size / group_size;  // Number of groups per work-group
         int team_id = wg_local_id / group_size;  // Which cooperative thread group (query slice)
         q_start_sg = (wg_id * num_groups + team_id) * q_step;

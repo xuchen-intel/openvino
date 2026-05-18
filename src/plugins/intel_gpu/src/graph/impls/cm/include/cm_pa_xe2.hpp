@@ -70,7 +70,8 @@ void pa_lsc_u8(
 
     constexpr uint kv_pitch = head_size * sizeof(uint8_t);
 
-    // Head_size dimension partitioning (same pattern as f16 kernel)
+    // P@V-only head_size partitioning: Q uses full head_size (redundant K@Q across workers),
+    // only rO is partitioned. Eliminates cm_barrier() for St reduction, preserves SLM pipeline.
     constexpr bool enable_head_size_partition = (head_size == 256);
     constexpr int num_team = enable_head_size_partition ? 4 : 16;
     constexpr int num_worker = 16 / num_team;
@@ -78,7 +79,6 @@ void pa_lsc_u8(
 
     static_assert(head_size % num_worker == 0, "head_size must be divisible by num_worker");
 
-    int team_id = enable_head_size_partition ? (wg_local_id / num_team) : wg_local_id;
     int worker_id = enable_head_size_partition ? (wg_local_id % num_team) : 0;
     int worker_offset = worker_id * process_head_size;
 
@@ -89,7 +89,9 @@ void pa_lsc_u8(
     cur_sum = 0;
 
     constexpr int num_P_tiles = REG_N / REG_M;
-    matrix<half, process_head_size / REG_K, REG_K * REG_N> rQ;
+    // Q uses full head_size — all workers compute full K@Q redundantly (no St reduction needed)
+    matrix<half, head_size / REG_K, REG_K * REG_N> rQ;
+    // rO partitioned: each worker accumulates only its 1/num_worker chunk
     constexpr int rO_half_rows = process_head_size / 2 / REG_N * num_P_tiles;
     static_assert(process_head_size % (2 * REG_N) == 0, "process_head_size must be divisible by 2*REG_N for rO split");
     matrix<float, rO_half_rows, REG_M * REG_N> rO_lo;
@@ -107,17 +109,17 @@ void pa_lsc_u8(
     if (q_tokens_left < 0) q_tokens_left = 0;
     if (q_tokens_left > q_step) q_tokens_left = q_step;
 
-    // Each worker loads its 1/num_worker chunk of Q
+    // All workers load full head_size Q (redundant but avoids St reduction)
     if (q_tokens_left > 0) {
         lsc::block_2d_desc<uint, 1, REG_N, REG_K / 2> b2dQ(
             reinterpret_cast<uint*>(q_base),
             q_tokens_left - 1,
             head_size * sizeof(half) - 1,
             q_pitch - 1,
-            0, worker_offset);
+            0, 0);
 
         #pragma unroll
-        for (int k = 0, ri = 0; k < process_head_size / 2; k += REG_K / 2, ri++) {
+        for (int k = 0, ri = 0; k < head_size / 2; k += REG_K / 2, ri++) {
             cm_load<lsc::Transpose>(rQ[ri].format<uint>(), b2dQ.set_block_x(k));
             rQ[ri].format<half>() = cm_mul<half>(rQ[ri].format<half>(), (half)scale_factor);
         }
@@ -341,35 +343,14 @@ void pa_lsc_u8(
                     cm_slm_fence(CM_LOCAL_BARRIER);
                 }
 
+                if (kv_pos + kv_step < blk_end)
+                    cm_sbarrier(1);
+
                 {
                     uint slm_offset = (slm_buff_id_read & 3) * slm_buff_size;
 
-                    // Each worker computes partial K@Q using its head_size chunk
-                    uint slm_K_worker_offset = slm_offset + worker_offset * kv_step * sizeof(half);
-                    matrix<float, kv_step, q_step> St = ugemm_KQ(slm_K, rQ, slm_K_worker_offset);
-
-                    // Head_size partitioning: synchronize and accumulate partial St
-                    if constexpr (enable_head_size_partition) {
-                        int slm_offset_bytes = wg_local_id * kv_step * q_step * sizeof(float);
-                        cm_slm_block_write(slm_St_base, slm_offset_bytes, St.format<float>());
-
-                        cm_slm_fence(CM_GLOBAL_COHERENT_FENCE);
-                        cm_barrier();
-
-                        St = 0.0f;
-                        #pragma unroll
-                        for (int g = 0; g < num_worker; g++) {
-                            int src_wi = team_id * num_worker + g;
-                            int src_slm_offset_bytes = src_wi * kv_step * q_step * sizeof(float);
-                            matrix<float, kv_step, q_step> partial_st;
-                            cm_slm_block_read(slm_St_base, GENX_NONE, src_slm_offset_bytes, partial_st.format<float>());
-                            St += partial_st;
-                        }
-                    }
-
-                    // Signal AFTER St reduction: ensures both KV load and St reduction are complete
-                    if (kv_pos + kv_step < blk_end)
-                        cm_sbarrier(1);
+                    // Full K@Q: all workers compute full dot product (no St reduction needed)
+                    matrix<float, kv_step, q_step> St = ugemm_KQ(slm_K, rQ, slm_offset);
 
                     if constexpr (use_causal_mask) {
                         if (causal_left == 0) {
@@ -535,15 +516,15 @@ void pa_lsc_u8(
     cm_sbarrier(1);
 
     for (int kv_pos = 0; kv_pos < kv_stop; kv_pos += kv_step, slm_buff_id_read++) {
-        //  With head_size partitioning, cm_sbarrier(1) is postponed to after St reduction:
+        //  P@V-only partitioning: no St reduction needed, original pipeline preserved:
         //  load0, load1, signal1,
-        //  [wait1, load2, partial_KQ0, St_reduce0, signal2, compute0]
-        //  [wait2, load3, partial_KQ1, St_reduce1, signal3, compute1]
+        //  [wait1, signal2, load2, read0, compute0]
+        //  [wait2, signal3, load3, read1, compute1]
         //
         //  after wait2, all workers have reached signal2, so:
-        //     - all workers have finished load1, partial_KQ0, St_reduce0
-        //     - we can start to load 3 into SLM slot (safely past the read)
-        //     - we can start to read slot 1 safely
+        //     - all workers have finished load1 & read0.
+        //     - we can start to load 3 into SLM slot (i & 3) safely
+        //     - we can start to read 1 ((i-2) & 3) safely
 
         cm_fence(CM_LOCAL_BARRIER);
         cm_sbarrier(0);
@@ -561,35 +542,14 @@ void pa_lsc_u8(
         }
         #endif
 
+        if (kv_pos + kv_step < kv_stop)
+            cm_sbarrier(1);
+
         {
             uint slm_offset = (slm_buff_id_read & 3) * slm_buff_size;
 
-            // Each worker computes partial K@Q using its head_size chunk
-            uint slm_K_worker_offset = slm_offset + worker_offset * kv_step * sizeof(half);
-            matrix<float, kv_step, q_step> St = ugemm_KQ(slm_K, rQ, slm_K_worker_offset);
-
-            // Head_size partitioning: synchronize and accumulate partial St
-            if constexpr (enable_head_size_partition) {
-                int slm_offset_bytes = wg_local_id * kv_step * q_step * sizeof(float);
-                cm_slm_block_write(slm_St_base, slm_offset_bytes, St.format<float>());
-
-                cm_slm_fence(CM_GLOBAL_COHERENT_FENCE);
-                cm_barrier();
-
-                St = 0.0f;
-                #pragma unroll
-                for (int g = 0; g < num_worker; g++) {
-                    int src_wi = team_id * num_worker + g;
-                    int src_slm_offset_bytes = src_wi * kv_step * q_step * sizeof(float);
-                    matrix<float, kv_step, q_step> partial_st;
-                    cm_slm_block_read(slm_St_base, GENX_NONE, src_slm_offset_bytes, partial_st.format<float>());
-                    St += partial_st;
-                }
-            }
-
-            // Signal AFTER St reduction: ensures both KV load and St reduction are complete
-            if (kv_pos + kv_step < kv_stop)
-                cm_sbarrier(1);
+            // Full K@Q: all workers compute full dot product (no St reduction needed)
+            matrix<float, kv_step, q_step> St = ugemm_KQ(slm_K, rQ, slm_offset);
 
             if constexpr (use_causal_mask) {
                 if (causal_left == 0) {

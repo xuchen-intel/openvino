@@ -179,11 +179,20 @@ extern "C" _GENX_MAIN_ void KERNEL_NAME(
                             past_q_lens,
                             block_indices);
 #else
+    // For head_size=256: SLM holds rO accumulator in fp16 (load-compute-store pattern)
+    // Each WI needs q_step * head_size * sizeof(half) = 16 * 256 * 2 = 8192 bytes
+    // 16 WIs * 8192 = 131072 = 128KB (full Xe Core SLM budget)
+    constexpr int rO_slm_per_wi = (head_size == 256) ? (q_step * head_size * sizeof(half)) : 0;
+    constexpr int total_slm_size_f16 = (head_size == 256) ? (16 * rO_slm_per_wi) : 0;
+    cm_slm_init(total_slm_size_f16);
+    auto slm_rO_f16 = cm_slm_alloc(total_slm_size_f16);
+
     uint kv_offset = hkv*head_size*pa_block_sz;
 #ifndef CM_HAS_LSC_UNTYPED_2D
     uint v_offset_bytes = kv_offset * sizeof(half);
 #endif
     pa_kernel_lsc_prefetch_f16<is_causal, num_heads, num_kv_heads, head_size, 0, 16>(
+                            slm_rO_f16,
                             wg_local_id,
                             q_start_sg, //q_start for SG,
                             kv_stop,

@@ -628,6 +628,7 @@ void pa_lsc_u8(
 
 template<bool use_causal_mask, int num_heads, int num_kv_heads, int head_size, int is_qkv_fused, int wg_local_size>
 void pa_kernel_lsc_prefetch_f16(
+    uint slm_rO_base,
     int wg_local_id,
     int q_start,
     int kv_stop, //
@@ -645,11 +646,15 @@ void pa_kernel_lsc_prefetch_f16(
     int32_t* block_indices [[type("svmptr_t")]]) {
     constexpr uint o_pitch = (num_heads * head_size * sizeof(half));
     constexpr uint q_pitch = is_qkv_fused ? ((num_heads + num_kv_heads*2) * head_size * sizeof(half)) : o_pitch;
-    // constexpr uint k_pitch = is_qkv_fused ? q_pitch : (num_kv_heads * head_size * sizeof(half));
-    // constexpr uint v_pitch = is_qkv_fused ? q_pitch : (num_kv_heads * head_size * sizeof(half));
     //[block_num, kv_heads, block_size, head_size]
     constexpr uint k_pitch =  head_size * sizeof(half);
     constexpr uint v_pitch = k_pitch;
+
+    static_assert(wg_local_size == 16, "wg_local_size must be 16");
+
+    // SLM layout for rO: [16 WI][q_step * head_size] in half precision
+    constexpr int rO_slm_per_wi = q_step * head_size * sizeof(half);
+    uint slm_rO_wi_offset = wg_local_id * rO_slm_per_wi;
 
     vector<float, q_step> cur_max;
     vector<float, q_step> cur_sum;
@@ -658,8 +663,9 @@ void pa_kernel_lsc_prefetch_f16(
     cur_sum = 0;
     constexpr int num_P_tiles = REG_N / REG_M;
     matrix<half, head_size/REG_K, REG_K*REG_N> rQ;
-    constexpr int rO_half_rows_f16 = head_size / 2 / REG_N * num_P_tiles;
-    static_assert(head_size % (2 * REG_N) == 0, "head_size must be divisible by 2*REG_N for rO split");
+
+    // For head_size <= 128: rO fits in registers
+    constexpr int rO_half_rows_f16 = (head_size <= 128) ? (head_size / 2 / REG_N * num_P_tiles) : 1;
     matrix<float, rO_half_rows_f16, REG_M * REG_N> rO_lo;
     matrix<float, rO_half_rows_f16, REG_M * REG_N> rO_hi;
     bool first_active = true;
@@ -695,10 +701,18 @@ void pa_kernel_lsc_prefetch_f16(
         }
     }
 
+    // Initialize SLM rO to zero for this WI (head_size=256 only)
+    if constexpr (head_size == 256) {
+        vector<uint, 16> zeros = 0;
+        #pragma unroll
+        for (int i = 0; i < rO_slm_per_wi / (16 * sizeof(uint)); i++) {
+            cm_slm_block_write(slm_rO_base, slm_rO_wi_offset + i * 16 * sizeof(uint), zeros);
+        }
+    }
+
     lsc::block_2d_desc<half, 1, kv_step, REG_K> b2dK(k_cache_base, CMPA_BLOCK_SZ - 1, head_size*sizeof(half) - 1, k_pitch - 1, 0, 0);
     lsc::block_2d_desc<half, 1, REG_K, REG_N> b2dV(v_cache_base, CMPA_BLOCK_SZ - 1, head_size*sizeof(half) - 1, v_pitch - 1, 0, 0);
 
-    static_assert(wg_local_size == 16);
     lsc::block_2d_desc<half, 1, kv_step/wg_local_size, REG_K> prefetch_K(k_cache_base, CMPA_BLOCK_SZ - 1, head_size*sizeof(half) - 1, k_pitch - 1, 0, 0);
     lsc::block_2d_desc<half, 1, REG_K/wg_local_size, REG_N> prefetch_V(v_cache_base, CMPA_BLOCK_SZ - 1, head_size*sizeof(half) - 1, v_pitch - 1, 0, 0);
     constexpr int blk_stride = CMFLA_NUM_KV_HEADS*CMFLA_HEAD_SIZE*CMPA_BLOCK_SZ;
@@ -799,6 +813,56 @@ void pa_kernel_lsc_prefetch_f16(
 
         b2dV.set_base_ptr((reinterpret_cast<half*>(v_cache_base)+cur_block_id*blk_stride));
         b2dV.set_block_y(kv_pos%CMPA_BLOCK_SZ);
+
+        if constexpr (head_size == 256) {
+            // P@V with load-compute-store rO from SLM
+            auto P2 = P.format<half, num_P_tiles, REG_M * REG_K>();
+            for(int k = 0; k < head_size; k += REG_N) {
+                matrix<half, REG_K/2, REG_N*2> Vmat;
+                cm_prefetch<CacheHint::Cached, CacheHint::Cached>(prefetch_V.set_block_x(k));
+                cm_load<lsc::VNNI>(Vmat.format<half>(), b2dV.set_block_x(k));
+                if ((kv_pos + kv_step) > kv_stop) {
+                    uint valid_rows = kv_stop - kv_pos;
+                    uint valid_rows_vnni = (valid_rows+1)/2;
+                    for (int r = valid_rows_vnni; r < kv_step / 2; r++)
+                        Vmat.row(r) = 0.f;
+                    if (valid_rows % 2 == 1)
+                        Vmat.row(valid_rows_vnni-1).select<REG_N,2>(1) = 0.f;
+                }
+                #pragma unroll
+                for(int p = 0; p < num_P_tiles; p++) {
+                    uint slm_tile_base = slm_rO_wi_offset + (p * REG_M * head_size + k) * sizeof(half);
+                    if (first_active) {
+                        matrix<float, REG_M, REG_N> rO_tile;
+                        rO_tile = cm_dpas<CM_PRECISION_HF, CM_PRECISION_HF, SystolicDepth, RepeatCount, float>(
+                                    0, Vmat.format<int32_t>(), P2.row(p).format<int32_t>());
+                        matrix<half, REG_M, REG_N> rO_tile_h = rO_tile;
+                        #pragma unroll
+                        for (int r = 0; r < REG_M; r++)
+                            cm_slm_block_write(slm_rO_base, slm_tile_base + r * head_size * sizeof(half),
+                                              rO_tile_h.row(r).format<uint>());
+                    } else {
+                        matrix<half, REG_M, REG_N> rO_tile_h;
+                        #pragma unroll
+                        for (int r = 0; r < REG_M; r++)
+                            cm_slm_block_read(slm_rO_base, GENX_NONE, slm_tile_base + r * head_size * sizeof(half),
+                                             rO_tile_h.row(r).format<uint>());
+                        matrix<float, REG_M, REG_N> rO_tile = rO_tile_h;
+                        #pragma unroll
+                        for(int r = 0; r < REG_M; r++)
+                            rO_tile.row(r) = cm_mul<float>(rO_tile.row(r), max_comp[r + p*REG_M]);
+                        rO_tile = cm_dpas<CM_PRECISION_HF, CM_PRECISION_HF, SystolicDepth, RepeatCount>(
+                                    rO_tile.format<float>(), Vmat.format<int32_t>(), P2.row(p).format<int32_t>());
+                        rO_tile_h = rO_tile;
+                        #pragma unroll
+                        for (int r = 0; r < REG_M; r++)
+                            cm_slm_block_write(slm_rO_base, slm_tile_base + r * head_size * sizeof(half),
+                                              rO_tile_h.row(r).format<uint>());
+                    }
+                }
+            }
+            first_active = false;
+        } else {
         if (first_active) {
             auto P2 = P.format<half, num_P_tiles, REG_M * REG_K>();
             // PV0 lower half
@@ -912,6 +976,7 @@ void pa_kernel_lsc_prefetch_f16(
                 }
             }
         }
+        } // if constexpr (head_size == 256) else
         }
     }
 #else
@@ -996,6 +1061,56 @@ void pa_kernel_lsc_prefetch_f16(
 
         b2dV.set_base_ptr((reinterpret_cast<half*>(v_cache_base)+cur_block_id*blk_stride));
         b2dV.set_block_y(kv_pos%CMPA_BLOCK_SZ);
+
+        if constexpr (head_size == 256) {
+            // P@V with load-compute-store rO from SLM
+            auto P2 = P.format<half, num_P_tiles, REG_M * REG_K>();
+            for(int k = 0; k < head_size; k += REG_N) {
+                matrix<half, REG_K/2, REG_N*2> Vmat;
+                cm_prefetch<CacheHint::Cached, CacheHint::Cached>(prefetch_V.set_block_x(k));
+                cm_load<lsc::VNNI>(Vmat.format<half>(), b2dV.set_block_x(k));
+                if ((kv_pos + kv_step) > kv_stop) {
+                    uint valid_rows = kv_stop - kv_pos;
+                    uint valid_rows_vnni = (valid_rows+1)/2;
+                    for (int r = valid_rows_vnni; r < kv_step / 2; r++)
+                        Vmat.row(r) = 0.f;
+                    if (valid_rows % 2 == 1)
+                        Vmat.row(valid_rows_vnni-1).select<REG_N,2>(1) = 0.f;
+                }
+                #pragma unroll
+                for(int p = 0; p < num_P_tiles; p++) {
+                    uint slm_tile_base = slm_rO_wi_offset + (p * REG_M * head_size + k) * sizeof(half);
+                    if (first_active) {
+                        matrix<float, REG_M, REG_N> rO_tile;
+                        rO_tile = cm_dpas<CM_PRECISION_HF, CM_PRECISION_HF, SystolicDepth, RepeatCount, float>(
+                                    0, Vmat.format<int32_t>(), P2.row(p).format<int32_t>());
+                        matrix<half, REG_M, REG_N> rO_tile_h = rO_tile;
+                        #pragma unroll
+                        for (int r = 0; r < REG_M; r++)
+                            cm_slm_block_write(slm_rO_base, slm_tile_base + r * head_size * sizeof(half),
+                                              rO_tile_h.row(r).format<uint>());
+                    } else {
+                        matrix<half, REG_M, REG_N> rO_tile_h;
+                        #pragma unroll
+                        for (int r = 0; r < REG_M; r++)
+                            cm_slm_block_read(slm_rO_base, GENX_NONE, slm_tile_base + r * head_size * sizeof(half),
+                                             rO_tile_h.row(r).format<uint>());
+                        matrix<float, REG_M, REG_N> rO_tile = rO_tile_h;
+                        #pragma unroll
+                        for(int r = 0; r < REG_M; r++)
+                            rO_tile.row(r) = cm_mul<float>(rO_tile.row(r), max_comp[r + p*REG_M]);
+                        rO_tile = cm_dpas<CM_PRECISION_HF, CM_PRECISION_HF, SystolicDepth, RepeatCount>(
+                                    rO_tile.format<float>(), Vmat.format<int32_t>(), P2.row(p).format<int32_t>());
+                        rO_tile_h = rO_tile;
+                        #pragma unroll
+                        for (int r = 0; r < REG_M; r++)
+                            cm_slm_block_write(slm_rO_base, slm_tile_base + r * head_size * sizeof(half),
+                                              rO_tile_h.row(r).format<uint>());
+                    }
+                }
+            }
+            first_active = false;
+        } else {
         if (first_active) {
             auto P2 = P.format<half, num_P_tiles, REG_M * REG_K>();
             // PV0 lower half
@@ -1109,6 +1224,7 @@ void pa_kernel_lsc_prefetch_f16(
                 }
             }
         }
+        } // if constexpr (head_size == 256) else
     }
 #endif
 
@@ -1120,42 +1236,64 @@ void pa_kernel_lsc_prefetch_f16(
 
     if (q_tokens_left == 0) return;
 
-    //# save cur_O/cur_sum.transpose(0, 1)
     matrix<half, num_P_tiles*REG_M, REG_N> cur_O_f16;
     cur_sum = cm_inv(cur_sum);
 
     lsc::block_2d_desc<half, 1, REG_M, REG_N> b2dO(o_base, q_tokens_left - 1, head_size*sizeof(half) - 1, o_pitch - 1, 0, 0);
 
-    // Store lower half of head_size from rO_lo
-    #pragma unroll
-    for(int k = 0, ri=0; k < head_size / 2; k += REG_N, ri += num_P_tiles) {
-        #pragma unroll
-        for(int p = 0; p < num_P_tiles; p++) {
-            auto cO = rO_lo[ri + p].format<float, REG_M, REG_N>();
+    if constexpr (head_size == 256) {
+        // Load rO tiles from SLM, normalize, write to output
+        for(int k = 0; k < head_size; k += REG_N) {
             #pragma unroll
-            for(int r = 0; r < cO.n_rows(); r++) {
-                cur_O_f16[r + p*REG_M] = cm_mul<float>(cO.row(r), cur_sum[r + p*REG_M]);
+            for(int p = 0; p < num_P_tiles; p++) {
+                uint slm_tile_base = slm_rO_wi_offset + (p * REG_M * head_size + k) * sizeof(half);
+                matrix<half, REG_M, REG_N> rO_tile_h;
+                #pragma unroll
+                for (int r = 0; r < REG_M; r++)
+                    cm_slm_block_read(slm_rO_base, GENX_NONE, slm_tile_base + r * head_size * sizeof(half),
+                                     rO_tile_h.row(r).format<uint>());
+                #pragma unroll
+                for(int r = 0; r < REG_M; r++) {
+                    vector<float, REG_N> row_f = rO_tile_h.row(r);
+                    cur_O_f16[r + p*REG_M] = cm_mul<float>(row_f, cur_sum[r + p*REG_M]);
+                }
             }
+            b2dO.set_block_x(k);
+            cm_store(b2dO.set_block_y(0), cur_O_f16.format<half, num_P_tiles, REG_M * REG_N>().row(0));
+            cm_store(b2dO.set_block_y(REG_M), cur_O_f16.format<half, num_P_tiles, REG_M * REG_N>().row(1));
         }
-        b2dO.set_block_x(k);
-        cm_store(b2dO.set_block_y(0), cur_O_f16.format<half, num_P_tiles, REG_M * REG_N>().row(0));
-        cm_store(b2dO.set_block_y(REG_M), cur_O_f16.format<half, num_P_tiles, REG_M * REG_N>().row(1));
-    }
+    } else {
+        // Store lower half of head_size from rO_lo
+        #pragma unroll
+        for(int k = 0, ri=0; k < head_size / 2; k += REG_N, ri += num_P_tiles) {
+            #pragma unroll
+            for(int p = 0; p < num_P_tiles; p++) {
+                auto cO = rO_lo[ri + p].format<float, REG_M, REG_N>();
+                #pragma unroll
+                for(int r = 0; r < cO.n_rows(); r++) {
+                    cur_O_f16[r + p*REG_M] = cm_mul<float>(cO.row(r), cur_sum[r + p*REG_M]);
+                }
+            }
+            b2dO.set_block_x(k);
+            cm_store(b2dO.set_block_y(0), cur_O_f16.format<half, num_P_tiles, REG_M * REG_N>().row(0));
+            cm_store(b2dO.set_block_y(REG_M), cur_O_f16.format<half, num_P_tiles, REG_M * REG_N>().row(1));
+        }
 
-    // Store upper half of head_size from rO_hi
-    #pragma unroll
-    for(int k = head_size / 2, ri=0; k < head_size; k += REG_N, ri += num_P_tiles) {
+        // Store upper half of head_size from rO_hi
         #pragma unroll
-        for(int p = 0; p < num_P_tiles; p++) {
-            auto cO = rO_hi[ri + p].format<float, REG_M, REG_N>();
+        for(int k = head_size / 2, ri=0; k < head_size; k += REG_N, ri += num_P_tiles) {
             #pragma unroll
-            for(int r = 0; r < cO.n_rows(); r++) {
-                cur_O_f16[r + p*REG_M] = cm_mul<float>(cO.row(r), cur_sum[r + p*REG_M]);
+            for(int p = 0; p < num_P_tiles; p++) {
+                auto cO = rO_hi[ri + p].format<float, REG_M, REG_N>();
+                #pragma unroll
+                for(int r = 0; r < cO.n_rows(); r++) {
+                    cur_O_f16[r + p*REG_M] = cm_mul<float>(cO.row(r), cur_sum[r + p*REG_M]);
+                }
             }
+            b2dO.set_block_x(k);
+            cm_store(b2dO.set_block_y(0), cur_O_f16.format<half, num_P_tiles, REG_M * REG_N>().row(0));
+            cm_store(b2dO.set_block_y(REG_M), cur_O_f16.format<half, num_P_tiles, REG_M * REG_N>().row(1));
         }
-        b2dO.set_block_x(k);
-        cm_store(b2dO.set_block_y(0), cur_O_f16.format<half, num_P_tiles, REG_M * REG_N>().row(0));
-        cm_store(b2dO.set_block_y(REG_M), cur_O_f16.format<half, num_P_tiles, REG_M * REG_N>().row(1));
     }
 }
 

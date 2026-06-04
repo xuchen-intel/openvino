@@ -332,7 +332,7 @@ void pa_lsc_u8(
 
             for (int kv_pos = kv_blk; kv_pos < blk_end; kv_pos += kv_step, slm_buff_id_read++) {
 
-                cm_fence(CM_LOCAL_BARRIER);
+                cm_slm_fence(CM_LOCAL_BARRIER);
                 cm_sbarrier(0);
 
                 // Prefetch 2 steps ahead only if it stays within this block
@@ -355,7 +355,7 @@ void pa_lsc_u8(
                         int slm_offset_bytes = wg_local_id * kv_step * q_step * sizeof(float);
                         cm_slm_block_write(slm_St_base, slm_offset_bytes, St.format<float>());
 
-                        cm_slm_fence(CM_GLOBAL_COHERENT_FENCE);
+                        cm_slm_fence(CM_LOCAL_BARRIER);
                         cm_barrier();
 
                         St = 0.0f;
@@ -527,39 +527,50 @@ void pa_lsc_u8(
     };
 
     load_slm_KV(0);
-    load_slm_KV(kv_step);
-    cm_slm_fence(CM_LOCAL_BARRIER);
-    cm_sbarrier(1);
+    if constexpr (enable_head_size_partition) {
+        cm_slm_fence(CM_LOCAL_BARRIER);
+        cm_barrier();
+    } else {
+        load_slm_KV(kv_step);
+        cm_slm_fence(CM_LOCAL_BARRIER);
+        cm_sbarrier(1);
+    }
 
     for (int kv_pos = 0; kv_pos < kv_stop; kv_pos += kv_step, slm_buff_id_read++) {
-        //  With head_size partitioning, cm_sbarrier(1) is postponed to after St reduction:
-        //  load0, load1, signal1,
-        //  [wait1, load2, partial_St0, St_reduce0, signal2, read0, compute0]
-        //  [wait2, load3, partial_St1, St_reduce1, signal3, read1, compute1]
-        //
-        //  after wait2, all workers have reached signal2, so:
-        //     - all workers have finished load2, partial_St0, St_reduce0
-        //     - we can start to load 3 into SLM slot
-        //     - we can start to read slot 1
+        if constexpr (enable_head_size_partition) {
+            load_slm_KV(kv_pos + kv_step);
+        } else {
+            //  load0, load1, signal1,
+            //  [wait1, signal2, load2, read0, compute0]
+            //  [wait2, signal3, load3, read1, compute1]
+            //  [wait3, signal4, load4, read2, compute2]
+            //  [wait4, signal5, load5, read3, compute3]
+            //
+            //  after wait3, all workers have reached signal3, so:
+            //     - all workers have finished load2 & read0.
+            //     - we can start to load 4 into SLM slot 0 (i & 3) safely
+            //     - we can start to read 2 ((i-2) & 3) safely
+            cm_slm_fence(CM_LOCAL_BARRIER);
+            cm_sbarrier(0);
 
-        cm_fence(CM_LOCAL_BARRIER);
-        cm_sbarrier(0);
-
-        load_slm_KV(kv_pos + kv_step * 2);
+            if (kv_pos + kv_step < kv_stop)
+                cm_sbarrier(1);
+            load_slm_KV(kv_pos + kv_step * 2);
+        }
 
 #if SPARSE_BLOCK_SIZE > 1
         if (skip_compute(kv_pos)) {
             if constexpr (use_causal_mask) {
                 causal_left -= kv_step;
             }
-            if (kv_pos + kv_step < kv_stop)
-                cm_sbarrier(1);
             continue;
         }
 #endif
 
         {
-            uint slm_offset = (slm_buff_id_read & 3) * slm_buff_size;
+            uint slm_offset = enable_head_size_partition ?
+                              (slm_buff_id_read & 1) * slm_buff_size :
+                              (slm_buff_id_read & 3) * slm_buff_size;
 
             // Each worker computes partial St using its head_size chunk
             uint slm_K_worker_offset = slm_offset + worker_offset * kv_step * sizeof(half);
@@ -570,7 +581,7 @@ void pa_lsc_u8(
                 int slm_offset_bytes = wg_local_id * kv_step * q_step * sizeof(float);
                 cm_slm_block_write(slm_St_base, slm_offset_bytes, St.format<float>());
 
-                cm_slm_fence(CM_GLOBAL_COHERENT_FENCE);
+                cm_slm_fence(CM_LOCAL_BARRIER);
                 cm_barrier();
 
                 St = 0.0f;
@@ -583,10 +594,6 @@ void pa_lsc_u8(
                     St += partial_st;
                 }
             }
-
-            // Signal after St reduction: ensures both KV load and St reduction are complete
-            if (kv_pos + kv_step < kv_stop)
-                cm_sbarrier(1);
 
             if constexpr (use_causal_mask) {
                 apply_causal_mask_with_offset(St, causal_left);
@@ -867,7 +874,7 @@ void pa_kernel_lsc_prefetch_f16(
             cm_slm_block_write(slm_St, slm_offset_bytes, St.format<float>());
 
             // Barrier: ensure all work-items have written their partial St
-            cm_slm_fence(CM_GLOBAL_COHERENT_FENCE);
+            cm_slm_fence(CM_LOCAL_BARRIER);
             cm_barrier();
 
             // Accumulate partial St from all 4 head_size chunks for this query slice
@@ -1101,7 +1108,7 @@ void pa_kernel_lsc_prefetch_f16(
             cm_slm_block_write(slm_St, slm_offset_bytes, St.format<float>());
 
             // Barrier: ensure all work-items have written their partial St
-            cm_slm_fence(CM_GLOBAL_COHERENT_FENCE);
+            cm_slm_fence(CM_LOCAL_BARRIER);
             cm_barrier();
 
             // Accumulate partial St from all 4 head_size chunks for this query slice

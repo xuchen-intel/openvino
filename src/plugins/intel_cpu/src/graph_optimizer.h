@@ -40,6 +40,7 @@ private:
     static void FuseNormalizeL2AndSimpleOperation(Graph& graph);
     static void FuseReduceAndSimpleOperation(Graph& graph);
     static void FuseGatherAndConvert(Graph& graph);
+    static void FuseConvertAndGather(Graph& graph);
 
     static void DropDoubleReorders(Graph& graph);
     static void FuseConvolutionAndZeroPoints(Graph& graph);

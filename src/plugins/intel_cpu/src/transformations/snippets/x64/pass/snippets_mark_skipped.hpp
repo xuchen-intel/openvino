@@ -53,6 +53,7 @@ enum class NodeFusingType : int64_t {  // NOLINT(performance-enum-size)
     FusedWithFCI8,
     FusedWithReduce,
     FusedWithGather,
+    FusedWithConvert,
     FusedWithMisc
 };
 

@@ -205,9 +205,9 @@ void GraphOptimizer::ApplyCommonGraphOptimizations(Graph& graph) {
     FuseGatherAndConvert(graph);
     graph.RemoveDroppedNodes();
 
-    // OV_ITT_SCOPE_NEXT(FIRST_INFERENCE, taskChain, "FuseConvertAndGather");
-    // FuseConvertAndGather(graph);
-    // graph.RemoveDroppedNodes();
+    OV_ITT_SCOPE_NEXT(FIRST_INFERENCE, taskChain, "FuseConvertAndGather");
+    FuseConvertAndGather(graph);
+    graph.RemoveDroppedNodes();
 
     OV_ITT_SCOPE_NEXT(FIRST_INFERENCE, taskChain, "FuseEltwiseAndSimple");
     FuseEltwiseAndSimple(graph);
@@ -1916,48 +1916,48 @@ void GraphOptimizer::FuseGatherAndConvert(Graph& graph) {
     }
 }
 
-// void GraphOptimizer::FuseConvertAndGather(Graph& graph) {
-//     const auto& graphNodes = graph.GetNodes();
+void GraphOptimizer::FuseConvertAndGather(Graph& graph) {
+    const auto& graphNodes = graph.GetNodes();
 
-//     auto isSuitableConvertNode = [](const NodePtr& node) {
-//         if (node->getType() != Type::Convert || node->getChildEdges().size() != 1) {
-//             return false;
-//         }
-//         if (!any_of(node->getOriginalInputPrecisionAtPort(0), element::f16, element::bf16)) {
-//             return false;
-//         }
-//         if (node->getOriginalOutputPrecisionAtPort(0) != ov::element::f32) {
-//             return false;
-//         }
-//         return true;
-//     };
+    auto isSuitableConvertNode = [](const NodePtr& node) {
+        if (node->getType() != Type::Convert || node->getChildEdges().size() != 1) {
+            return false;
+        }
+        if (!any_of(node->getOriginalInputPrecisionAtPort(0), element::f16, element::bf16)) {
+            return false;
+        }
+        if (node->getOriginalOutputPrecisionAtPort(0) != ov::element::f32) {
+            return false;
+        }
+        return true;
+    };
 
-//     auto parent = graphNodes.begin();
-//     while (parent != graphNodes.end()) {
-//         auto convertNode = *parent;
-//         if (!isSuitableConvertNode(convertNode)) {
-//             parent++;
-//             continue;
-//         }
+    auto parent = graphNodes.begin();
+    while (parent != graphNodes.end()) {
+        auto convertNode = *parent;
+        if (!isSuitableConvertNode(convertNode)) {
+            parent++;
+            continue;
+        }
 
-//         auto gatherNode = convertNode->getChildEdgeAt(0)->getChild();
-//         if (gatherNode->getType() != Type::Gather) {
-//             parent++;
-//             continue;
-//         }
+        auto gatherNode = convertNode->getChildEdgeAt(0)->getChild();
+        if (gatherNode->getType() != Type::Gather) {
+            parent++;
+            continue;
+        }
 
-//         auto gatherEdge = convertNode->getChildEdgeAt(0);
-//         if (gatherEdge->getInputNum() != 0) {
-//             parent++;
-//             continue;
-//         }
+        auto gatherEdge = convertNode->getChildEdgeAt(0);
+        if (gatherEdge->getInputNum() != 0) {
+            parent++;
+            continue;
+        }
 
-//         CPU_GRAPH_OPTIMIZER_SCOPE(FuseConvertAndGather);
+        CPU_GRAPH_OPTIMIZER_SCOPE(FuseConvertAndGather);
 
-//         gatherNode->setOriginalInputPrecisionAtPort(0, convertNode->getOriginalInputPrecisionAtPort(0));
-//         graph.DropNode(convertNode);
-//     }
-// }
+        gatherNode->setOriginalInputPrecisionAtPort(0, convertNode->getOriginalInputPrecisionAtPort(0));
+        graph.DropNode(convertNode);
+    }
+}
 
 void GraphOptimizer::FuseInterpolateAndSimpleOperation(Graph& graph) {
     const auto& graphNodes = graph.GetNodes();

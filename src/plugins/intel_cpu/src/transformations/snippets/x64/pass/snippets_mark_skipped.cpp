@@ -231,15 +231,15 @@ bool isSuitableGatherParent(const std::shared_ptr<const Node>& node) {
     const bool has_only_child = all_of(1U, out.size(), out[0].get_target_inputs().size());
     return is_suitable_node && has_only_child;
 }
-// bool isSuitableConvertParent(const std::shared_ptr<const Node>& node) {
-//     const bool is_suitable_convert = ov::is_type<ov::op::v0::Convert>(node) &&
-//                                      any_of(node->get_input_element_type(0), element::f16, element::bf16) &&
-//                                      node->get_output_element_type(0) == ov::element::f32;
-//     // has a single output, connected to a single child
-//     const auto out = node->outputs();
-//     const bool has_only_child = all_of(1U, out.size(), out[0].get_target_inputs().size());
-//     return is_suitable_convert && has_only_child;
-// }
+bool isSuitableConvertParent(const std::shared_ptr<const Node>& node) {
+    const bool is_suitable_convert = ov::is_type<ov::op::v0::Convert>(node) &&
+                                     any_of(node->get_input_element_type(0), element::f16, element::bf16) &&
+                                     node->get_output_element_type(0) == ov::element::f32;
+    // has a single output, connected to a single child
+    const auto out = node->outputs();
+    const bool has_only_child = all_of(1U, out.size(), out[0].get_target_inputs().size());
+    return is_suitable_convert && has_only_child;
+}
 bool isSuitableMiscParent(const std::shared_ptr<const Node>& node) {
     const bool is_suitable_node = ov::is_type_any_of<ov::op::v0::MVN,
                                                      ov::op::v6::MVN,
@@ -512,9 +512,9 @@ bool isSuitableGatherChild(const std::shared_ptr<const Node>& node) {
            any_of(node->get_input_element_type(0), element::f16, element::bf16) &&
            node->get_output_element_type(0) == ov::element::f32;
 }
-// bool isSuitableConvertChild(const std::shared_ptr<const Node>& node) {
-//     return ov::is_type_any_of<ov::op::v7::Gather, ov::op::v8::Gather>(node);
-// }
+bool isSuitableConvertChild(const std::shared_ptr<const Node>& node) {
+    return ov::is_type_any_of<ov::op::v7::Gather, ov::op::v8::Gather>(node);
+}
 bool isSuitableMatMulWithConstantPath(const std::shared_ptr<Node>& node) {
     return ov::is_type<ov::op::v0::MatMul>(node) &&
            !ov::is_type<ov::op::v0::Constant>(node->get_input_node_shared_ptr(1)) &&
@@ -614,9 +614,9 @@ bool SnippetsMarkSkipped::run_on_model(const std::shared_ptr<ov::Model>& m) {
         } else if (isSuitableGatherParent(node)) {
             SetNodeFusingType(node, NodeFusingType::FusedWithGather);
             channelAxis = DEFAULT_AXIS;
-        // } else if (isSuitableConvertParent(node)) {
-        //     SetNodeFusingType(node, NodeFusingType::FusedWithConvert);
-        //     channelAxis = DEFAULT_AXIS;
+        } else if (isSuitableConvertParent(node)) {
+            SetNodeFusingType(node, NodeFusingType::FusedWithConvert);
+            channelAxis = DEFAULT_AXIS;
         } else if (isSuitableMiscParent(node)) {
             if (const auto reduce = ov::as_type_ptr<const ov::op::util::ArithmeticReductionKeepDims>(node)) {
                 channelAxis = getChannelAxis(reduce->get_reduction_axes(), reduce->get_keep_dims());
@@ -657,11 +657,11 @@ bool SnippetsMarkSkipped::run_on_model(const std::shared_ptr<ov::Model>& m) {
                         // can fuse single real16 to f32 convert
                         SetNodeFusingType(node, NodeFusingType::FusedTerminator);
                     }
-                // } else if (fusingChainType == NodeFusingType::FusedWithConvert) {
-                //     if (isSuitableConvertChild(node)) {
-                //         // can fuse Gather that receives bf16/f16 from Convert
-                //         SetNodeFusingType(node, NodeFusingType::FusedTerminator);
-                //     }
+                } else if (fusingChainType == NodeFusingType::FusedWithConvert) {
+                    if (isSuitableConvertChild(node)) {
+                        // can fuse Gather that receives bf16/f16 from Convert
+                        SetNodeFusingType(node, NodeFusingType::FusedTerminator);
+                    }
                 } else if (isSuitableChildForFusingSimple(node, channelAxis)) {
                     PropagateIfHasOnlyChild(node, fusingChainType);
                 } else if (any_of(fusingChainType,

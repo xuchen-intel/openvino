@@ -7,6 +7,10 @@
 #include "openvino/op/gather.hpp"
 #include "openvino/op/convert.hpp"
 #include "openvino/op/constant.hpp"
+#include "openvino/op/matmul.hpp"
+#include "openvino/op/parameter.hpp"
+#include "openvino/op/result.hpp"
+#include "transformations/rt_info/decompression.hpp"
 
 namespace ov {
 namespace test {
@@ -28,47 +32,48 @@ void ConvertGatherFusionTest::SetUp() {
     const auto& [weights_shape, indices_shape, axis, weights_precision, output_precision, _targetDevice] = this->GetParam();
     targetDevice = _targetDevice;
 
-    // Create model: Constant(bf16/f16) -> Convert(fp32) -> Gather
+    // Create model mimicking LLM weight tying (e.g., bitnet):
+    //   Constant(bf16/f16)
+    //         |
+    //   Convert(fp32) ──┬─> Gather (embedding)
+    //                   └─> MatMul (lm_head)
+    // The shared Convert with multiple consumers prevents MoveDecompressionAfterGather
+    // (which requires consumers_count(1)), so the Convert stays in front of Gather and
+    // must be removed by FuseConvertAndGather instead.
     ov::ParameterVector params;
     auto indices = std::make_shared<ov::op::v0::Parameter>(ov::element::i32, indices_shape);
     params.push_back(indices);
+    // Second consumer for the Convert — MatMul on a Parameter (lm_head-like).
+    auto matmul_input = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, weights_shape[1]});
+    params.push_back(matmul_input);
+
     auto weights_const = ov::test::utils::create_and_fill_tensor(weights_precision, weights_shape);
     auto weights = std::make_shared<ov::op::v0::Constant>(weights_const);
     auto convert = std::make_shared<ov::op::v0::Convert>(weights, ov::element::f32);
+    // Mark as decompression to prevent ConstantFolding from folding
+    // Constant(bf16) + Convert(f32) into a single Constant(f32). This mimics
+    // how CompressFloatConstants marks decompression Converts in real models.
+    ov::mark_as_decompression(convert);
+
     auto axis_const = ov::op::v0::Constant::create(ov::element::i32, {}, {axis});
     auto gather = std::make_shared<ov::op::v8::Gather>(convert, indices, axis_const);
 
-    function = std::make_shared<ov::Model>(gather, params, "ConvertGatherFusion");
+    auto matmul = std::make_shared<ov::op::v0::MatMul>(matmul_input, convert, false, true);
+
+    auto gather_result = std::make_shared<ov::op::v0::Result>(gather);
+    auto matmul_result = std::make_shared<ov::op::v0::Result>(matmul);
+    function = std::make_shared<ov::Model>(ov::ResultVector{gather_result, matmul_result},
+                                           params,
+                                           "ConvertGatherFusion");
 }
 
 void ConvertGatherFusionTest::TearDown() {
-    auto runtime_model = compiledModel.get_runtime_model();
-    ASSERT_NE(nullptr, runtime_model);
-
-    int convert_before_gather_count = 0;
-    for (const auto& node : runtime_model->get_ops()) {
-        if (node->get_type_info().name == std::string("Convert")) {
-            auto convert_in_prec = node->get_input_element_type(0);
-            auto convert_out_prec = node->get_output_element_type(0);
-            if ((convert_in_prec == ov::element::bf16 || convert_in_prec == ov::element::f16) &&
-                convert_out_prec == ov::element::f32) {
-                for (const auto& output : node->outputs()) {
-                    for (const auto& target_input : output.get_target_inputs()) {
-                        auto child_node = target_input.get_node();
-                        if (child_node->get_type_info().name == std::string("Gather")) {
-                            convert_before_gather_count++;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
+    const auto model = compiledModel.get_runtime_model();
+    for (const auto& node : model->get_ordered_ops()) {
+        const auto& rt_info = node->get_rt_info();
+        const auto layer_type = rt_info.find("layerType")->second.as<std::string>();
+        EXPECT_NE(layer_type, "Convert");
     }
-
-    EXPECT_EQ(0, convert_before_gather_count)
-        << "Found " << convert_before_gather_count
-        << " Convert(bf16/f16->fp32) node(s) before Gather. "
-        << "FuseConvertAndGather fusion did not work!";
 }
 
 }  // namespace test

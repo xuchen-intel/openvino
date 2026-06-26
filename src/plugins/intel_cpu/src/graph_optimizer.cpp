@@ -1926,10 +1926,7 @@ void GraphOptimizer::FuseConvertAndGather(Graph& graph) {
         if (!any_of(node->getOriginalInputPrecisionAtPort(0), element::f16, element::bf16)) {
             return false;
         }
-        if (node->getOriginalOutputPrecisionAtPort(0) != ov::element::f32) {
-            return false;
-        }
-        return true;
+        return node->getOriginalOutputPrecisionAtPort(0) == ov::element::f32;
     };
 
     auto parent = graphNodes.begin();

@@ -286,8 +286,8 @@ TEST_F(TransformationTestsF, MoveDecompressionAfterGatherMultiConsumer) {
         auto gather = std::make_shared<v8::Gather>(convert, indices, axis_const);
         auto matmul = std::make_shared<v0::MatMul>(matmul_input, convert, false, true);
 
-        model = std::make_shared<ov::Model>(ov::OutputVector{gather, matmul},
-                                            ov::ParameterVector{indices, matmul_input});
+        model =
+            std::make_shared<ov::Model>(ov::OutputVector{gather, matmul}, ov::ParameterVector{indices, matmul_input});
         manager.register_pass<MoveDecompressionAfterGather>();
     }
     {
@@ -300,7 +300,7 @@ TEST_F(TransformationTestsF, MoveDecompressionAfterGatherMultiConsumer) {
         auto new_convert = std::make_shared<v0::Convert>(new_gather, ov::element::f32);
         auto matmul = std::make_shared<v0::MatMul>(matmul_input, convert, false, true);
 
-        model_ref = std::make_shared<ov::Model>(ov::OutputVector{new_convert, matmul},
-                                                ov::ParameterVector{indices, matmul_input});
+        model_ref =
+            std::make_shared<ov::Model>(ov::OutputVector{new_convert, matmul},ov::ParameterVector{indices, matmul_input});
     }
 }

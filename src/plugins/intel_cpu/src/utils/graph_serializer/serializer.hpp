@@ -36,4 +36,8 @@ private:
     bool m_weightless_mode;
 };
 
+static constexpr uint64_t runtime_requirements_magic = 0x4F564350555F5252ULL;  // "OVCPU_RR" in ASCII
+static constexpr uint32_t runtime_requirements_version = 1;
+std::string build_runtime_requirements();
+
 }  // namespace ov::intel_cpu

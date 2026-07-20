@@ -179,4 +179,12 @@ std::unique_ptr<util::XmlSerializer> ModelSerializer::make_serializer(pugi::xml_
                                            m_weightless_mode);
 }
 
+std::string build_runtime_requirements() {
+    std::ostringstream ss;
+    ss << "meta=1.0"
+       << ";ov=" << OPENVINO_VERSION_MAJOR << "." << OPENVINO_VERSION_MINOR << "." << OPENVINO_VERSION_PATCH
+       << ";isa=" << dnnl::impl::cpu::platform::get_isa_info();
+    return ss.str();
+}
+
 }  // namespace ov::intel_cpu

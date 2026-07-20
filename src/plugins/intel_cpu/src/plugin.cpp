@@ -768,6 +768,28 @@ std::shared_ptr<ov::ICompiledModel> Plugin::import_model(std::istream& model_str
     auto decrypt_from_string = get_cache_decrypt_fn(config, decrypt);
     const auto origin_weights_path = get_origin_weights_path(config);
 
+    uint64_t requirements_magic = 0;
+    model_stream >> requirements_magic;
+    if (requirements_magic != runtime_requirements_magic) {
+        OPENVINO_THROW("[CPU] Cannot import compiled blob: incompatible runtime requirements magic.");
+    }
+
+    uint32_t requirements_version = 0;
+    model_stream >> requirements_version;
+    if (requirements_version != runtime_requirements_version) {
+        OPENVINO_THROW("[CPU] Cannot import compiled blob: incompatible runtime requirements version.");
+    }
+
+    std::string runtime_requirements;
+    model_stream >> runtime_requirements;
+    if (runtime_requirements != build_runtime_requirements()) {
+        OPENVINO_THROW("[CPU] Cannot import compiled blob: it was built for a different runtime "
+                       "configuration (OpenVINO version/isa mismatch) and cannot be executed on "
+                       "this device.\n"
+                       "  blob:    ", runtime_requirements, "\n"
+                       "  current: ", build_runtime_requirements());
+    }
+
     ModelDeserializer deserializer(model_stream, get_core(), decrypt, decrypt_from_string, origin_weights_path);
 
     return deserialize_model(deserializer, config);

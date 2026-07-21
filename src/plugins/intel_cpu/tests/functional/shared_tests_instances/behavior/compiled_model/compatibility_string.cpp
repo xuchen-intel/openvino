@@ -31,18 +31,24 @@ TEST_F(CompatibilityStringCPU, RuntimeRequirementsIsSupportedAndNonEmpty) {
     OV_ASSERT_NO_THROW(compiled_model = core.compile_model(model, ov::test::utils::DEVICE_CPU));
 
     auto supported = compiled_model.get_property(ov::supported_properties);
-// std::cout << "supported.size(): " << supported.size() << std::endl;
-// for (auto && prop : supported) {
-//     std::cout << "supported property: " << prop << std::endl;
-// }
-// std::cout << "ov::runtime_requirements.name(): " << ov::runtime_requirements.name() << std::endl;
     ASSERT_NE(std::find(supported.begin(), supported.end(), ov::runtime_requirements.name()), supported.end());
 
     std::string requirements;
     OV_ASSERT_NO_THROW(requirements = compiled_model.get_property(ov::runtime_requirements));
-std::cout << "requirements: " << requirements << std::endl;
     ASSERT_FALSE(requirements.empty());
     std::cout << "[ INFO     ] CPU ov::runtime_requirements = " << requirements << std::endl;
+}
+
+TEST_F(CompatibilityStringCPU, CompatibilityCheckListedInSupportedProperties) {
+    SKIP_IF_CURRENT_TEST_IS_DISABLED();
+    ov::Core core;
+    auto supported = core.get_property(ov::test::utils::DEVICE_CPU, ov::supported_properties);
+// std::cout << "supported.size(): " << supported.size() << std::endl;
+// for (auto && prop : supported) {
+//     std::cout << "supported property: " << prop << std::endl;
+// }
+// std::cout << "ov::compatibility_check.name(): " << ov::compatibility_check.name() << std::endl;
+    ASSERT_NE(std::find(supported.begin(), supported.end(), ov::compatibility_check.name()), supported.end());
 }
 
 }  // namespace

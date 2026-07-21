@@ -189,4 +189,8 @@ std::string build_runtime_requirements() {
     return ss.str();
 }
 
+bool is_runtime_requirements_compatible(const std::string& requirements) {
+    return requirements == build_runtime_requirements();
+}
+
 }  // namespace ov::intel_cpu

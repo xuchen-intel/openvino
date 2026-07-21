@@ -573,6 +573,7 @@ ov::Any Plugin::get_ro_property(const std::string& name, [[maybe_unused]] const 
             RO_property(ov::device::capabilities.name()),
             RO_property(ov::device::type.name()),
             RO_property(ov::device::architecture.name()),
+            RO_property(ov::compatibility_check.name()),
         };
         // the whole config is RW before model is loaded.
 
@@ -696,6 +697,17 @@ ov::Any Plugin::get_ro_property(const std::string& name, [[maybe_unused]] const 
 #    error "Undefined system processor"
 #endif
     }
+    if (name == ov::compatibility_check) {
+        if (auto it = options.find(ov::runtime_requirements.name()); it != options.end()) {
+            const auto& requirements = it->second.as<std::string>();
+            if (!requirements.empty()) {
+                return is_runtime_requirements_compatible(requirements)
+                           ? ov::CompatibilityCheck::SUPPORTED
+                           : ov::CompatibilityCheck::UNSUPPORTED;
+            }
+        }
+        return ov::CompatibilityCheck::NOT_APPLICABLE;
+    }
 
     OPENVINO_THROW("Cannot get unsupported property: ", name);
 }
@@ -784,7 +796,7 @@ std::shared_ptr<ov::ICompiledModel> Plugin::import_model(std::istream& model_str
     model_stream.read(reinterpret_cast<char*>(&reqs_size), sizeof(reqs_size));
     std::string runtime_requirements(reqs_size, '\0');
     model_stream.read(&runtime_requirements[0], reqs_size);
-    if (runtime_requirements != build_runtime_requirements()) {
+    if (!is_runtime_requirements_compatible(runtime_requirements)) {
         OPENVINO_THROW("[CPU] Cannot import compiled blob: it was built for a different runtime "
                        "configuration (OpenVINO version/isa mismatch) and cannot be executed on "
                        "this device.\n"

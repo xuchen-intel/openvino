@@ -420,9 +420,11 @@ ov::Any CompiledModel::get_property(const std::string& name) const {
 }
 
 void CompiledModel::export_model(std::ostream& modelStream) const {
-    modelStream << runtime_requirements_magic;
-    modelStream << runtime_requirements_version;
-    modelStream << m_runtime_requirements;
+    modelStream.write(reinterpret_cast<const char*>(&runtime_requirements_magic), sizeof(runtime_requirements_magic));
+    modelStream.write(reinterpret_cast<const char*>(&runtime_requirements_version), sizeof(runtime_requirements_version));
+    uint64_t reqs_size = m_runtime_requirements.size();
+    modelStream.write(reinterpret_cast<const char*>(&reqs_size), sizeof(reqs_size));
+    modelStream.write(m_runtime_requirements.data(), reqs_size);
     ModelSerializer serializer(modelStream, m_cfg.cacheEncrypt, m_cfg.m_cache_mode == ov::CacheMode::OPTIMIZE_SIZE);
     serializer << m_model;
 }

@@ -12,12 +12,14 @@
 #include <ostream>
 #include <string>
 
+#include "cpu/platform.hpp"
 #include "openvino/core/model.hpp"
 #include "openvino/core/node.hpp"
 #include "openvino/core/rt_info/weightless_caching_attributes.hpp"
 #include "openvino/core/runtime_attribute.hpp"
 #include "openvino/core/type.hpp"
 #include "openvino/core/type/element_type.hpp"
+#include "openvino/core/version.hpp"
 #include "openvino/pass/serialize.hpp"
 #include "openvino/xml_util/constant_writer.hpp"
 #include "openvino/xml_util/xml_serialize_util.hpp"

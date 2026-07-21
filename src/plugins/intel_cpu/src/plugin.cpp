@@ -769,19 +769,21 @@ std::shared_ptr<ov::ICompiledModel> Plugin::import_model(std::istream& model_str
     const auto origin_weights_path = get_origin_weights_path(config);
 
     uint64_t requirements_magic = 0;
-    model_stream >> requirements_magic;
+    model_stream.read(reinterpret_cast<char*>(&requirements_magic), sizeof(requirements_magic));
     if (requirements_magic != runtime_requirements_magic) {
         OPENVINO_THROW("[CPU] Cannot import compiled blob: incompatible runtime requirements magic.");
     }
 
     uint32_t requirements_version = 0;
-    model_stream >> requirements_version;
+    model_stream.read(reinterpret_cast<char*>(&requirements_version), sizeof(requirements_version));
     if (requirements_version != runtime_requirements_version) {
         OPENVINO_THROW("[CPU] Cannot import compiled blob: incompatible runtime requirements version.");
     }
 
-    std::string runtime_requirements;
-    model_stream >> runtime_requirements;
+    uint64_t reqs_size = 0;
+    model_stream.read(reinterpret_cast<char*>(&reqs_size), sizeof(reqs_size));
+    std::string runtime_requirements(reqs_size, '\0');
+    model_stream.read(&runtime_requirements[0], reqs_size);
     if (runtime_requirements != build_runtime_requirements()) {
         OPENVINO_THROW("[CPU] Cannot import compiled blob: it was built for a different runtime "
                        "configuration (OpenVINO version/isa mismatch) and cannot be executed on "

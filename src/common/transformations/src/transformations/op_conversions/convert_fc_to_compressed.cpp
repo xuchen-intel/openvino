@@ -77,8 +77,14 @@ ConvertFullyConnectedToFullyConnectedCompressed::process_compressed_weights(
         return new_constant;
     };
 
-    auto convert_u4const_to_u8 = [convert_u4zp_to_u8](std::shared_ptr<ov::Node> node) -> std::shared_ptr<ov::Node> {
+    const auto weights_element_type =
+        weights_block->get_anchor("weights", pattern_map).value().get_node_shared_ptr()->get_element_type();
+
+    auto convert_u4const_to_u8 = [convert_u4zp_to_u8, weights_element_type](std::shared_ptr<ov::Node> node)
+        -> std::shared_ptr<ov::Node> {
         auto constant = ov::as_type_ptr<v0::Constant>(node);
+        if (weights_element_type == ov::element::u3 && constant->get_element_type() == ov::element::i8)
+            return std::make_shared<v0::Convert>(node, ov::element::u8);
         if (constant->get_element_type() != ov::element::u4 || !convert_u4zp_to_u8)
             return std::dynamic_pointer_cast<ov::Node>(constant);
         return std::make_shared<v0::Convert>(node, ov::element::u8);

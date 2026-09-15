@@ -142,7 +142,7 @@ bool DnnlFCPrimitive::useWeightsDecompressionImpl(const ov::element::Type inputT
                                                   const ov::element::Type weightsType,
                                                   const ov::intel_cpu::Config::ModelType modelType) {
     if (ov::with_cpu_x86_avx2()) {
-        if (any_of(inputType, f32, bf16) && any_of(weightsType, u8, i8, nf4, u4, i4, f4e2m1, u2)) {
+        if (any_of(inputType, f32, bf16) && any_of(weightsType, u8, i8, nf4, u4, i4, f4e2m1, u2, u3)) {
             return true;
         }
 
@@ -191,7 +191,7 @@ static bool useDynamicQuantizationImpl(size_t dqGroupSize,
     // For dynamic quantization, VNNI accumulation requires weight to be unsigned.
     // To support dynamic quantization with weights symmetrically quantized as i8/i4
     // w/o zero-point, we will transform weight to u8/u4 weight with zp 128/8.
-    if (none_of(weightsDesc->getPrecision(), ov::element::u8, ov::element::u4, ov::element::u2) &&
+    if (none_of(weightsDesc->getPrecision(), ov::element::u8, ov::element::u4, ov::element::u2, ov::element::u3) &&
         !((any_of(weightsDesc->getPrecision(), ov::element::i8, ov::element::i4) && !zpPtr))) {
         return false;
     }
@@ -199,6 +199,7 @@ static bool useDynamicQuantizationImpl(size_t dqGroupSize,
                          ov::element::u8,
                          ov::element::u4,
                          ov::element::u2,
+                         ov::element::u3,
                          ov::element::dynamic)) {
         return false;
     }

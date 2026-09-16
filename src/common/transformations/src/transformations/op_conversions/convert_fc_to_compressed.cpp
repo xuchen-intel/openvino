@@ -79,6 +79,13 @@ ConvertFullyConnectedToFullyConnectedCompressed::process_compressed_weights(
 
     auto convert_u4const_to_u8 = [convert_u4zp_to_u8](std::shared_ptr<ov::Node> node) -> std::shared_ptr<ov::Node> {
         auto constant = ov::as_type_ptr<v0::Constant>(node);
+        // Normalize i8 zero-points to u8. The CPU weight-decompression paths only accept
+        // unsigned zero-points ({u8, u2, u3}); an i8 zero-point (e.g. the scalar zp used by
+        // int3-compressed models) otherwise disables dynamic quantization and falls into an
+        // unsupported decompression path. Zero-points of unsigned weights are non-negative,
+        // so the i8->u8 conversion is value-preserving.
+        if (constant->get_element_type() == ov::element::i8)
+            return std::make_shared<v0::Convert>(node, ov::element::u8);
         if (constant->get_element_type() != ov::element::u4 || !convert_u4zp_to_u8)
             return std::dynamic_pointer_cast<ov::Node>(constant);
         return std::make_shared<v0::Convert>(node, ov::element::u8);

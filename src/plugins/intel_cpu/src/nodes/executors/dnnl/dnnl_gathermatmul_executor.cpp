@@ -40,6 +40,7 @@
 #include "onednn/iml_type_mapper.h"
 #include "openvino/core/except.hpp"
 #include "openvino/core/type/element_type.hpp"
+#include "openvino/runtime/system_conf.hpp"
 #include "thread_pool_imp.hpp"
 #include "utils/general_utils.h"
 
@@ -53,6 +54,12 @@ struct InnerProductKey {
     dnnl::memory::desc bias_md;
     VectorDims scale_shape;
     VectorDims zp_shape;
+    // Native zero-point data type (as provided by the graph). Used as-is when
+    // src-dynamic-quantization is enabled; otherwise zero points are converted to f32.
+    dnnl::memory::data_type zp_dt = dnnl::memory::data_type::f32;
+    // 0 disables src dynamic quantization (falls back to the general weights-decompression
+    // path with f32 zero points); >0 is the src quantization group size along K.
+    size_t src_dyn_quant_group_size = 0;
 
     [[nodiscard]] size_t hash() const {
         using namespace dnnl::impl;
@@ -64,12 +71,15 @@ struct InnerProductKey {
         seed = hash_combine(seed, get_md_hash(*bias_md.get()));
         seed = get_vector_hash(seed, scale_shape);
         seed = get_vector_hash(seed, zp_shape);
+        seed = hash_combine(seed, static_cast<size_t>(zp_dt));
+        seed = hash_combine(seed, src_dyn_quant_group_size);
         return seed;
     }
 
     bool operator==(const InnerProductKey& rhs) const {
         return src_md == rhs.src_md && weights_md == rhs.weights_md && bias_md == rhs.bias_md &&
-               scale_shape == rhs.scale_shape && zp_shape == rhs.zp_shape;
+               scale_shape == rhs.scale_shape && zp_shape == rhs.zp_shape && zp_dt == rhs.zp_dt &&
+               src_dyn_quant_group_size == rhs.src_dyn_quant_group_size;
     }
 };
 
@@ -107,8 +117,12 @@ public:
                     zp_shape.push_back(1);
                 }
                 OPENVINO_ASSERT(zp_shape.size() == 2, "Unsupported zero points shape ", vec2str(zp_shape));
-                init_w_zp(zp_shape);
+                init_w_zp(zp_shape, key.src_dyn_quant_group_size > 0 ? key.zp_dt : dnnl::memory::data_type::f32);
             }
+        }
+
+        if (key.src_dyn_quant_group_size > 0) {
+            m_attr.set_src_dyn_quant_params(key.src_dyn_quant_group_size);
         }
 
         m_input_md = src_md;
@@ -184,8 +198,7 @@ private:
         m_scale_md = dnnl::memory::desc(scale_dims, data_type, dnnl::memory::format_tag::ba);
     }
 
-    void init_w_zp(const VectorDims& zp_shape) {
-        constexpr auto data_type = dnnl::memory::data_type::f32;
+    void init_w_zp(const VectorDims& zp_shape, dnnl::memory::data_type data_type) {
         const auto zp_dims = DnnlExtensionUtils::convertToDnnlDims(zp_shape);
         m_attr.set_zero_points_dims(DNNL_ARG_WEIGHTS, zp_dims, data_type);
         m_zp_md = dnnl::memory::desc(zp_dims, data_type, dnnl::memory::format_tag::ba);
@@ -316,7 +329,9 @@ GatherMatmulDnnlExecutor::GatherMatmulDnnlExecutor([[maybe_unused]] const Gather
     }
 
     const auto& zpMem = memory.at(ARG_SRC_4);
+    ov::element::Type zp_precision = ov::element::dynamic;
     if (zpMem && !zpMem->getDesc().empty()) {
+        zp_precision = zpMem->getDesc().getPrecision();
         const auto& fullZpShape = zpMem->getShape().getStaticDims();
         if (1 == fullZpShape.size()) {
             OPENVINO_ASSERT(fullZpShape[0] == 1, "Expect broadcastable zero points shape.");
@@ -333,7 +348,28 @@ GatherMatmulDnnlExecutor::GatherMatmulDnnlExecutor([[maybe_unused]] const Gather
                                   DnnlExtensionUtils::ElementTypeToDataType(weights_precision),
                                   dnnl::memory::format_tag::any);
 
-    InnerProductKey key{src_md, weights_md, makeBiasMd(N, memory.at(ARG_BIAS)), scale_shape, zp_shape};
+    // U3 has no working non-dyn-quant (general weights-decompression) kernel, so route it
+    // through src dynamic quantization (VNNI) instead, mirroring FullyConnected's approach.
+    // Gated to u3 specifically to avoid touching the already-working u4/u8/i4 paths.
+    size_t src_dyn_quant_group_size = 0;
+    auto zp_dt = dnnl::memory::data_type::f32;
+    if (weights_precision == ov::element::u3 &&
+        (ov::with_cpu_x86_avx2_vnni() || ov::with_cpu_x86_avx512_core_vnni()) &&
+        any_of(zp_precision, ov::element::u8, ov::element::u2, ov::element::u3, ov::element::u4, ov::element::dynamic)) {
+        constexpr size_t default_group_size = 32;
+        src_dyn_quant_group_size = default_group_size;
+        if (zp_precision != ov::element::dynamic) {
+            zp_dt = DnnlExtensionUtils::ElementTypeToDataType(zp_precision);
+        }
+    }
+
+    InnerProductKey key{src_md,
+                       weights_md,
+                       makeBiasMd(N, memory.at(ARG_BIAS)),
+                       scale_shape,
+                       zp_shape,
+                       zp_dt,
+                       src_dyn_quant_group_size};
 
     const auto& eng = context->getEngine();
     const auto threadPool = context->getThreadPool();
@@ -450,7 +486,9 @@ bool GatherMatmulDnnlExecutor::update(const MemoryArgs& memory) {
             scale_shape.assign(fullScaleDims.begin() + 1, fullScaleDims.end());
         }
     }
+    ov::element::Type zp_precision = ov::element::dynamic;
     if (m_zpMemory) {
+        zp_precision = m_zpMemory->getDesc().getPrecision();
         const auto& fullZpDims = m_zpMemory->getStaticDims();
         if (1 == fullZpDims.size()) {
             zp_shape.push_back(fullZpDims[0]);
@@ -459,11 +497,26 @@ bool GatherMatmulDnnlExecutor::update(const MemoryArgs& memory) {
         }
     }
 
+    // See matching comment at the GEMV InnerProductKey construction above.
+    size_t src_dyn_quant_group_size = 0;
+    auto zp_dt = dnnl::memory::data_type::f32;
+    if (weights_md.get_data_type() == dnnl::memory::data_type::u3 &&
+        (ov::with_cpu_x86_avx2_vnni() || ov::with_cpu_x86_avx512_core_vnni()) &&
+        any_of(zp_precision, ov::element::u8, ov::element::u2, ov::element::u3, ov::element::u4, ov::element::dynamic)) {
+        constexpr size_t default_group_size = 32;
+        src_dyn_quant_group_size = default_group_size;
+        if (zp_precision != ov::element::dynamic) {
+            zp_dt = DnnlExtensionUtils::ElementTypeToDataType(zp_precision);
+        }
+    }
+
     InnerProductKey key{src_md,
                         weights_md,
                         makeBiasMd(static_cast<dnnl::memory::dim>(weights_md.get_dims()[0]), memory.at(ARG_BIAS)),
                         scale_shape,
-                        zp_shape};
+                        zp_shape,
+                        zp_dt,
+                        src_dyn_quant_group_size};
     const auto& eng = m_context->getEngine();
     const auto threadPool = m_context->getThreadPool();
     auto cache = m_context->getRuntimeCache();

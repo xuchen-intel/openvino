@@ -216,7 +216,12 @@ static bool useDynamicQuantizationImpl(size_t dqGroupSize,
         return false;
     }
 
-    if (ic < dqGroupSize) {
+    // u3 has no working non-dyn-quant (general weights-decompression) kernel, so it must not
+    // fall back when ic < dqGroupSize the way u2/u4/u8 safely do. The kernel-config logic
+    // (jit_brgemm_inner_product_utils.cpp) already clamps the effective group to
+    // min(dqGroupSize, ic) internally (src_sum_group_size), collapsing this into the already-
+    // validated "one group spanning all of ic" case, so it is safe to keep dyn-quant enabled.
+    if (ic < dqGroupSize && weightsDesc->getPrecision() != ov::element::u3) {
         return false;
     }
 

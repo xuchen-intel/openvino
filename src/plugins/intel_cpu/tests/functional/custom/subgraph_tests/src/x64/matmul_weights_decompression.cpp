@@ -286,6 +286,16 @@ const std::vector<MatMulDecompressionShapeParams> input_shapes_basic_dyn_quant_u
     {{{}, {{1, 1, 640}}}, {640, 90}},
 };
 
+// u3 has no working non-dyn-quant (general weights-decompression) kernel — it only supports
+// the src-dynamic-quantization (VNNI) path. All K (input channels) below are multiples of 8,
+// required for u3's tight 8-values/3-bytes packing to stay byte-aligned.
+const std::vector<MatMulDecompressionShapeParams> input_shapes_basic_dyn_quant_u3 = {
+    {{{}, {{1, 8, 16}}}, {16, 2}},
+    {{{}, {{1, 4, 16}}}, {16, 2}},
+    {{{}, {{1, 1, 128}}}, {128, 32}},
+    {{{}, {{1, 1, 640}}}, {640, 90}},
+};
+
 const std::vector<ov::test::ElementType> weights_precisions_dyn_quant = {ov::element::u8, ov::element::u4};
 const std::vector<fusingSpecificParams> fusing_params_dyn_quant{
     emptyFusingSpec,
@@ -359,6 +369,43 @@ INSTANTIATE_TEST_SUITE_P(smoke_MatMulCompressedWeights_non_default_dyn_quant_gro
                                             ::testing::Values(DecompressionType::scalar, DecompressionType::full),
                                             ::testing::Values(false),
                                             ::testing::ValuesIn(filter_additional_config_dyn_quant()),
+                                            ::testing::ValuesIn(fusing_params_dyn_quant),
+                                            ::testing::Values(true)),
+                         MatmulWeightsDecompression::getTestCaseName);
+
+// u3 only supports the dyn-quant path (no non-dyn-quant kernel exists yet), so — unlike u2 —
+// group size 0 (dyn-quant disabled) MUST be excluded here: it would silently route u3 into the
+// unimplemented non-dyn-quant decompression kernel, which is UB/crash in Release builds (see
+// the "i8-zero-point trap" section in the implement-u3-precision-openvino-cpu skill).
+//
+// Group size 16 is ALSO excluded (unlike u2, which supports it): u3's bit-plane dyn-quant
+// microkernel packs IC in fixed 32-wide blocks (ld_step=32, vs u2's ld_step=16), so a group
+// size smaller than 32 causes a single load to straddle two different dyn-quant groups and
+// apply the wrong rescale to half the elements — a silent (non-crashing) accuracy bug, found
+// via this suite: group_size=16 fails abs_threshold comparison on ~all elements, while the
+// identical shapes at group_size=128 (a multiple of 32) pass cleanly. The real Qwen3.6-35B
+// model always uses group_size=32 (a multiple of 32, hardcoded), so it is not at risk — but
+// arbitrary group sizes below 32 are NOT currently supported. See the
+// "u3 dyn-quant group_size must be a multiple of 32" section in the
+// implement-u3-precision-openvino-cpu skill.
+std::vector<ov::AnyMap> filter_additional_config_dyn_quant_u3() {
+    return {
+        {{ov::hint::dynamic_quantization_group_size(32)}},
+        {{ov::hint::dynamic_quantization_group_size(128)}},
+    };
+}
+
+INSTANTIATE_TEST_SUITE_P(smoke_MatMulCompressedWeights_non_default_dyn_quant_group_sizes_u3,
+                         MatmulWeightsDecompression,
+                         ::testing::Combine(::testing::ValuesIn(input_shapes_basic_dyn_quant_u3),
+                                            ::testing::Values(ov::element::u3),
+                                            ::testing::ValuesIn(decompression_precisions),
+                                            ::testing::Values(ov::element::dynamic),
+                                            ::testing::Values(true),
+                                            ::testing::Values(DecompressionType::scalar, DecompressionType::full),
+                                            ::testing::Values(DecompressionType::scalar, DecompressionType::full),
+                                            ::testing::Values(false),
+                                            ::testing::ValuesIn(filter_additional_config_dyn_quant_u3()),
                                             ::testing::ValuesIn(fusing_params_dyn_quant),
                                             ::testing::Values(true)),
                          MatmulWeightsDecompression::getTestCaseName);

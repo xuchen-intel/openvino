@@ -359,7 +359,17 @@ GatherMatmulDnnlExecutor::GatherMatmulDnnlExecutor([[maybe_unused]] const Gather
         constexpr size_t default_group_size = 32;
         src_dyn_quant_group_size = default_group_size;
         if (zp_precision != ov::element::dynamic) {
-            zp_dt = DnnlExtensionUtils::ElementTypeToDataType(zp_precision);
+            // Force u8 rather than passing the native zero-point precision through: oneDNN's
+            // zero-points attr wants the (possibly batched) zp memory in a transposed layout
+            // (format_tag::ba), and no reorder implementation exists anywhere in this codebase
+            // for a same-native-sub-byte-precision, arbitrary-permutation transform (verified:
+            // simple_reorder.hpp / cpu_reorder_regular_{u2,u3,u4,s4}.cpp). Converting to u8
+            // here instead makes the reorder a precision-converting one (<native> -> u8), which
+            // is well supported via cpu_convert's fallback in node::Reorder::reorderData — the
+            // same path FullyConnected's own dyn-quant zero-point handling always uses
+            // (dnnl_fullyconnected_primitive.cpp: dstPrc = useDynamicQuantization ? u8 : f32).
+            // Safe: u3's zero-point value range [0,7] fits u8 exactly.
+            zp_dt = dnnl::memory::data_type::u8;
         }
     }
 
@@ -497,7 +507,8 @@ bool GatherMatmulDnnlExecutor::update(const MemoryArgs& memory) {
         }
     }
 
-    // See matching comment at the GEMV InnerProductKey construction above.
+    // See matching comment at the GEMV InnerProductKey construction above (forcing u8 to avoid
+    // the missing same-native-sub-byte-precision, arbitrary-permutation reorder capability).
     size_t src_dyn_quant_group_size = 0;
     auto zp_dt = dnnl::memory::data_type::f32;
     if (weights_md.get_data_type() == dnnl::memory::data_type::u3 &&
@@ -506,7 +517,7 @@ bool GatherMatmulDnnlExecutor::update(const MemoryArgs& memory) {
         constexpr size_t default_group_size = 32;
         src_dyn_quant_group_size = default_group_size;
         if (zp_precision != ov::element::dynamic) {
-            zp_dt = DnnlExtensionUtils::ElementTypeToDataType(zp_precision);
+            zp_dt = dnnl::memory::data_type::u8;
         }
     }
 

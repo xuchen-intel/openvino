@@ -13,6 +13,7 @@
 #include "nodes/executors/gathermatmul_config.hpp"
 #include "nodes/executors/memory_arguments.hpp"
 #include "onednn/iml_type_mapper.h"
+#include "openvino/core/type/element_type.hpp"
 
 namespace ov::intel_cpu {
 
@@ -37,6 +38,11 @@ private:
     MemoryPtr m_weightsMemory;
     MemoryPtr m_scalesMemory;
     MemoryPtr m_zpMemory;
+    MemoryCPtr m_nativeWeightsMemoryDbg;
+    MemoryCPtr m_nativeScalesMemoryDbg;
+    MemoryCPtr m_nativeZpMemoryDbg;
+    ov::element::Type m_weightsPrecisionDbg;
+    ov::element::Type m_zpPrecisionDbg;
 
     InnerProductPtr m_gemvImpl;
     InnerProductPtr m_gemmImpl;

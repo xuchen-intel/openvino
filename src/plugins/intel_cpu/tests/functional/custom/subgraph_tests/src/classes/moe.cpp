@@ -244,10 +244,13 @@ void MoECompressedWeightsSubgraphTest::generate_inputs(const std::vector<ov::Sha
     auto param = params.front();
     auto type = param->get_element_type();
 
+    // TEMP EXPERIMENT: match MatmulWeightsDecompression's (FC's 2D test) default src generation
+    // range/resolution/seed instead of MoE's own [0.125,2.125] override, to test whether src
+    // generation methodology (not just weight data range) explains the FC-vs-MoE divergence.
     auto input_tensor =
         ov::test::utils::create_and_fill_tensor(type,
                                                 itTargetShape,
-                                                ov::test::utils::InputGenerateData(0.125, 2, 8, 1234));
+                                                ov::test::utils::InputGenerateData(0, 8, 32, 1));
 
     inputs.insert({param, input_tensor});
 }

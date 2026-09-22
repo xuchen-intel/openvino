@@ -294,6 +294,14 @@ const std::vector<MatMulDecompressionShapeParams> input_shapes_basic_dyn_quant_u
     {{{}, {{1, 4, 16}}}, {16, 2}},
     {{{}, {{1, 1, 128}}}, {128, 32}},
     {{{}, {{1, 1, 640}}}, {640, 90}},
+    // Grouped WEIGHT decomposition (group_size < K, not just src dyn-quant grouping) combined
+    // with src dyn quant -- exercises the same combined-grouping oneDNN kernel path used by the
+    // GatherMatmul/MoE u3 tests (gathermatmul.cpp), which use grouped weight decomposition with
+    // GS=32.
+    {{{}, {{1, 1, 256}}}, {256, 128}, 32},
+    {{{}, {{1, 1, 128}}}, {128, 512}, 32},
+    {{{}, {{1, 1, 128}}}, {128, 4}, 32},
+    {{{}, {{1, 1, 256}}}, {256, 8}, 32},
 };
 
 const std::vector<ov::test::ElementType> weights_precisions_dyn_quant = {ov::element::u8, ov::element::u4};

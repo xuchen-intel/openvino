@@ -225,11 +225,17 @@ static bool useDynamicQuantizationImpl(size_t dqGroupSize,
         return false;
     }
 
+    // Same reasoning as the "ic < dqGroupSize" exemption above: this guard exists to fall back
+    // safely to the non-dyn-quant path when the weight's own scale/zero-point grouping doesn't
+    // divide evenly into dqGroupSize -- but u3 has no such fallback, and the kernel-config logic
+    // already clamps the effective group internally via src_sum_group_size = min(dqGroupSize,
+    // weight_group_size), so a coarser dqGroupSize than the weight's own group size (e.g.
+    // dqGroupSize=128 with a weight zero-point group size of 32) is already handled correctly.
     if (scalesPtr && scalesPtr->getShape().getRank() != 1) {
         auto scalesDims = scalesPtr->getShape().getStaticDims();
         auto groupsNum = scalesDims[1];
         size_t groupSize = ic / groupsNum;
-        if (groupsNum != 1 && groupSize % dqGroupSize) {
+        if (groupsNum != 1 && groupSize % dqGroupSize && weightsDesc->getPrecision() != ov::element::u3) {
             return false;
         }
     }
@@ -238,7 +244,7 @@ static bool useDynamicQuantizationImpl(size_t dqGroupSize,
         auto zpDims = zpPtr->getShape().getStaticDims();
         auto groupsNum = zpDims[1];
         size_t groupSize = ic / groupsNum;
-        if (groupsNum != 1 && groupSize % dqGroupSize) {
+        if (groupsNum != 1 && groupSize % dqGroupSize && weightsDesc->getPrecision() != ov::element::u3) {
             return false;
         }
     }

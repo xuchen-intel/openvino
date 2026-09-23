@@ -288,10 +288,14 @@ const std::vector<MatMulDecompressionShapeParams> input_shapes_basic_dyn_quant_u
 
 // u3 has no working non-dyn-quant (general weights-decompression) kernel — it only supports
 // the src-dynamic-quantization (VNNI) path. All K (input channels) below are multiples of 8,
-// required for u3's tight 8-values/3-bytes packing to stay byte-aligned.
+// required for u3's tight 8-values/3-bytes packing to stay byte-aligned. K is bumped to 32 here
+// (vs u2's K=16 above): u3's dyn-quant microkernel packs IC in fixed 32-wide blocks (see
+// jit_brgemm_inner_product_utils.cpp's src_sum_group_size % 32 check), so any K < 32 is
+// inherently unsupported for u3 -- a hard consequence of the tight u3 bit-plane design, not a
+// bug (cleanly rejected via a primitive-creation exception if attempted, not silently wrong).
 const std::vector<MatMulDecompressionShapeParams> input_shapes_basic_dyn_quant_u3 = {
-    {{{}, {{1, 8, 16}}}, {16, 2}},
-    {{{}, {{1, 4, 16}}}, {16, 2}},
+    {{{}, {{1, 8, 32}}}, {32, 2}},
+    {{{}, {{1, 4, 32}}}, {32, 2}},
     {{{}, {{1, 1, 128}}}, {128, 32}},
     {{{}, {{1, 1, 640}}}, {640, 90}},
     // Grouped WEIGHT decomposition (group_size < K, not just src dyn-quant grouping) combined

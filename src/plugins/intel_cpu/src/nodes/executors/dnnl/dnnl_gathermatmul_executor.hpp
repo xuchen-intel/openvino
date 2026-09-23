@@ -38,11 +38,6 @@ private:
     MemoryPtr m_weightsMemory;
     MemoryPtr m_scalesMemory;
     MemoryPtr m_zpMemory;
-    MemoryCPtr m_nativeWeightsMemoryDbg;
-    MemoryCPtr m_nativeScalesMemoryDbg;
-    MemoryCPtr m_nativeZpMemoryDbg;
-    ov::element::Type m_weightsPrecisionDbg;
-    ov::element::Type m_zpPrecisionDbg;
 
     InnerProductPtr m_gemvImpl;
     InnerProductPtr m_gemmImpl;

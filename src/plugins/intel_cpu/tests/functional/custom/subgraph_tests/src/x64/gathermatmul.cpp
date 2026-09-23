@@ -82,58 +82,6 @@ INSTANTIATE_TEST_SUITE_P(smoke_MoeCompressedWeights,
 // that are multiples of 32, so the weight-decompression group divides evenly either way).
 const std::vector<ov::test::ElementType> weights_precisions_u3 = {ov::element::u3};
 
-// U3DBG: force u4 through the SAME src-dyn-quant gate u3 uses (temporarily, via a hand-edit in
-// dnnl_gathermatmul_executor.cpp) to see if "dyn-quant + zp in GatherMatmul" breaks generically
-// or is specific to u3's bit-plane packing.
-const std::vector<ov::test::ElementType> weights_precisions_u4dbg = {ov::element::u4};
-INSTANTIATE_TEST_SUITE_P(smoke_MoeCompressedWeights_u4dbg_dynquant,
-                         MoECompressedWeightsSubgraphTest,
-                         ::testing::Combine(::testing::ValuesIn(moe_params_smoke),
-                                            ::testing::ValuesIn(moe_types),
-                                            ::testing::Values(MoEActivationType::SWISH),
-                                            ::testing::ValuesIn(weights_precisions_u4dbg),
-                                            ::testing::ValuesIn(decompression_precisions),
-                                            ::testing::Values(ov::element::f32),
-                                            ::testing::Values(ov::test::utils::DecompressionType::full),
-                                            ::testing::Values(ov::test::utils::DecompressionType::full),
-                                            ::testing::Values(false),
-                                            ::testing::Values(32),
-                                            ::testing::ValuesIn(generate_additional_config()),
-                                            ::testing::Values(true)),
-                         MoECompressedWeightsSubgraphTest::getTestCaseName);
-
-INSTANTIATE_TEST_SUITE_P(smoke_MoeCompressedWeights_u3dbg_noZp,
-                         MoECompressedWeightsSubgraphTest,
-                         ::testing::Combine(::testing::ValuesIn(moe_params_smoke),
-                                            ::testing::ValuesIn(moe_types),
-                                            ::testing::Values(MoEActivationType::SWISH),
-                                            ::testing::ValuesIn(weights_precisions_u3),
-                                            ::testing::ValuesIn(decompression_precisions),
-                                            ::testing::Values(ov::element::f32),
-                                            ::testing::Values(ov::test::utils::DecompressionType::full),
-                                            ::testing::Values(ov::test::utils::DecompressionType::empty),
-                                            ::testing::Values(false),
-                                            ::testing::Values(32),
-                                            ::testing::ValuesIn(generate_additional_config()),
-                                            ::testing::Values(true)),
-                         MoECompressedWeightsSubgraphTest::getTestCaseName);
-
-INSTANTIATE_TEST_SUITE_P(smoke_MoeCompressedWeights_u3dbg_scalarZp,
-                         MoECompressedWeightsSubgraphTest,
-                         ::testing::Combine(::testing::ValuesIn(moe_params_smoke),
-                                            ::testing::ValuesIn(moe_types),
-                                            ::testing::Values(MoEActivationType::SWISH),
-                                            ::testing::ValuesIn(weights_precisions_u3),
-                                            ::testing::ValuesIn(decompression_precisions),
-                                            ::testing::Values(ov::element::f32),
-                                            ::testing::Values(ov::test::utils::DecompressionType::full),
-                                            ::testing::Values(ov::test::utils::DecompressionType::scalar),
-                                            ::testing::Values(false),
-                                            ::testing::Values(32),
-                                            ::testing::ValuesIn(generate_additional_config()),
-                                            ::testing::Values(true)),
-                         MoECompressedWeightsSubgraphTest::getTestCaseName);
-
 INSTANTIATE_TEST_SUITE_P(smoke_MoeCompressedWeights_u3,
                          MoECompressedWeightsSubgraphTest,
                          ::testing::Combine(::testing::ValuesIn(moe_params_smoke),

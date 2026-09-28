@@ -84,6 +84,41 @@ struct InnerProductKey {
     }
 };
 
+// U3 uses src dynamic quantization wherever oneDNN has a dyn-quant impl for the src precision,
+// mirroring FullyConnected's useDynamicQuantizationImpl(): f32 src needs VNNI; bf16 src needs
+// AVX512_BF16 and stays off on AMX, where the AMX BF16 path (prepack decompression) is faster.
+// Elsewhere u3 falls back to the general weights-decompression kernels, like other precisions.
+// Gated to u3 specifically to avoid touching the already-working u4/u8/i4 paths.
+// Returns {src_dyn_quant_group_size (0 = disabled), zero-point data type}.
+static std::pair<size_t, dnnl::memory::data_type> u3DynQuantParams(bool is_u3_weights,
+                                                                   ov::element::Type src_precision,
+                                                                   ov::element::Type zp_precision) {
+    const auto disabled = std::make_pair(size_t{0}, dnnl::memory::data_type::f32);
+    if (!is_u3_weights ||
+        !any_of(zp_precision, ov::element::u8, ov::element::u2, ov::element::u3, ov::element::u4, ov::element::dynamic)) {
+        return disabled;
+    }
+    if (src_precision == ov::element::bf16) {
+        if (!ov::with_cpu_x86_bfloat16() || ov::with_cpu_x86_avx512_core_amx()) {
+            return disabled;
+        }
+    } else if (!ov::with_cpu_x86_avx2_vnni() && !ov::with_cpu_x86_avx512_core_vnni()) {
+        return disabled;
+    }
+    constexpr size_t default_group_size = 32;
+    // Force u8 rather than passing the native zero-point precision through: oneDNN's zero-points
+    // attr wants the (possibly batched) zp memory in a transposed layout (format_tag::ba), and no
+    // reorder implementation exists for a same-native-sub-byte-precision, arbitrary-permutation
+    // transform (simple_reorder.hpp / cpu_reorder_regular_{u2,u3,u4,s4}.cpp). Converting to u8
+    // makes the reorder a precision-converting one (<native> -> u8), which is well supported via
+    // cpu_convert's fallback in node::Reorder::reorderData — the same path FullyConnected's own
+    // dyn-quant zero-point handling uses (dnnl_fullyconnected_primitive.cpp: dstPrc =
+    // useDynamicQuantization ? u8 : f32). Safe: u3's zero-point value range [0,7] fits u8 exactly.
+    const auto zp_dt =
+        zp_precision == ov::element::dynamic ? dnnl::memory::data_type::f32 : dnnl::memory::data_type::u8;
+    return {default_group_size, zp_dt};
+}
+
 // ---- InnerProduct (oneDNN inner_product wrapper) ----------------------------
 
 class GatherMatmulDnnlExecutor::InnerProduct {
@@ -352,30 +387,8 @@ GatherMatmulDnnlExecutor::GatherMatmulDnnlExecutor([[maybe_unused]] const Gather
                                   DnnlExtensionUtils::ElementTypeToDataType(weights_precision),
                                   dnnl::memory::format_tag::any);
 
-    // U3 has no working non-dyn-quant (general weights-decompression) kernel, so route it
-    // through src dynamic quantization (VNNI) instead, mirroring FullyConnected's approach.
-    // Gated to u3 specifically to avoid touching the already-working u4/u8/i4 paths.
-    size_t src_dyn_quant_group_size = 0;
-    auto zp_dt = dnnl::memory::data_type::f32;
-    if (weights_precision == ov::element::u3 &&
-        (ov::with_cpu_x86_avx2_vnni() || ov::with_cpu_x86_avx512_core_vnni()) &&
-        any_of(zp_precision, ov::element::u8, ov::element::u2, ov::element::u3, ov::element::u4, ov::element::dynamic)) {
-        constexpr size_t default_group_size = 32;
-        src_dyn_quant_group_size = default_group_size;
-        if (zp_precision != ov::element::dynamic) {
-            // Force u8 rather than passing the native zero-point precision through: oneDNN's
-            // zero-points attr wants the (possibly batched) zp memory in a transposed layout
-            // (format_tag::ba), and no reorder implementation exists anywhere in this codebase
-            // for a same-native-sub-byte-precision, arbitrary-permutation transform (verified:
-            // simple_reorder.hpp / cpu_reorder_regular_{u2,u3,u4,s4}.cpp). Converting to u8
-            // here instead makes the reorder a precision-converting one (<native> -> u8), which
-            // is well supported via cpu_convert's fallback in node::Reorder::reorderData — the
-            // same path FullyConnected's own dyn-quant zero-point handling always uses
-            // (dnnl_fullyconnected_primitive.cpp: dstPrc = useDynamicQuantization ? u8 : f32).
-            // Safe: u3's zero-point value range [0,7] fits u8 exactly.
-            zp_dt = dnnl::memory::data_type::u8;
-        }
-    }
+    const auto [src_dyn_quant_group_size, zp_dt] =
+        u3DynQuantParams(weights_precision == ov::element::u3, src_precision, zp_precision);
 
     InnerProductKey key{src_md,
                        weights_md,
@@ -511,19 +524,8 @@ bool GatherMatmulDnnlExecutor::update(const MemoryArgs& memory) {
         }
     }
 
-    // See matching comment at the GEMV InnerProductKey construction above (forcing u8 to avoid
-    // the missing same-native-sub-byte-precision, arbitrary-permutation reorder capability).
-    size_t src_dyn_quant_group_size = 0;
-    auto zp_dt = dnnl::memory::data_type::f32;
-    if (weights_md.get_data_type() == dnnl::memory::data_type::u3 &&
-        (ov::with_cpu_x86_avx2_vnni() || ov::with_cpu_x86_avx512_core_vnni()) &&
-        any_of(zp_precision, ov::element::u8, ov::element::u2, ov::element::u3, ov::element::u4, ov::element::dynamic)) {
-        constexpr size_t default_group_size = 32;
-        src_dyn_quant_group_size = default_group_size;
-        if (zp_precision != ov::element::dynamic) {
-            zp_dt = dnnl::memory::data_type::u8;
-        }
-    }
+    const auto [src_dyn_quant_group_size, zp_dt] =
+        u3DynQuantParams(weights_md.get_data_type() == dnnl::memory::data_type::u3, srcPrc, zp_precision);
 
     InnerProductKey key{src_md,
                         weights_md,

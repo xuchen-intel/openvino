@@ -65,6 +65,9 @@ const std::vector<MatMulDecompressionShapeParams> input_shapes_amx_u2 = {
     {{{}, {{1, 8, 64}}}, {64, 64}},
     {{{}, {{1, 16, 64}}}, {64, 128}},
 };
+// Same shapes as u2: every K is a multiple of 8, as u3's tight 8-values/3-bytes packing needs.
+const std::vector<MatMulDecompressionShapeParams>& input_shapes_basic_u3 = input_shapes_basic_u2;
+const std::vector<MatMulDecompressionShapeParams>& input_shapes_amx_u3 = input_shapes_amx_u2;
 const std::vector<fusingSpecificParams> fusing_params{emptyFusingSpec, fusingBias};
 
 INSTANTIATE_TEST_SUITE_P(smoke_MatMulCompressedWeights_basic,
@@ -87,6 +90,22 @@ INSTANTIATE_TEST_SUITE_P(smoke_MatMulCompressedWeights_basic_u2,
                          MatmulWeightsDecompression,
                          ::testing::Combine(::testing::ValuesIn(input_shapes_basic_u2),
                                             ::testing::Values(ov::element::u2),
+                                            ::testing::ValuesIn(decompression_precisions),
+                                            ::testing::Values(ov::element::dynamic),
+                                            ::testing::Values(true),
+                                            ::testing::Values(DecompressionType::scalar, DecompressionType::full),
+                                            ::testing::Values(DecompressionType::scalar, DecompressionType::full),
+                                            // todo: zero points converted to fp32 for reshape == true case
+                                            ::testing::Values(false),
+                                            ::testing::ValuesIn(filter_additional_config_basic()),
+                                            ::testing::ValuesIn(fusing_params),
+                                            ::testing::Values(true)),
+                         MatmulWeightsDecompression::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(smoke_MatMulCompressedWeights_basic_u3,
+                         MatmulWeightsDecompression,
+                         ::testing::Combine(::testing::ValuesIn(input_shapes_basic_u3),
+                                            ::testing::Values(ov::element::u3),
                                             ::testing::ValuesIn(decompression_precisions),
                                             ::testing::Values(ov::element::dynamic),
                                             ::testing::Values(true),
@@ -135,6 +154,22 @@ INSTANTIATE_TEST_SUITE_P(smoke_MatMulCompressedWeights_amx_u2,
                          MatmulWeightsDecompression,
                          ::testing::Combine(::testing::ValuesIn(input_shapes_amx_u2),
                                             ::testing::Values(ov::element::u2),
+                                            ::testing::ValuesIn(decompression_precisions),
+                                            ::testing::Values(ov::element::dynamic),
+                                            ::testing::Values(true),
+                                            ::testing::Values(DecompressionType::scalar, DecompressionType::full),
+                                            ::testing::Values(DecompressionType::scalar, DecompressionType::full),
+                                            // todo: zero points converted to fp32 for reshape == true case
+                                            ::testing::Values(false),
+                                            ::testing::ValuesIn(filter_additional_config_amx()),
+                                            ::testing::ValuesIn(fusing_params),
+                                            ::testing::Values(true)),
+                         MatmulWeightsDecompression::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(smoke_MatMulCompressedWeights_amx_u3,
+                         MatmulWeightsDecompression,
+                         ::testing::Combine(::testing::ValuesIn(input_shapes_amx_u3),
+                                            ::testing::Values(ov::element::u3),
                                             ::testing::ValuesIn(decompression_precisions),
                                             ::testing::Values(ov::element::dynamic),
                                             ::testing::Values(true),
@@ -286,9 +321,8 @@ const std::vector<MatMulDecompressionShapeParams> input_shapes_basic_dyn_quant_u
     {{{}, {{1, 1, 640}}}, {640, 90}},
 };
 
-// u3 has no working non-dyn-quant (general weights-decompression) kernel — it only supports
-// the src-dynamic-quantization (VNNI) path. All K (input channels) below are multiples of 8,
-// required for u3's tight 8-values/3-bytes packing to stay byte-aligned. K is bumped to 32 here
+// All K (input channels) below are multiples of 8, required for u3's tight 8-values/3-bytes
+// packing to stay byte-aligned. K is bumped to 32 here
 // (vs u2's K=16 above): u3's dyn-quant microkernel packs IC in fixed 32-wide blocks (see
 // jit_brgemm_inner_product_utils.cpp's src_sum_group_size % 32 check), so any K < 32 is
 // inherently unsupported for u3 -- a hard consequence of the tight u3 bit-plane design, not a
@@ -385,12 +419,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_MatMulCompressedWeights_non_default_dyn_quant_gro
                                             ::testing::Values(true)),
                          MatmulWeightsDecompression::getTestCaseName);
 
-// u3 only supports the dyn-quant path (no non-dyn-quant kernel exists yet), so — unlike u2 —
-// group size 0 (dyn-quant disabled) MUST be excluded here: it would silently route u3 into the
-// unimplemented non-dyn-quant decompression kernel, which is UB/crash in Release builds (see
-// the "i8-zero-point trap" section in the implement-u3-precision-openvino-cpu skill).
-//
-// Group size 16 is ALSO excluded (unlike u2, which supports it): u3's bit-plane dyn-quant
+// Mirrors u2's {0, 16, 128}, except group size 16 is excluded: u3's bit-plane dyn-quant
 // microkernel packs IC in fixed 32-wide blocks (ld_step=32, vs u2's ld_step=16), so a group
 // size smaller than 32 causes a single load to straddle two different dyn-quant groups and
 // apply the wrong rescale to half the elements — a silent (non-crashing) accuracy bug, found
@@ -402,6 +431,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_MatMulCompressedWeights_non_default_dyn_quant_gro
 // implement-u3-precision-openvino-cpu skill.
 std::vector<ov::AnyMap> filter_additional_config_dyn_quant_u3() {
     return {
+        {{ov::hint::dynamic_quantization_group_size(0)}},  // dynamic quantization is disabled
         {{ov::hint::dynamic_quantization_group_size(32)}},
         {{ov::hint::dynamic_quantization_group_size(128)}},
     };

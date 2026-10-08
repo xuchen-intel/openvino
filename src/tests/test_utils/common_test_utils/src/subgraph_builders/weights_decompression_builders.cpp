@@ -258,11 +258,8 @@ std::shared_ptr<ov::Node> initMatMulDecompressionSubgraphQuantization(
     }
 
     // mt19937 distribution: gtest's LCG repeats every k_range, collapsing per-group min/max diversity.
-    // TEMP EXPERIMENT: narrowed from [-0.1,0.1] to match MatmulWeightsDecompression's (FC's 2D
-    // test) independently-random scale range [0.001,0.01], to test whether the raw weight data
-    // range (and the resulting scale magnitude) explains the FC-vs-MoE divergence.
-    const float fp32_min = 0.001f;
-    const float fp32_max = 0.01f;
+    const float fp32_min = -0.1f;
+    const float fp32_max = 0.1f;
     auto fp32_weights_tensor = ov::test::utils::create_and_fill_tensor_real_distribution(ov::element::f32,
                                                                                          transformed_weights_shape,
                                                                                          fp32_min,

@@ -208,9 +208,9 @@ static bool useDynamicQuantizationImpl(size_t dqGroupSize,
     if (dqGroupSize % simdWidth) {
         return false;
     }
-    // u3's bit-plane dyn-quant microkernel packs IC in fixed 32-wide blocks (one rescale per
-    // block), so its dyn-quant group size must be a multiple of 32; otherwise fall back to the
-    // general weights-decompression path like any other precision.
+    // U3 requires dqGroupSize to be a multiple of 32 because the 32 bits for vnni dot product
+    // are corresponding to 32 elements in IC dimension, which is because u3 repack assures
+    // each of the 3 bits of an element be loaded to 3 different vector registers.
     if (weightsDesc->getPrecision() == ov::element::u3 && dqGroupSize % 32) {
         return false;
     }

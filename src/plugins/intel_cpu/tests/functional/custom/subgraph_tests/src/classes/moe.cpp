@@ -205,17 +205,13 @@ void MoECompressedWeightsSubgraphTest::SetUp() {
         rel_threshold = 0.05f;
         abs_threshold = 0.05f;
         }
-    // u3 has no working non-dyn-quant kernel, so it is always routed through the src
-    // dynamic-quantization + grouped-weight-decomposition path (see
-    // dnnl_gathermatmul_executor.cpp). That combination has a genuine, scale-invariant
-    // quantization noise floor (empirically measured up to ~1-3% relative error for the
-    // down_proj-shaped layer, K=256/8 groups) that doesn't shrink by tightening the test's
-    // synthetic weight-data range -- it's inherent to combining u3's 8-level native
-    // resolution with per-group src dynamic quantization, not a GatherMatmul bug. Other
-    // precisions (u4/u8/i4) use a separate, working non-dyn-quant kernel and don't need this.
-    if (weights_precision == ov::element::u3) {
-        rel_threshold = 0.04f;
-        abs_threshold = 0.04f;
+    // Quantizing the activations adds a small noise on top of u3's 8-level weights,
+    // so such dynamic quantization path gets a slightly looser threshold.
+    const bool is_bf16 = itr != configuration.end() && itr->second == ov::element::bf16;
+    if (weights_precision == ov::element::u3 && !is_bf16 && decompression_group_size % 32 == 0 &&
+        (ov::with_cpu_x86_avx2_vnni() || ov::with_cpu_x86_avx512_core_vnni())) {
+        rel_threshold = 0.05f;
+        abs_threshold = 0.05f;
     }
 
     if (moe_type == MoEType::MoE2GeMM) {

@@ -65,7 +65,7 @@ const std::vector<MatMulDecompressionShapeParams> input_shapes_amx_u2 = {
     {{{}, {{1, 8, 64}}}, {64, 64}},
     {{{}, {{1, 16, 64}}}, {64, 128}},
 };
-// Same shapes as u2: every K is a multiple of 8, as u3's tight 8-values/3-bytes packing needs.
+
 const std::vector<MatMulDecompressionShapeParams>& input_shapes_basic_u3 = input_shapes_basic_u2;
 const std::vector<MatMulDecompressionShapeParams>& input_shapes_amx_u3 = input_shapes_amx_u2;
 const std::vector<fusingSpecificParams> fusing_params{emptyFusingSpec, fusingBias};
@@ -111,7 +111,6 @@ INSTANTIATE_TEST_SUITE_P(smoke_MatMulCompressedWeights_basic_u3,
                                             ::testing::Values(true),
                                             ::testing::Values(DecompressionType::scalar, DecompressionType::full),
                                             ::testing::Values(DecompressionType::scalar, DecompressionType::full),
-                                            // todo: zero points converted to fp32 for reshape == true case
                                             ::testing::Values(false),
                                             ::testing::ValuesIn(filter_additional_config_basic()),
                                             ::testing::ValuesIn(fusing_params),
@@ -175,7 +174,6 @@ INSTANTIATE_TEST_SUITE_P(smoke_MatMulCompressedWeights_amx_u3,
                                             ::testing::Values(true),
                                             ::testing::Values(DecompressionType::scalar, DecompressionType::full),
                                             ::testing::Values(DecompressionType::scalar, DecompressionType::full),
-                                            // todo: zero points converted to fp32 for reshape == true case
                                             ::testing::Values(false),
                                             ::testing::ValuesIn(filter_additional_config_amx()),
                                             ::testing::ValuesIn(fusing_params),
@@ -321,18 +319,11 @@ const std::vector<MatMulDecompressionShapeParams> input_shapes_basic_dyn_quant_u
     {{{}, {{1, 1, 640}}}, {640, 90}},
 };
 
-// Same shapes as u2 plus grouped weight decomposition cases. Configs u3's dyn-quant kernel can't
-// take (K or dyn-quant group size not a multiple of 32, a consequence of its 32-wide bit-plane
-// blocks) fall back to the general weights-decompression path, as for any other precision.
 const std::vector<MatMulDecompressionShapeParams> input_shapes_basic_dyn_quant_u3 = {
     {{{}, {{1, 8, 16}}}, {16, 2}},
     {{{}, {{1, 4, 16}}}, {16, 2}},
     {{{}, {{1, 1, 128}}}, {128, 32}},
     {{{}, {{1, 1, 640}}}, {640, 90}},
-    // Grouped WEIGHT decomposition (group_size < K, not just src dyn-quant grouping) combined
-    // with src dyn quant -- exercises the same combined-grouping oneDNN kernel path used by the
-    // GatherMatmul/MoE u3 tests (gathermatmul.cpp), which use grouped weight decomposition with
-    // GS=32.
     {{{}, {{1, 1, 256}}}, {256, 128}, 32},
     {{{}, {{1, 1, 128}}}, {128, 512}, 32},
     {{{}, {{1, 1, 128}}}, {128, 4}, 32},

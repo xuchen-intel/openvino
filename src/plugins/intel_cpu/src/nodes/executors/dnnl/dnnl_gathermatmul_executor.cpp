@@ -7,7 +7,6 @@
 #include <oneapi/dnnl/dnnl_common_types.h>
 #include <oneapi/dnnl/dnnl_types.h>
 
-#include <algorithm>
 #include <common/primitive_hashing.hpp>
 #include <common/primitive_hashing_utils.hpp>
 #include <common/utils.hpp>
@@ -55,11 +54,7 @@ struct InnerProductKey {
     dnnl::memory::desc bias_md;
     VectorDims scale_shape;
     VectorDims zp_shape;
-    // Native zero-point data type (as provided by the graph). Used as-is when
-    // src-dynamic-quantization is enabled; otherwise zero points are converted to f32.
     dnnl::memory::data_type zp_dt = dnnl::memory::data_type::f32;
-    // 0 disables src dynamic quantization (falls back to the general weights-decompression
-    // path with f32 zero points); >0 is the src quantization group size along K.
     size_t src_dyn_quant_group_size = 0;
 
     [[nodiscard]] size_t hash() const {
@@ -84,12 +79,6 @@ struct InnerProductKey {
     }
 };
 
-// U3 uses src dynamic quantization wherever oneDNN has a dyn-quant impl for the src precision,
-// mirroring FullyConnected's useDynamicQuantizationImpl(): f32 src needs VNNI; bf16 src needs
-// AVX512_BF16 and stays off on AMX, where the AMX BF16 path (prepack decompression) is faster.
-// Elsewhere u3 falls back to the general weights-decompression kernels, like other precisions.
-// Gated to u3 specifically to avoid touching the already-working u4/u8/i4 paths.
-// Returns {src_dyn_quant_group_size (0 = disabled), zero-point data type}.
 static std::pair<size_t, dnnl::memory::data_type> u3DynQuantParams(bool is_u3_weights,
                                                                    ov::element::Type src_precision,
                                                                    ov::element::Type zp_precision,
@@ -102,9 +91,6 @@ static std::pair<size_t, dnnl::memory::data_type> u3DynQuantParams(bool is_u3_we
         !any_of(zp_precision, ov::element::u8, ov::element::u2, ov::element::u3, ov::element::u4, ov::element::dynamic)) {
         return disabled;
     }
-    // Same guards as FullyConnected's useDynamicQuantizationImpl(): fall back when K is smaller
-    // than the dyn-quant group, or when the weight's own scale/zero-point grouping doesn't divide
-    // evenly into it ([N, groups] shapes; u3's dyn-quant kernel works on 32-wide IC blocks).
     if (K < default_group_size) {
         return disabled;
     }
@@ -120,14 +106,6 @@ static std::pair<size_t, dnnl::memory::data_type> u3DynQuantParams(bool is_u3_we
     } else if (!ov::with_cpu_x86_avx2_vnni() && !ov::with_cpu_x86_avx512_core_vnni()) {
         return disabled;
     }
-    // Force u8 rather than passing the native zero-point precision through: oneDNN's zero-points
-    // attr wants the (possibly batched) zp memory in a transposed layout (format_tag::ba), and no
-    // reorder implementation exists for a same-native-sub-byte-precision, arbitrary-permutation
-    // transform (simple_reorder.hpp / cpu_reorder_regular_{u2,u3,u4,s4}.cpp). Converting to u8
-    // makes the reorder a precision-converting one (<native> -> u8), which is well supported via
-    // cpu_convert's fallback in node::Reorder::reorderData — the same path FullyConnected's own
-    // dyn-quant zero-point handling uses (dnnl_fullyconnected_primitive.cpp: dstPrc =
-    // useDynamicQuantization ? u8 : f32). Safe: u3's zero-point value range [0,7] fits u8 exactly.
     const auto zp_dt =
         zp_precision == ov::element::dynamic ? dnnl::memory::data_type::f32 : dnnl::memory::data_type::u8;
     return {default_group_size, zp_dt};
@@ -162,15 +140,13 @@ public:
             OPENVINO_ASSERT(scale_shape.size() == 2, "Unsupported scale shape ", vec2str(scale_shape));
             const auto K_groups = scale_shape.back();
             OPENVINO_ASSERT((K % K_groups) == 0, "Incompatible number of groups ", K_groups, " for K ", K);
-            init_w_scales(scale_shape, weiDims);
+            init_w_scales(scale_shape);
             if (!zp_shape.empty()) {
                 if (all_of(1U, zp_shape.size(), zp_shape[0])) {
                     zp_shape.push_back(1);
                 }
                 OPENVINO_ASSERT(zp_shape.size() == 2, "Unsupported zero points shape ", vec2str(zp_shape));
-                init_w_zp(zp_shape,
-                          weiDims,
-                          key.src_dyn_quant_group_size > 0 ? key.zp_dt : dnnl::memory::data_type::f32);
+                init_w_zp(zp_shape, key.src_dyn_quant_group_size > 0 ? key.zp_dt : dnnl::memory::data_type::f32);
             }
         }
 
@@ -244,14 +220,14 @@ public:
     }
 
 private:
-    void init_w_scales(const VectorDims& scale_shape, const dnnl::memory::dims& /*weiDims*/) {
+    void init_w_scales(const VectorDims& scale_shape) {
         constexpr auto data_type = dnnl::memory::data_type::f32;
         const auto scale_dims = DnnlExtensionUtils::convertToDnnlDims(scale_shape);
         m_attr.set_scales_dims(DNNL_ARG_WEIGHTS, scale_dims, data_type);
         m_scale_md = dnnl::memory::desc(scale_dims, data_type, dnnl::memory::format_tag::ba);
     }
 
-    void init_w_zp(const VectorDims& zp_shape, const dnnl::memory::dims& /*weiDims*/, dnnl::memory::data_type data_type) {
+    void init_w_zp(const VectorDims& zp_shape, dnnl::memory::data_type data_type) {
         const auto zp_dims = DnnlExtensionUtils::convertToDnnlDims(zp_shape);
         m_attr.set_zero_points_dims(DNNL_ARG_WEIGHTS, zp_dims, data_type);
         m_zp_md = dnnl::memory::desc(zp_dims, data_type, dnnl::memory::format_tag::ba);

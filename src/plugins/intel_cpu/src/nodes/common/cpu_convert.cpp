@@ -954,8 +954,7 @@ struct ConvertFrom3BitContext {
 template <typename T>
 struct ConvertFrom3BitPrecision;
 
-// U3 is tightly packed LSB-first: 8 values in 3 bytes, value i starts at bit 3*i and may
-// straddle a byte boundary (matches ov::element::iterator<u3>).
+// U3 is tightly packed LSB-first
 [[maybe_unused]] static uint8_t get_u3(const uint8_t* src, size_t i) {
     const size_t bit = 3 * i;
     const size_t byte = bit >> 3;

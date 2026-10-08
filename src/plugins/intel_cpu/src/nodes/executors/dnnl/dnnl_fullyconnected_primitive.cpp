@@ -208,6 +208,12 @@ static bool useDynamicQuantizationImpl(size_t dqGroupSize,
     if (dqGroupSize % simdWidth) {
         return false;
     }
+    // u3's bit-plane dyn-quant microkernel packs IC in fixed 32-wide blocks (one rescale per
+    // block), so its dyn-quant group size must be a multiple of 32; otherwise fall back to the
+    // general weights-decompression path like any other precision.
+    if (weightsDesc->getPrecision() == ov::element::u3 && dqGroupSize % 32) {
+        return false;
+    }
 
     MemoryCPtr scalesPtr = memory.count(ARG_WEI | ARG_ATTR_SCALES) ? memory.at(ARG_WEI | ARG_ATTR_SCALES) : nullptr;
     size_t ic = weightsDesc->getShape().getStaticDims()[1];
@@ -216,26 +222,15 @@ static bool useDynamicQuantizationImpl(size_t dqGroupSize,
         return false;
     }
 
-    // u3 has no working non-dyn-quant (general weights-decompression) kernel, so it must not
-    // fall back when ic < dqGroupSize the way u2/u4/u8 safely do. The kernel-config logic
-    // (jit_brgemm_inner_product_utils.cpp) already clamps the effective group to
-    // min(dqGroupSize, ic) internally (src_sum_group_size), collapsing this into the already-
-    // validated "one group spanning all of ic" case, so it is safe to keep dyn-quant enabled.
-    if (ic < dqGroupSize && weightsDesc->getPrecision() != ov::element::u3) {
+    if (ic < dqGroupSize) {
         return false;
     }
 
-    // Same reasoning as the "ic < dqGroupSize" exemption above: this guard exists to fall back
-    // safely to the non-dyn-quant path when the weight's own scale/zero-point grouping doesn't
-    // divide evenly into dqGroupSize -- but u3 has no such fallback, and the kernel-config logic
-    // already clamps the effective group internally via src_sum_group_size = min(dqGroupSize,
-    // weight_group_size), so a coarser dqGroupSize than the weight's own group size (e.g.
-    // dqGroupSize=128 with a weight zero-point group size of 32) is already handled correctly.
     if (scalesPtr && scalesPtr->getShape().getRank() != 1) {
         auto scalesDims = scalesPtr->getShape().getStaticDims();
         auto groupsNum = scalesDims[1];
         size_t groupSize = ic / groupsNum;
-        if (groupsNum != 1 && groupSize % dqGroupSize && weightsDesc->getPrecision() != ov::element::u3) {
+        if (groupsNum != 1 && groupSize % dqGroupSize) {
             return false;
         }
     }
@@ -244,7 +239,7 @@ static bool useDynamicQuantizationImpl(size_t dqGroupSize,
         auto zpDims = zpPtr->getShape().getStaticDims();
         auto groupsNum = zpDims[1];
         size_t groupSize = ic / groupsNum;
-        if (groupsNum != 1 && groupSize % dqGroupSize && weightsDesc->getPrecision() != ov::element::u3) {
+        if (groupsNum != 1 && groupSize % dqGroupSize) {
             return false;
         }
     }

@@ -321,15 +321,12 @@ const std::vector<MatMulDecompressionShapeParams> input_shapes_basic_dyn_quant_u
     {{{}, {{1, 1, 640}}}, {640, 90}},
 };
 
-// All K (input channels) below are multiples of 8, required for u3's tight 8-values/3-bytes
-// packing to stay byte-aligned. K is bumped to 32 here
-// (vs u2's K=16 above): u3's dyn-quant microkernel packs IC in fixed 32-wide blocks (see
-// jit_brgemm_inner_product_utils.cpp's src_sum_group_size % 32 check), so any K < 32 is
-// inherently unsupported for u3 -- a hard consequence of the tight u3 bit-plane design, not a
-// bug (cleanly rejected via a primitive-creation exception if attempted, not silently wrong).
+// Same shapes as u2 plus grouped weight decomposition cases. Configs u3's dyn-quant kernel can't
+// take (K or dyn-quant group size not a multiple of 32, a consequence of its 32-wide bit-plane
+// blocks) fall back to the general weights-decompression path, as for any other precision.
 const std::vector<MatMulDecompressionShapeParams> input_shapes_basic_dyn_quant_u3 = {
-    {{{}, {{1, 8, 32}}}, {32, 2}},
-    {{{}, {{1, 4, 32}}}, {32, 2}},
+    {{{}, {{1, 8, 16}}}, {16, 2}},
+    {{{}, {{1, 4, 16}}}, {16, 2}},
     {{{}, {{1, 1, 128}}}, {128, 32}},
     {{{}, {{1, 1, 640}}}, {640, 90}},
     // Grouped WEIGHT decomposition (group_size < K, not just src dyn-quant grouping) combined
@@ -419,24 +416,6 @@ INSTANTIATE_TEST_SUITE_P(smoke_MatMulCompressedWeights_non_default_dyn_quant_gro
                                             ::testing::Values(true)),
                          MatmulWeightsDecompression::getTestCaseName);
 
-// Mirrors u2's {0, 16, 128}, except group size 16 is excluded: u3's bit-plane dyn-quant
-// microkernel packs IC in fixed 32-wide blocks (ld_step=32, vs u2's ld_step=16), so a group
-// size smaller than 32 causes a single load to straddle two different dyn-quant groups and
-// apply the wrong rescale to half the elements — a silent (non-crashing) accuracy bug, found
-// via this suite: group_size=16 fails abs_threshold comparison on ~all elements, while the
-// identical shapes at group_size=128 (a multiple of 32) pass cleanly. The real Qwen3.6-35B
-// model always uses group_size=32 (a multiple of 32, hardcoded), so it is not at risk — but
-// arbitrary group sizes below 32 are NOT currently supported. See the
-// "u3 dyn-quant group_size must be a multiple of 32" section in the
-// implement-u3-precision-openvino-cpu skill.
-std::vector<ov::AnyMap> filter_additional_config_dyn_quant_u3() {
-    return {
-        {{ov::hint::dynamic_quantization_group_size(0)}},  // dynamic quantization is disabled
-        {{ov::hint::dynamic_quantization_group_size(32)}},
-        {{ov::hint::dynamic_quantization_group_size(128)}},
-    };
-}
-
 INSTANTIATE_TEST_SUITE_P(smoke_MatMulCompressedWeights_non_default_dyn_quant_group_sizes_u3,
                          MatmulWeightsDecompression,
                          ::testing::Combine(::testing::ValuesIn(input_shapes_basic_dyn_quant_u3),
@@ -447,7 +426,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_MatMulCompressedWeights_non_default_dyn_quant_gro
                                             ::testing::Values(DecompressionType::scalar, DecompressionType::full),
                                             ::testing::Values(DecompressionType::scalar, DecompressionType::full),
                                             ::testing::Values(false),
-                                            ::testing::ValuesIn(filter_additional_config_dyn_quant_u3()),
+                                            ::testing::ValuesIn(filter_additional_config_dyn_quant()),
                                             ::testing::ValuesIn(fusing_params_dyn_quant),
                                             ::testing::Values(true)),
                          MatmulWeightsDecompression::getTestCaseName);

@@ -92,11 +92,26 @@ struct InnerProductKey {
 // Returns {src_dyn_quant_group_size (0 = disabled), zero-point data type}.
 static std::pair<size_t, dnnl::memory::data_type> u3DynQuantParams(bool is_u3_weights,
                                                                    ov::element::Type src_precision,
-                                                                   ov::element::Type zp_precision) {
+                                                                   ov::element::Type zp_precision,
+                                                                   size_t K,
+                                                                   const VectorDims& scale_shape,
+                                                                   const VectorDims& zp_shape) {
+    constexpr size_t default_group_size = 32;
     const auto disabled = std::make_pair(size_t{0}, dnnl::memory::data_type::f32);
     if (!is_u3_weights ||
         !any_of(zp_precision, ov::element::u8, ov::element::u2, ov::element::u3, ov::element::u4, ov::element::dynamic)) {
         return disabled;
+    }
+    // Same guards as FullyConnected's useDynamicQuantizationImpl(): fall back when K is smaller
+    // than the dyn-quant group, or when the weight's own scale/zero-point grouping doesn't divide
+    // evenly into it ([N, groups] shapes; u3's dyn-quant kernel works on 32-wide IC blocks).
+    if (K < default_group_size) {
+        return disabled;
+    }
+    for (const auto* shape : {&scale_shape, &zp_shape}) {
+        if (shape->size() >= 2 && (*shape)[1] > 1 && (K / (*shape)[1]) % default_group_size) {
+            return disabled;
+        }
     }
     if (src_precision == ov::element::bf16) {
         if (!ov::with_cpu_x86_bfloat16() || ov::with_cpu_x86_avx512_core_amx()) {
@@ -105,7 +120,6 @@ static std::pair<size_t, dnnl::memory::data_type> u3DynQuantParams(bool is_u3_we
     } else if (!ov::with_cpu_x86_avx2_vnni() && !ov::with_cpu_x86_avx512_core_vnni()) {
         return disabled;
     }
-    constexpr size_t default_group_size = 32;
     // Force u8 rather than passing the native zero-point precision through: oneDNN's zero-points
     // attr wants the (possibly batched) zp memory in a transposed layout (format_tag::ba), and no
     // reorder implementation exists for a same-native-sub-byte-precision, arbitrary-permutation
@@ -388,7 +402,12 @@ GatherMatmulDnnlExecutor::GatherMatmulDnnlExecutor([[maybe_unused]] const Gather
                                   dnnl::memory::format_tag::any);
 
     const auto [src_dyn_quant_group_size, zp_dt] =
-        u3DynQuantParams(weights_precision == ov::element::u3, src_precision, zp_precision);
+        u3DynQuantParams(weights_precision == ov::element::u3,
+                         src_precision,
+                         zp_precision,
+                         static_cast<size_t>(K),
+                         scale_shape,
+                         zp_shape);
 
     InnerProductKey key{src_md,
                        weights_md,
@@ -525,7 +544,12 @@ bool GatherMatmulDnnlExecutor::update(const MemoryArgs& memory) {
     }
 
     const auto [src_dyn_quant_group_size, zp_dt] =
-        u3DynQuantParams(weights_md.get_data_type() == dnnl::memory::data_type::u3, srcPrc, zp_precision);
+        u3DynQuantParams(weights_md.get_data_type() == dnnl::memory::data_type::u3,
+                         srcPrc,
+                         zp_precision,
+                         static_cast<size_t>(srcShape[2]),
+                         scale_shape,
+                         zp_shape);
 
     InnerProductKey key{src_md,
                         weights_md,

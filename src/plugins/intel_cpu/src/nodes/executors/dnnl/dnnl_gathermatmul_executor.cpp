@@ -79,40 +79,49 @@ struct InnerProductKey {
     }
 };
 
-static std::pair<size_t, dnnl::memory::data_type> u3DynQuantParams(bool is_u3_weights,
-                                                                   ov::element::Type src_precision,
-                                                                   ov::element::Type zp_precision,
-                                                                   size_t K,
-                                                                   const VectorDims& scale_shape,
-                                                                   const VectorDims& zp_shape) {
+struct DynQuantParams {
+    size_t group_size = 0;  // 0: source dynamic quantization is not used
+    dnnl::memory::data_type zp_dt = dnnl::memory::data_type::f32;
+    // Symmetric i4 weights have no zero point, but the VNNI kernels need unsigned weights. Like FullyConnected
+    // (see dnnl_fullyconnected_primitive.cpp), the weights are then handed to oneDNN as u4, shifted by +8 when
+    // repacked, and a scalar zero point of 8 compensates for the shift.
+    bool shift_signed_to_unsigned = false;
+};
+
+// Mirrors FullyConnected's useDynamicQuantizationImpl() for the weights types GatherMatmul supports it for.
+static DynQuantParams dynQuantParams(ov::element::Type weights_precision,
+                                     ov::element::Type src_precision,
+                                     ov::element::Type zp_precision,
+                                     size_t K,
+                                     const VectorDims& scale_shape,
+                                     const VectorDims& zp_shape) {
     constexpr size_t default_group_size = 32;
-    const auto disabled = std::make_pair(size_t{0}, dnnl::memory::data_type::f32);
-    if (!is_u3_weights || !any_of(zp_precision,
-                                  ov::element::u8,
-                                  ov::element::u2,
-                                  ov::element::u3,
-                                  ov::element::u4,
-                                  ov::element::dynamic)) {
-        return disabled;
+    const bool has_zp = zp_precision != ov::element::dynamic;
+    const bool is_symmetric_i4 = weights_precision == ov::element::i4 && !has_zp;
+    if (none_of(weights_precision, ov::element::u3, ov::element::u4) && !is_symmetric_i4) {
+        return {};
+    }
+    if (has_zp && none_of(zp_precision, ov::element::u8, ov::element::u2, ov::element::u3, ov::element::u4)) {
+        return {};
     }
     if (K < default_group_size) {
-        return disabled;
+        return {};
     }
     for (const auto* shape : {&scale_shape, &zp_shape}) {
         if (shape->size() >= 2 && (*shape)[1] > 1 && (K / (*shape)[1]) % default_group_size) {
-            return disabled;
+            return {};
         }
     }
     if (src_precision == ov::element::bf16) {
         if (!ov::with_cpu_x86_bfloat16() || ov::with_cpu_x86_avx512_core_amx()) {
-            return disabled;
+            return {};
         }
     } else if (!ov::with_cpu_x86_avx2_vnni() && !ov::with_cpu_x86_avx512_core_vnni()) {
-        return disabled;
+        return {};
     }
-    const auto zp_dt =
-        zp_precision == ov::element::dynamic ? dnnl::memory::data_type::f32 : dnnl::memory::data_type::u8;
-    return {default_group_size, zp_dt};
+    return {default_group_size,
+            has_zp || is_symmetric_i4 ? dnnl::memory::data_type::u8 : dnnl::memory::data_type::f32,
+            is_symmetric_i4};
 }
 
 // ---- InnerProduct (oneDNN inner_product wrapper) ----------------------------
@@ -376,20 +385,24 @@ GatherMatmulDnnlExecutor::GatherMatmulDnnlExecutor([[maybe_unused]] const Gather
                                   DnnlExtensionUtils::ElementTypeToDataType(weights_precision),
                                   dnnl::memory::format_tag::any);
 
-    const auto [src_dyn_quant_group_size, zp_dt] = u3DynQuantParams(weights_precision == ov::element::u3,
-                                                                    src_precision,
-                                                                    zp_precision,
-                                                                    static_cast<size_t>(K),
-                                                                    scale_shape,
-                                                                    zp_shape);
+    const auto dynQuant =
+        dynQuantParams(weights_precision, src_precision, zp_precision, static_cast<size_t>(K), scale_shape, zp_shape);
+    m_srcDynQuantGroupSize = dynQuant.group_size;
+    m_zpDt = dynQuant.zp_dt;
+
+    if (dynQuant.shift_signed_to_unsigned) {
+        // The weights are shifted to u4 below, which makes oneDNN see them as unsigned with a scalar zero point of 8.
+        weights_md = dnnl::memory::desc({N, K}, dnnl::memory::data_type::u4, dnnl::memory::format_tag::any);
+        zp_shape.assign(size_t{1}, size_t{1});
+    }
 
     InnerProductKey key{src_md,
                         weights_md,
                         makeBiasMd(N, memory.at(ARG_BIAS)),
                         scale_shape,
                         zp_shape,
-                        zp_dt,
-                        src_dyn_quant_group_size};
+                        m_zpDt,
+                        m_srcDynQuantGroupSize};
 
     const auto& eng = context->getEngine();
     const auto threadPool = context->getThreadPool();
@@ -430,7 +443,8 @@ GatherMatmulDnnlExecutor::GatherMatmulDnnlExecutor([[maybe_unused]] const Gather
                                                   cache,
                                                   context->getWeightsCache(),
                                                   context->getPrivateWeightCache(),
-                                                  threadPool);
+                                                  threadPool,
+                                                  dynQuant.shift_signed_to_unsigned);
 
     if (scalesMem && !scale_shape.empty()) {
         auto expectedScaleMemDesc =
@@ -457,6 +471,14 @@ GatherMatmulDnnlExecutor::GatherMatmulDnnlExecutor([[maybe_unused]] const Gather
             m_zpMemory = std::make_shared<Memory>(eng, expectedZpMemDesc);
             m_zpMemory->load(*zpMem, false, false);
         }
+    }
+
+    if (dynQuant.shift_signed_to_unsigned) {
+        // One scalar zero point shared by all experts: the leading dim of 1 is broadcast by OffsetHelper.
+        constexpr uint8_t shift_zero_point = 8;
+        auto zpDesc = std::make_shared<CpuBlockedMemoryDesc>(ov::element::u8, Shape(VectorDims{1, 1, 1}));
+        m_zpMemory = std::make_shared<Memory>(eng, zpDesc);
+        *m_zpMemory->getDataAs<uint8_t>() = shift_zero_point;
     }
 
     m_implType = m_gemvImpl->get_impl_type();
@@ -506,9 +528,7 @@ bool GatherMatmulDnnlExecutor::update(const MemoryArgs& memory) {
             scale_shape.assign(fullScaleDims.begin() + 1, fullScaleDims.end());
         }
     }
-    ov::element::Type zp_precision = ov::element::dynamic;
     if (m_zpMemory) {
-        zp_precision = m_zpMemory->getDesc().getPrecision();
         const auto& fullZpDims = m_zpMemory->getStaticDims();
         if (1 == fullZpDims.size()) {
             zp_shape.push_back(fullZpDims[0]);
@@ -517,21 +537,13 @@ bool GatherMatmulDnnlExecutor::update(const MemoryArgs& memory) {
         }
     }
 
-    const auto [src_dyn_quant_group_size, zp_dt] =
-        u3DynQuantParams(weights_md.get_data_type() == dnnl::memory::data_type::u3,
-                         srcPrc,
-                         zp_precision,
-                         static_cast<size_t>(srcShape[2]),
-                         scale_shape,
-                         zp_shape);
-
     InnerProductKey key{src_md,
                         weights_md,
                         makeBiasMd(static_cast<dnnl::memory::dim>(weights_md.get_dims()[0]), memory.at(ARG_BIAS)),
                         scale_shape,
                         zp_shape,
-                        zp_dt,
-                        src_dyn_quant_group_size};
+                        m_zpDt,
+                        m_srcDynQuantGroupSize};
     const auto& eng = m_context->getEngine();
     const auto threadPool = m_context->getThreadPool();
     auto cache = m_context->getRuntimeCache();

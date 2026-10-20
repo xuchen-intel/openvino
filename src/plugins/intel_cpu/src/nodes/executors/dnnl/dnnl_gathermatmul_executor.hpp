@@ -47,6 +47,9 @@ private:
     MemoryDescPtr m_tmpOutputDesc;
 
     bool m_bf16AmxMode = false;
+    // Source dynamic quantization decided in the constructor and reused by update(), so both primitives agree.
+    size_t m_srcDynQuantGroupSize = 0;
+    dnnl::memory::data_type m_zpDt = dnnl::memory::data_type::f32;
     impl_desc_type m_implType = impl_desc_type::unknown;
 };
 

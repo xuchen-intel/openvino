@@ -125,5 +125,45 @@ INSTANTIATE_TEST_SUITE_P(smoke_MoeCompressedWeights_3gemm_gelu_u3,
                                             ::testing::Values(true)),
                          MoECompressedWeightsSubgraphTest::getTestCaseName);
 
+// 4-bit weights take the VNNI dynamic quantization path on AVX2-VNNI/AVX512-VNNI when the decompression group size
+// is a multiple of 32: u4 with and without a zero point, and symmetric i4 (no zero point; shifted to u4 with a
+// scalar zero point of 8). The smoke_MoeCompressedWeights suites above use group size 16 and cover the fallback.
+const std::vector<ov::test::ElementType> weights_precisions_4bit = {ov::element::u4, ov::element::i4};
+const std::vector<ov::test::utils::DecompressionType> subtract_types_4bit = {
+    ov::test::utils::DecompressionType::full,
+    ov::test::utils::DecompressionType::empty};
+
+INSTANTIATE_TEST_SUITE_P(smoke_MoeCompressedWeights_4bit_dyn_quant,
+                         MoECompressedWeightsSubgraphTest,
+                         ::testing::Combine(::testing::ValuesIn(moe_params_smoke),
+                                            ::testing::ValuesIn(moe_types),
+                                            ::testing::Values(MoEActivationType::SWISH),
+                                            ::testing::ValuesIn(weights_precisions_4bit),
+                                            ::testing::ValuesIn(decompression_precisions),
+                                            ::testing::Values(ov::element::f32),
+                                            ::testing::Values(ov::test::utils::DecompressionType::full),
+                                            ::testing::ValuesIn(subtract_types_4bit),
+                                            ::testing::Values(false),
+                                            ::testing::Values(32, 64),
+                                            ::testing::ValuesIn(generate_additional_config()),
+                                            ::testing::Values(true)),
+                         MoECompressedWeightsSubgraphTest::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(smoke_MoeCompressedWeights_3gemm_gelu_4bit_dyn_quant,
+                         MoECompressedWeightsSubgraphTest,
+                         ::testing::Combine(::testing::ValuesIn(moe_params_smoke),
+                                            ::testing::Values(MoEType::MoE3GeMM),
+                                            ::testing::Values(MoEActivationType::GELU),
+                                            ::testing::ValuesIn(weights_precisions_4bit),
+                                            ::testing::ValuesIn(decompression_precisions),
+                                            ::testing::Values(ov::element::f32),
+                                            ::testing::Values(ov::test::utils::DecompressionType::full),
+                                            ::testing::ValuesIn(subtract_types_4bit),
+                                            ::testing::Values(false),
+                                            ::testing::Values(32, 64),
+                                            ::testing::ValuesIn(generate_additional_config()),
+                                            ::testing::Values(true)),
+                         MoECompressedWeightsSubgraphTest::getTestCaseName);
+
 }  // namespace test
 }  // namespace ov

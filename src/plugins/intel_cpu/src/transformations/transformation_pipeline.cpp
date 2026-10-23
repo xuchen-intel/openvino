@@ -152,6 +152,7 @@
 
 // CPU specific transformations
 #include "transformations/cpu_opset/common/pass/disable_bf16_comp_cumsum_sin_gen.hpp"
+#include "transformations/cpu_opset/common/pass/disable_bf16_comp_sin_cos_embedding.hpp"
 #include "transformations/cpu_opset/common/pass/insert_convert_after_extension.hpp"
 #include "transformations/cpu_opset/common/pass/ngram_fusion.hpp"
 #include "transformations/cpu_opset/common/pass/permute_slice_n_interpolation.hpp"
@@ -1217,6 +1218,7 @@ void Transformations::PostLpt() {
     if (config.inferencePrecision == ov::element::bf16) {
         CPU_REGISTER_PASS_COMMON(postLPTPassManager, ov::pass::DisableBF16CompForLtxVideoRopePattern);
         CPU_REGISTER_PASS_COMMON(postLPTPassManager, ov::intel_cpu::DisableBF16CompCumSumSinGen);
+        CPU_REGISTER_PASS_COMMON(postLPTPassManager, ov::intel_cpu::DisableBF16CompSinCosEmbedding);
     }
 
     // Should be before Snippets pipeline because Ngram pattern contains eltwise nodes that can be tokenized by

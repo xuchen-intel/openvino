@@ -497,6 +497,62 @@ void SubgraphBaseTest::validate() {
     }
 #endif
 
+    // PROOF-DUMP (temporary, do not commit): when OV_PROOF_DUMP_FILE is set, print a slice of the reference and target
+    // outputs (the last-dim row that contains the worst element) side by side into that file.
+    if (const char* proof_file = std::getenv("OV_PROOF_DUMP_FILE")) {
+        init_thresholds();  // as compare() does
+        const auto& ref = expectedOutputs.at(0);
+        const auto& tgt = actualOutputs.at(0);
+        namespace tc = ov::test::utils::tensor_comparation;
+        const ov::element::Type ref_type = ref.get_element_type(), tgt_type = tgt.get_element_type();
+        const double abs_thr = abs_threshold >= 0 ? abs_threshold : tc::calculate_default_abs_threshold(ref_type, tgt_type, inference_precision);
+        const double rel_thr = rel_threshold >= 0 ? rel_threshold : tc::calculate_default_rel_threshold(ref_type, tgt_type, inference_precision);
+        auto value_at = [](const ov::Tensor& t, size_t i) -> double {
+            switch (t.get_element_type()) {
+            case ov::element::bf16: return static_cast<float>(t.data<ov::bfloat16>()[i]);
+            case ov::element::f16: return static_cast<float>(t.data<ov::float16>()[i]);
+            case ov::element::f32: return t.data<float>()[i];
+            default: OPENVINO_THROW("PROOF-DUMP: unsupported element type ", t.get_element_type());
+            }
+        };
+        const auto& shape = ref.get_shape();
+        auto coord_of = [&](size_t i) {
+            std::string c = "[";
+            for (size_t d = shape.size(), rest = i; d-- > 0;) {
+                c.insert(1, std::to_string(rest % shape[d]) + (d + 1 < shape.size() ? "," : ""));
+                rest /= shape[d];
+            }
+            return c + "]";
+        };
+        size_t mismatches = 0, worst = 0;
+        double worst_diff = -1;
+        for (size_t i = 0; i < ref.get_size(); ++i) {
+            const double r = value_at(ref, i), t = value_at(tgt, i), d = std::fabs(r - t);
+            mismatches += d > tc::calculate_threshold(abs_thr, rel_thr, r);
+            if (d > worst_diff) { worst_diff = d; worst = i; }
+        }
+        std::ofstream f(proof_file);
+        char buf[256];
+        f << "test: " << ::testing::UnitTest::GetInstance()->current_test_info()->test_suite_name() << "."
+          << ::testing::UnitTest::GetInstance()->current_test_info()->name() << "\n";
+        f << "inference_precision: " << inference_precision << ", reference: TEMPLATE plugin, target: " << targetDevice << "\n";
+        std::snprintf(buf, sizeof(buf), "test thresholds: abs=%.9g rel=%.9g  (element fails if |target-reference| > abs + rel*|reference|)\n", abs_thr, rel_thr);
+        f << buf;
+        f << "output shape: " << shape << ", mismatching elements in the whole output: " << mismatches << " / " << ref.get_size() << "\n";
+        const size_t row = shape.back(), row_begin = worst / row * row;
+        std::snprintf(buf, sizeof(buf), "worst element: %s reference=%.9g target=%.9g |diff|=%.9g\n", coord_of(worst).c_str(),
+                      value_at(ref, worst), value_at(tgt, worst), worst_diff);
+        f << buf << "slice: the last-dim row containing the worst element\n";
+        std::snprintf(buf, sizeof(buf), "%-18s %-12s %-12s %-12s %-12s %s\n", "coord", "reference", "target", "|diff|", "allowed", "status");
+        f << buf;
+        for (size_t i = row_begin; i < row_begin + row; ++i) {
+            const double r = value_at(ref, i), t = value_at(tgt, i), d = std::fabs(r - t), allowed = tc::calculate_threshold(abs_thr, rel_thr, r);
+            std::snprintf(buf, sizeof(buf), "%-18s %-12.9g %-12.9g %-12.9g %-12.9g %s\n", coord_of(i).c_str(), r, t, d, allowed,
+                          d > allowed ? "MISMATCH" : "ok");
+            f << buf;
+        }
+    }
+
     if (expectedOutputs.empty()) {
         return;
     }

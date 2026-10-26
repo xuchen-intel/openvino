@@ -247,6 +247,12 @@ void MHA::init_thresholds() {
         rel_threshold = 0.01f;
         abs_threshold = 0.0078125f;
     }
+    // bf16 inference: MatMul0 output (attention scores) may be rounded to bf16 (e.g. on non-AMX platforms Convert to bf16
+    // is fused into Brgemm). Scores are large (up to ~100), so the bf16 rounding error (up to half of bf16 ulp) is
+    // amplified by Softmax, which causes absolute output deviations up to ~0.04 for the tested shapes.
+    if (m_input_types.size() > 1 && m_input_types[0] == ov::element::bf16 && precision_hint == ov::element::bf16) {
+        abs_threshold = 0.05f;
+    }
 }
 
 void MHAConstB::init_thresholds() {

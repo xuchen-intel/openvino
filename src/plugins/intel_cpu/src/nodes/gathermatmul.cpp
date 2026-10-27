@@ -231,6 +231,8 @@ void GatherMatmul::initSupportedPrimitiveDescriptors() {
                                                                       : MemoryDescUtils::makeEmptyDesc();
     descs[ARG_DST] = creatorsMap.at(LayoutType::ncsp)->createSharedDesc(dstTypes.front(), getOutputShapeAtPort(0));
 
+    m_attrs.dynamicQuantizationGroupSize = context->getConfig().fcDynamicQuantizationGroupSize;
+
     auto executionContext = std::make_shared<ExecutorContext>(context, getImplPriority(), privateWeightCache);
     m_factory = std::make_shared<ExecutorFactory<GatherMatmulAttrs>>(m_attrs, executionContext, descs);
 

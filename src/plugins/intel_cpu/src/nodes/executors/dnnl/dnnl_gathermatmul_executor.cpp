@@ -13,6 +13,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <oneapi/dnnl/dnnl.hpp>
 #include <oneapi/dnnl/dnnl_common.hpp>
@@ -79,14 +80,17 @@ struct InnerProductKey {
     }
 };
 
-static std::pair<size_t, dnnl::memory::data_type> u3DynQuantParams(bool is_u3_weights,
+static std::pair<size_t, dnnl::memory::data_type> u3DynQuantParams(uint64_t dq_group_size,
+                                                                   bool is_u3_weights,
                                                                    ov::element::Type src_precision,
                                                                    ov::element::Type zp_precision,
                                                                    size_t K,
                                                                    const VectorDims& scale_shape,
                                                                    const VectorDims& zp_shape) {
-    constexpr size_t default_group_size = 32;
     const auto disabled = std::make_pair(size_t{0}, dnnl::memory::data_type::f32);
+    if (dq_group_size == 0 || dq_group_size == std::numeric_limits<uint64_t>::max() || dq_group_size % 32 != 0) {
+        return disabled;
+    }
     if (!is_u3_weights || !any_of(zp_precision,
                                   ov::element::u8,
                                   ov::element::u2,
@@ -95,11 +99,11 @@ static std::pair<size_t, dnnl::memory::data_type> u3DynQuantParams(bool is_u3_we
                                   ov::element::dynamic)) {
         return disabled;
     }
-    if (K < default_group_size) {
+    if (K < dq_group_size) {
         return disabled;
     }
     for (const auto* shape : {&scale_shape, &zp_shape}) {
-        if (shape->size() >= 2 && (*shape)[1] > 1 && (K / (*shape)[1]) % default_group_size) {
+        if (shape->size() >= 2 && (*shape)[1] > 1 && (K / (*shape)[1]) % dq_group_size) {
             return disabled;
         }
     }
@@ -112,7 +116,7 @@ static std::pair<size_t, dnnl::memory::data_type> u3DynQuantParams(bool is_u3_we
     }
     const auto zp_dt =
         zp_precision == ov::element::dynamic ? dnnl::memory::data_type::f32 : dnnl::memory::data_type::u8;
-    return {default_group_size, zp_dt};
+    return {static_cast<size_t>(dq_group_size), zp_dt};
 }
 
 // ---- InnerProduct (oneDNN inner_product wrapper) ----------------------------
@@ -323,7 +327,7 @@ bool GatherMatmulDnnlExecutor::supports([[maybe_unused]] const GatherMatmulConfi
 #endif
 }
 
-GatherMatmulDnnlExecutor::GatherMatmulDnnlExecutor([[maybe_unused]] const GatherMatmulAttrs& attrs,
+GatherMatmulDnnlExecutor::GatherMatmulDnnlExecutor(const GatherMatmulAttrs& attrs,
                                                    const MemoryArgs& memory,
                                                    const ExecutorContext::CPtr& context)
     : m_context(context) {
@@ -376,7 +380,8 @@ GatherMatmulDnnlExecutor::GatherMatmulDnnlExecutor([[maybe_unused]] const Gather
                                   DnnlExtensionUtils::ElementTypeToDataType(weights_precision),
                                   dnnl::memory::format_tag::any);
 
-    const auto [src_dyn_quant_group_size, zp_dt] = u3DynQuantParams(weights_precision == ov::element::u3,
+    const auto [src_dyn_quant_group_size, zp_dt] = u3DynQuantParams(attrs.dynamicQuantizationGroupSize,
+                                                                    weights_precision == ov::element::u3,
                                                                     src_precision,
                                                                     zp_precision,
                                                                     static_cast<size_t>(K),

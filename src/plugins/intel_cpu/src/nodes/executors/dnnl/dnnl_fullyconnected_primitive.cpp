@@ -208,9 +208,10 @@ static bool useDynamicQuantizationImpl(size_t dqGroupSize,
     if (dqGroupSize % simdWidth) {
         return false;
     }
-    // U3 requires dqGroupSize to be a multiple of 32 because the 32 bits for vnni dot product
-    // are corresponding to 32 elements in IC dimension, which is because u3 repack assures
-    // each of the 3 bits of an element be loaded to 3 different vector registers.
+    // U3 requires dqGroupSize to be a multiple of 32, because horizontally a 32-bit SIMD lane contains 4 u8,
+    // while vertically 3 u8 in the same horizontal position of the 3 vector registers work together to produce
+    // all the 8 elements in a u3 tight pack group. So we get 4 x 8 = 32 elements for vnni dot product that
+    // correspond to 32 elements in IC dimension.
     if (weightsDesc->getPrecision() == ov::element::u3 && (dqGroupSize % 32) != 0U) {
         return false;
     }

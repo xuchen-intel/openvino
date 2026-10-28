@@ -195,13 +195,21 @@ static bool useDynamicQuantizationImpl(size_t dqGroupSize,
         !((any_of(weightsDesc->getPrecision(), ov::element::i8, ov::element::i4) && !zpPtr))) {
         return false;
     }
-    if (zpPtr && none_of(zpPtr->getDesc().getPrecision(),
-                         ov::element::u8,
-                         ov::element::u4,
-                         ov::element::u2,
-                         ov::element::u3,
-                         ov::element::dynamic)) {
-        return false;
+    if (zpPtr) {
+        const auto zpPrecision = zpPtr->getDesc().getPrecision();
+        // u3 weights come with i8 zero points. Dynamic quantization converts the zero points to u8,
+        // which is lossless only when none of them is negative.
+        const bool u3NonNegativeI8Zp = weightsDesc->getPrecision() == ov::element::u3 &&
+                                       zpPrecision == ov::element::i8 && utils::isNonNegativeI8(*zpPtr);
+        if (none_of(zpPrecision,
+                    ov::element::u8,
+                    ov::element::u4,
+                    ov::element::u2,
+                    ov::element::u3,
+                    ov::element::dynamic) &&
+            !u3NonNegativeI8Zp) {
+            return false;
+        }
     }
 
     const size_t simdWidth = 16;

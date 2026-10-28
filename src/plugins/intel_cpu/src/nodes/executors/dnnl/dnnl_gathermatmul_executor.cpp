@@ -84,6 +84,7 @@ static std::pair<size_t, dnnl::memory::data_type> u3DynQuantParams(uint64_t dq_g
                                                                    bool is_u3_weights,
                                                                    ov::element::Type src_precision,
                                                                    ov::element::Type zp_precision,
+                                                                   bool zp_non_negative_i8,
                                                                    size_t K,
                                                                    const VectorDims& scale_shape,
                                                                    const VectorDims& zp_shape) {
@@ -91,12 +92,16 @@ static std::pair<size_t, dnnl::memory::data_type> u3DynQuantParams(uint64_t dq_g
     if (dq_group_size == 0 || dq_group_size == std::numeric_limits<uint64_t>::max() || dq_group_size % 32 != 0) {
         return disabled;
     }
-    if (!is_u3_weights || !any_of(zp_precision,
-                                  ov::element::u8,
-                                  ov::element::u2,
-                                  ov::element::u3,
-                                  ov::element::u4,
-                                  ov::element::dynamic)) {
+    // u3 weights come with i8 zero points. Dynamic quantization converts the zero points to u8, which is
+    // lossless only when none of them is negative.
+    const bool zp_ok = any_of(zp_precision,
+                              ov::element::u8,
+                              ov::element::u2,
+                              ov::element::u3,
+                              ov::element::u4,
+                              ov::element::dynamic) ||
+                       (zp_precision == ov::element::i8 && zp_non_negative_i8);
+    if (!is_u3_weights || !zp_ok) {
         return disabled;
     }
     if (K < dq_group_size) {
@@ -362,8 +367,10 @@ GatherMatmulDnnlExecutor::GatherMatmulDnnlExecutor(const GatherMatmulAttrs& attr
 
     const auto& zpMem = memory.at(ARG_SRC_4);
     ov::element::Type zp_precision = ov::element::dynamic;
+    bool zp_non_negative_i8 = false;
     if (zpMem && !zpMem->getDesc().empty()) {
         zp_precision = zpMem->getDesc().getPrecision();
+        zp_non_negative_i8 = zp_precision == ov::element::i8 && utils::isNonNegativeI8(*zpMem);
         const auto& fullZpShape = zpMem->getShape().getStaticDims();
         if (1 == fullZpShape.size()) {
             OPENVINO_ASSERT(fullZpShape[0] == 1, "Expect broadcastable zero points shape.");
@@ -384,6 +391,7 @@ GatherMatmulDnnlExecutor::GatherMatmulDnnlExecutor(const GatherMatmulAttrs& attr
                                                                     weights_precision == ov::element::u3,
                                                                     src_precision,
                                                                     zp_precision,
+                                                                    zp_non_negative_i8,
                                                                     static_cast<size_t>(K),
                                                                     scale_shape,
                                                                     zp_shape);

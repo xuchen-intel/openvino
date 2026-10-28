@@ -245,6 +245,22 @@ INSTANTIATE_TEST_SUITE_P(smoke_MoeCompressedWeights_u3_dyn_quant_disabled,
                                             ::testing::Values(true)),
                          MoECompressedWeightsSubgraphTest::getTestCaseName);
 
+INSTANTIATE_TEST_SUITE_P(smoke_MoeCompressedWeights_u3_symmetric_zp,
+                         MoECompressedWeightsU3SymmetricZpSubgraphTest,
+                         ::testing::Combine(::testing::ValuesIn(moe_params_smoke),
+                                            ::testing::ValuesIn(moe_types),
+                                            ::testing::Values(MoEActivationType::SWISH),
+                                            ::testing::ValuesIn(weights_precisions_u3),
+                                            ::testing::ValuesIn(decompression_precisions),
+                                            ::testing::Values(ov::element::f32),
+                                            ::testing::Values(ov::test::utils::DecompressionType::full),
+                                            ::testing::Values(ov::test::utils::DecompressionType::full),
+                                            ::testing::Values(false),
+                                            ::testing::Values(16, 32),
+                                            ::testing::ValuesIn(generate_additional_config()),
+                                            ::testing::Values(true)),
+                         MoECompressedWeightsSubgraphTest::getTestCaseName);
+
 INSTANTIATE_TEST_SUITE_P(smoke_MoeCompressedWeights_long_sequences,
                          MoECompressedWeightsSubgraphTest,
                          ::testing::Combine(::testing::ValuesIn(moe_params_long_sequences),

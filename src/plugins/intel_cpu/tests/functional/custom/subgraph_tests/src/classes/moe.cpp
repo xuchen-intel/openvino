@@ -10,6 +10,7 @@
 #include "common_test_utils/subgraph_builders/weights_decompression_builders.hpp"
 #include "shared_test_classes/base/ov_subgraph.hpp"
 #include "shared_test_classes/subgraph/weights_decompression_params.hpp"
+#include "u3_symmetric_zero_point.hpp"
 #include "utils/cpu_test_utils.hpp"
 #include "utils/fusing_test_utils.hpp"
 #include "moe.hpp"
@@ -325,6 +326,17 @@ TEST_P(MoECompressedWeightsSubgraphTest, CompareWithRefs) {
             GTEST_SKIP();
         }
     #endif
+    run();
+    check_results();
+}
+
+void MoECompressedWeightsU3SymmetricZpSubgraphTest::SetUp() {
+    MoECompressedWeightsSubgraphTest::SetUp();
+    make_u3_symmetric_zero_points(function);
+}
+
+TEST_P(MoECompressedWeightsU3SymmetricZpSubgraphTest, CompareWithRefs) {
+    SKIP_IF_CURRENT_TEST_IS_DISABLED()
     run();
     check_results();
 }

@@ -419,6 +419,8 @@ const std::vector<MatMulDecompressionShapeParams> input_shapes_basic_dyn_quant_u
     {{{}, {{1, 1, 128}}}, {128, 512}, 32},
     {{{}, {{1, 1, 128}}}, {128, 4}, 32},
     {{{}, {{1, 1, 256}}}, {256, 8}, 32},
+    {{{}, {{1, 4, 48}}}, {48, 256}},
+    {{{}, {{5, 40, 496}}}, {1, 496, 240}},
 };
 
 const std::vector<ov::test::ElementType> weights_precisions_dyn_quant = {ov::element::u8, ov::element::u4};

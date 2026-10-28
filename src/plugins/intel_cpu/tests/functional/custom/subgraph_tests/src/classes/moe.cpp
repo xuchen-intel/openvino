@@ -211,9 +211,9 @@ void MoECompressedWeightsSubgraphTest::SetUp() {
     const bool is_bf16 = itr != configuration.end() && itr->second == ov::element::bf16;
     const auto dq_itr = configuration.find(ov::hint::dynamic_quantization_group_size.name());
     const uint64_t dq_group_size = dq_itr != configuration.end() ? dq_itr->second.as<uint64_t>() : 32;
-    const bool dyn_quant = dq_group_size != 0 && dq_group_size % 32 == 0 &&
-                           (decompression_group_size == -1 ||
-                            static_cast<uint64_t>(decompression_group_size) % dq_group_size == 0);
+    const bool dyn_quant =
+        dq_group_size != 0 && dq_group_size % 32 == 0 &&
+        (decompression_group_size == -1 || static_cast<uint64_t>(decompression_group_size) % dq_group_size == 0);
     if (weights_precision == ov::element::u3 && !is_bf16 && dyn_quant &&
         (ov::with_cpu_x86_avx2_vnni() || ov::with_cpu_x86_avx512_core_vnni())) {
         rel_threshold = 0.05f;

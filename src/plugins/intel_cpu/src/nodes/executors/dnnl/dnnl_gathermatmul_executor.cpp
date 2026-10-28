@@ -80,14 +80,14 @@ struct InnerProductKey {
     }
 };
 
-static std::pair<size_t, dnnl::memory::data_type> u3DynQuantParams(uint64_t dq_group_size,
-                                                                   bool is_u3_weights,
-                                                                   ov::element::Type src_precision,
-                                                                   ov::element::Type zp_precision,
-                                                                   bool zp_non_negative_i8,
-                                                                   size_t K,
-                                                                   const VectorDims& scale_shape,
-                                                                   const VectorDims& zp_shape) {
+static std::pair<size_t, dnnl::memory::data_type> dynQuantParams(uint64_t dq_group_size,
+                                                                 ov::element::Type wei_precision,
+                                                                 ov::element::Type src_precision,
+                                                                 ov::element::Type zp_precision,
+                                                                 bool zp_non_negative_i8,
+                                                                 size_t K,
+                                                                 const VectorDims& scale_shape,
+                                                                 const VectorDims& zp_shape) {
     const auto disabled = std::make_pair(size_t{0}, dnnl::memory::data_type::f32);
     if (dq_group_size == 0 || dq_group_size == std::numeric_limits<uint64_t>::max() || dq_group_size % 32 != 0) {
         return disabled;
@@ -101,6 +101,7 @@ static std::pair<size_t, dnnl::memory::data_type> u3DynQuantParams(uint64_t dq_g
                               ov::element::u4,
                               ov::element::dynamic) ||
                        (zp_precision == ov::element::i8 && zp_non_negative_i8);
+    const bool is_u3_weights = wei_precision == ov::element::u3;
     if (!is_u3_weights || !zp_ok) {
         return disabled;
     }
@@ -387,14 +388,14 @@ GatherMatmulDnnlExecutor::GatherMatmulDnnlExecutor(const GatherMatmulAttrs& attr
                                   DnnlExtensionUtils::ElementTypeToDataType(weights_precision),
                                   dnnl::memory::format_tag::any);
 
-    const auto [src_dyn_quant_group_size, zp_dt] = u3DynQuantParams(attrs.dynamicQuantizationGroupSize,
-                                                                    weights_precision == ov::element::u3,
-                                                                    src_precision,
-                                                                    zp_precision,
-                                                                    zp_non_negative_i8,
-                                                                    static_cast<size_t>(K),
-                                                                    scale_shape,
-                                                                    zp_shape);
+    const auto [src_dyn_quant_group_size, zp_dt] = dynQuantParams(attrs.dynamicQuantizationGroupSize,
+                                                                  weights_precision,
+                                                                  src_precision,
+                                                                  zp_precision,
+                                                                  zp_non_negative_i8,
+                                                                  static_cast<size_t>(K),
+                                                                  scale_shape,
+                                                                  zp_shape);
 
     InnerProductKey key{src_md,
                         weights_md,

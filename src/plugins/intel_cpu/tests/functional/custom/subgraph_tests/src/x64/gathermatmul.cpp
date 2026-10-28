@@ -209,7 +209,6 @@ INSTANTIATE_TEST_SUITE_P(smoke_MoeCompressedWeights_3gemm_gelu,
                                             ::testing::Values(true)),  // use_matmul_decompression_impl
                          MoECompressedWeightsSubgraphTest::getTestCaseName);
 
-// See the smoke_MoeCompressedWeights_u3 comment above for the u3 group sizes.
 INSTANTIATE_TEST_SUITE_P(smoke_MoeCompressedWeights_3gemm_gelu_u3,
                          MoECompressedWeightsSubgraphTest,
                          ::testing::Combine(::testing::ValuesIn(moe_params_smoke),

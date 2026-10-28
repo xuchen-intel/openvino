@@ -437,6 +437,15 @@ std::vector<ov::AnyMap> filter_additional_config_dyn_quant() {
     return additional_config;
 }
 
+std::vector<ov::AnyMap> filter_additional_config_dyn_quant_u3() {
+    std::vector<ov::AnyMap> additional_config = {
+        {{ov::hint::dynamic_quantization_group_size(0)}},  // dynamic quantization is disabled
+        {{ov::hint::dynamic_quantization_group_size(32)}},
+        {{ov::hint::dynamic_quantization_group_size(128)}},
+    };
+    return additional_config;
+}
+
 std::vector<ov::AnyMap> filter_additional_config_dyn_quant_bf16() {
     // Drive the BF16 dynamic-quant compressed-FC path through the inference_precision
     // hint on top of an f32 IR. The ConvertPrecision pipeline is responsible for
@@ -508,7 +517,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_MatMulCompressedWeights_non_default_dyn_quant_gro
                                             ::testing::Values(DecompressionType::scalar, DecompressionType::full),
                                             ::testing::Values(DecompressionType::scalar, DecompressionType::full),
                                             ::testing::Values(false),
-                                            ::testing::ValuesIn(filter_additional_config_dyn_quant()),
+                                            ::testing::ValuesIn(filter_additional_config_dyn_quant_u3()),
                                             ::testing::ValuesIn(fusing_params_dyn_quant),
                                             ::testing::Values(true)),
                          MatmulWeightsDecompression::getTestCaseName);

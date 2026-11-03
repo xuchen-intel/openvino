@@ -56,6 +56,7 @@
 #include "openvino/runtime/threading/executor_manager.hpp"
 #include "openvino/runtime/threading/istreams_executor.hpp"
 #include "openvino/runtime/weightless_properties_utils.hpp"
+#include "openvino/util/ov_version.hpp"
 #include "openvino/util/xml_parse_utils.hpp"
 #include "sigstack_manager.h"
 #include "transformations/transformation_pipeline.h"
@@ -64,7 +65,7 @@
 #include "utils/debug_capabilities.h"
 #include "utils/denormals.hpp"
 #include "utils/graph_serializer/deserializer.hpp"
-#include "utils/graph_serializer/serializer.hpp"
+#include "utils/graph_serializer/runtime_requirements.hpp"
 #include "utils/precision_support.h"
 #include "weights_cache.hpp"
 
@@ -262,6 +263,18 @@ Plugin::~Plugin() {
     executor_manager()->clear("CPUStreamsExecutor");
     executor_manager()->clear("CPUMainStreamExecutor");
     executor_manager()->clear("CPUCallbackExecutor");
+}
+
+static bool is_ov_version_compatible(const std::string& blob_version, const std::string& runtime_version) {
+    if (blob_version == runtime_version) {
+        return true;
+    }
+    try {
+        return ov::util::is_version_compatible(ov::util::Version(blob_version), ov::util::Version(runtime_version));
+    } catch (const ov::Exception&) {
+        // non-standard build numbers can't be ordered
+        return false;
+    }
 }
 
 static bool streamsSet(const ov::AnyMap& config) {
@@ -511,7 +524,20 @@ ov::Any Plugin::get_property(const std::string& name, const ov::AnyMap& options)
             ov::AnyMap input_map = it->second.as<ov::AnyMap>();
             for (const auto& item : m_compiled_model_runtime_properties) {
                 auto it = input_map.find(item.first);
-                if (it == input_map.end() || it->second.as<std::string>() != item.second.as<std::string>()) {
+                if (it == input_map.end()) {
+                    res = false;
+                    break;
+                }
+                const auto blob_value = it->second.as<std::string>();
+                const auto runtime_value = item.second.as<std::string>();
+                if (item.first == "OV_VERSION") {
+                    // Blobs of older versions are accepted here: the precise compatibility check is done on import
+                    // against the runtime requirements stored in the blob (fallback to recompilation on failure)
+                    if (!is_ov_version_compatible(blob_value, runtime_value)) {
+                        res = false;
+                        break;
+                    }
+                } else if (blob_value != runtime_value) {
                     res = false;
                     break;
                 }
@@ -666,7 +692,9 @@ ov::Any Plugin::get_ro_property(const std::string& name, [[maybe_unused]] const 
         return decltype(ov::range_for_streams)::value_type(range);
     }
     if (name == ov::internal::caching_properties) {
-        std::vector<ov::PropertyName> cachingProperties = {ov::device::full_name};
+        // The cached blob is shared by all CPUs of the same architecture: whether it can run on the current CPU is
+        // decided on import by the runtime requirements stored in the blob (recompiled otherwise)
+        std::vector<ov::PropertyName> cachingProperties = {ov::device::architecture};
         return decltype(ov::internal::caching_properties)::value_type(std::move(cachingProperties));
     }
     if (name == ov::intel_cpu::denormals_optimization) {
@@ -779,7 +807,7 @@ static bool get_cache_decrypt_fn(const ov::AnyMap& config, CacheDecrypt& decrypt
     }
 }
 
-static void validate_runtime_requirements(const char* base_ptr, size_t total_bytes, size_t& offset) {
+static std::string validate_runtime_requirements(const char* base_ptr, size_t total_bytes, size_t& offset) {
     // requirements_magic
     OPENVINO_ASSERT(offset + sizeof(uint64_t) <= total_bytes,
                     "[CPU] Cannot import compiled blob: buffer underflow reading magic.");
@@ -808,18 +836,18 @@ static void validate_runtime_requirements(const char* base_ptr, size_t total_byt
                     "[CPU] Cannot import compiled blob: corrupted runtime requirements block.");
     std::string runtime_requirements(base_ptr + offset, static_cast<size_t>(reqs_size));
     offset += static_cast<size_t>(reqs_size);
-    OPENVINO_ASSERT(is_runtime_requirements_compatible(runtime_requirements),
-                    "[CPU] Cannot import compiled blob: it was built for a different runtime "
-                    "configuration (OpenVINO version/isa mismatch) and cannot be executed on "
-                    "this device.\n"
-                    "  blob:    ",
-                    runtime_requirements,
-                    "\n"
-                    "  current: ",
-                    build_runtime_requirements());
+    const auto reason = check_runtime_requirements(runtime_requirements);
+    OPENVINO_ASSERT(reason.empty(),
+                    "[CPU] Cannot import compiled blob: its runtime requirements are not met by this runtime or "
+                    "device: ",
+                    reason,
+                    ".\n"
+                    "  blob requirements: ",
+                    runtime_requirements);
+    return runtime_requirements;
 }
 
-static void read_header(std::istream& model_stream) {
+static std::string read_header(std::istream& model_stream) {
     constexpr size_t max_header_footprint =
         sizeof(uint64_t) + sizeof(uint32_t) + sizeof(uint64_t) + runtime_requirements_max_size;
     std::vector<char> header_buffer(max_header_footprint);
@@ -831,13 +859,14 @@ static void read_header(std::istream& model_stream) {
                     "[CPU] Cannot import compiled blob: failed to read minimal requirements header.");
 
     size_t offset = 0;
-    validate_runtime_requirements(header_buffer.data(), bytes_read, offset);
+    auto runtime_requirements = validate_runtime_requirements(header_buffer.data(), bytes_read, offset);
 
     // Clear stream flags in case we hit EOF while over-reading into our fixed scratch buffer
     model_stream.clear();
 
     std::streamoff remaining_unread_bytes = static_cast<std::streamoff>(bytes_read - offset);
     model_stream.seekg(-remaining_unread_bytes, std::ios_base::cur);
+    return runtime_requirements;
 }
 
 std::shared_ptr<ov::ICompiledModel> Plugin::import_model(std::istream& model_stream, const ov::AnyMap& config) const {
@@ -847,11 +876,11 @@ std::shared_ptr<ov::ICompiledModel> Plugin::import_model(std::istream& model_str
     auto decrypt_from_string = get_cache_decrypt_fn(config, decrypt);
     const auto origin_weights_path = get_origin_weights_path(config);
 
-    read_header(model_stream);
+    auto runtime_requirements = read_header(model_stream);
 
     ModelDeserializer deserializer(model_stream, get_core(), decrypt, decrypt_from_string, origin_weights_path);
 
-    return deserialize_model(deserializer, config);
+    return deserialize_model(deserializer, config, std::move(runtime_requirements));
 }
 
 std::shared_ptr<ov::ICompiledModel> Plugin::import_model(const ov::Tensor& model_tensor,
@@ -869,7 +898,7 @@ std::shared_ptr<ov::ICompiledModel> Plugin::import_model(const ov::Tensor& model
     // but is used as read-only in deserializer
     auto* base_ptr = reinterpret_cast<char*>(const_cast<void*>(model_tensor.data()));
 
-    validate_runtime_requirements(base_ptr, total_bytes, offset);
+    auto runtime_requirements = validate_runtime_requirements(base_ptr, total_bytes, offset);
 
     auto* model_data_ptr = base_ptr + offset;
     size_t remaining_bytes = total_bytes - offset;
@@ -878,11 +907,12 @@ std::shared_ptr<ov::ICompiledModel> Plugin::import_model(const ov::Tensor& model
 
     ModelDeserializer deserializer(model_buffer, get_core(), decrypt, decrypt_from_string, origin_weights_path);
 
-    return deserialize_model(deserializer, config);
+    return deserialize_model(deserializer, config, std::move(runtime_requirements));
 }
 
 std::shared_ptr<ov::ICompiledModel> Plugin::deserialize_model(ModelDeserializer& deserializer,
-                                                              const ov::AnyMap& config) const {
+                                                              const ov::AnyMap& config,
+                                                              std::string runtime_requirements) const {
     std::shared_ptr<ov::Model> model;
     deserializer >> model;
 
@@ -901,7 +931,12 @@ std::shared_ptr<ov::ICompiledModel> Plugin::deserialize_model(ModelDeserializer&
 
     // import config props from caching model
     calculate_streams(conf, model, true);
-    auto compiled_model = std::make_shared<CompiledModel>(model, shared_from_this(), conf, loaded_from_cache);
+    auto compiled_model = std::make_shared<CompiledModel>(model,
+                                                          shared_from_this(),
+                                                          conf,
+                                                          loaded_from_cache,
+                                                          nullptr,
+                                                          std::move(runtime_requirements));
     return compiled_model;
 }
 }  // namespace ov::intel_cpu

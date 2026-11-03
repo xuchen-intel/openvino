@@ -20,6 +20,7 @@
 #include "openvino/op/sqrt.hpp"
 #include "openvino/runtime/core.hpp"
 #include "openvino/runtime/intel_cpu/properties.hpp"
+#include "openvino/runtime/internal_properties.hpp"
 #include "openvino/runtime/properties.hpp"
 #include "openvino/runtime/system_conf.hpp"
 #include "shared_test_classes/base/ov_behavior_test_utils.hpp"
@@ -400,6 +401,17 @@ TEST_F(CompatibilityStringCPU, RMSRequiresAvx2) {
 #else
     GTEST_SKIP() << "x86_64 only";
 #endif
+}
+
+TEST_F(CompatibilityStringCPU, CacheKeyIsSharedByCpusOfSameArchitecture) {
+    SKIP_IF_CURRENT_TEST_IS_DISABLED();
+    // the CPU model must not be a part of the cache key: compatibility is decided by the blob runtime requirements
+    ov::Core core;
+    const auto caching_properties = core.get_property(ov::test::utils::DEVICE_CPU, ov::internal::caching_properties);
+    EXPECT_NE(std::find(caching_properties.begin(), caching_properties.end(), ov::device::architecture.name()),
+              caching_properties.end());
+    EXPECT_EQ(std::find(caching_properties.begin(), caching_properties.end(), ov::device::full_name.name()),
+              caching_properties.end());
 }
 
 }  // namespace

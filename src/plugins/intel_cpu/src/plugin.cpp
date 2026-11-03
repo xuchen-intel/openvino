@@ -692,7 +692,9 @@ ov::Any Plugin::get_ro_property(const std::string& name, [[maybe_unused]] const 
         return decltype(ov::range_for_streams)::value_type(range);
     }
     if (name == ov::internal::caching_properties) {
-        std::vector<ov::PropertyName> cachingProperties = {ov::device::full_name};
+        // The cached blob is shared by all CPUs of the same architecture: whether it can run on the current CPU is
+        // decided on import by the runtime requirements stored in the blob (recompiled otherwise)
+        std::vector<ov::PropertyName> cachingProperties = {ov::device::architecture};
         return decltype(ov::internal::caching_properties)::value_type(std::move(cachingProperties));
     }
     if (name == ov::intel_cpu::denormals_optimization) {

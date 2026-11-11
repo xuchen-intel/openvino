@@ -127,11 +127,7 @@ std::string get_opset_name(const ov::Node& node) {
     return version_id == nullptr ? "experimental" : version_id;
 }
 
-// Host capabilities a transformed graph may depend on. Every capability has exactly one predicate, so that an op
-// requires only what it really uses and a blob stays compatible with its own producer when the two ISA views differ
-// (OV_CPU_MAX_ISA limits the "ov." view, ov::with_cpu_x86_*(); ONEDNN_MAX_CPU_ISA limits the "dnnl." view, oneDNN
-// mayiuse()). The names without a prefix are plugin helpers (hasHardwareSupport(), brgemm_utils,
-// hasFp8WeightsDecompressionSupport()) that are based on oneDNN mayiuse() on x86.
+// Host capabilities a transformed graph may depend on.
 using Predicate = bool (*)();
 const std::map<std::string, Predicate, std::less<>>& capabilities() {
     static const std::map<std::string, Predicate, std::less<>> caps = {
@@ -177,15 +173,13 @@ const std::map<std::string, Predicate, std::less<>>& capabilities() {
     return caps;
 }
 
-// What the snippets code generator needs on the current architecture: the host ISA selection of the Subgraph node
-// (getHostIsa() in nodes/subgraph.cpp) and the snippets gate of the transformation pipeline.
 std::string subgraph_capability() {
 #if defined(OPENVINO_ARCH_X86_64)
     return "dnnl.avx2";
 #elif defined(OPENVINO_ARCH_ARM64)
     return "dnnl.asimd";
 #elif defined(OPENVINO_ARCH_RISCV64)
-    return "ov.rvv";  // riscv64::gv: G + the vector extension (RVV 1.0)
+    return "ov.rvv";
 #else
     return {};
 #endif
@@ -256,9 +250,6 @@ private:
         if (is_standard_opset(opset)) {
             return;
         }
-        // Only the operations of the plugin itself (its bundled extensions) are recorded and checked. Operations that
-        // the user registered with Core::add_extension() are resolved by the importing Core when the model is read:
-        // the plugin cannot see them (ICore does not expose the registered extensions), and the Core is the authority.
         const std::string name = node.get_type_info().name;
         if (known_internal_ops().count(opset + "::" + name) != 0) {
             m_ops[opset].insert(name);
@@ -277,7 +268,6 @@ private:
             }
         }
 #if defined(OPENVINO_ARCH_X86_64)
-        // RMSNorm checks only ov::with_cpu_x86_avx2()
         if (ov::is_type<ov::op::internal::RMS>(&node)) {
             m_caps.insert("ov.avx2");
         }

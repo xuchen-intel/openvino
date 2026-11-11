@@ -197,9 +197,6 @@ TEST(Extension, smoke_XmlModelWithExtensionFromDSO) {
 
     infer_model(core, compiled_model, input_values, expected);
 
-    // Export/import round trip in the same Core: the custom operation is not a plugin operation, so it must not make
-    // the runtime requirements of the blob unsupported, and the Core resolves it when the model is imported.
-    // The model above is compiled on the default device (AUTO), compile on CPU explicitly for the blob.
     auto cpu_model = core.compile_model(ov_model, "CPU");
     const auto requirements = cpu_model.get_property(ov::runtime_requirements);
     EXPECT_EQ(requirements.find("Identity"), std::string::npos) << requirements;

@@ -320,7 +320,11 @@ TEST_F(RuntimeRequirementsCPU, DescriptorFormat) {
 
 TEST_F(RuntimeRequirementsCPU, PlainModelHasNoCapabilityRequirements) {
     SKIP_IF_CURRENT_TEST_IS_DISABLED();
-    EXPECT_EQ(get_field(requirements, "caps"), "") << requirements;
+    // The default inference precision is not f32 everywhere (f16 on ARM with FP16 support adds the "f16" capability)
+    const auto fp32_model =
+        core.compile_model(model, ov::test::utils::DEVICE_CPU, ov::hint::inference_precision(ov::element::f32));
+    const auto fp32_requirements = fp32_model.get_property(ov::runtime_requirements);
+    EXPECT_EQ(get_field(fp32_requirements, "caps"), "") << fp32_requirements;
 }
 
 TEST_F(RuntimeRequirementsCPU, OlderProducerVersionSupported) {

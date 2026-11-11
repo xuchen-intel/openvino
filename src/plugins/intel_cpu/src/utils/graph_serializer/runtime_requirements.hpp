@@ -29,8 +29,10 @@ static constexpr uint64_t runtime_requirements_max_size = 4096;
  * - ops  - internal (non-standard opset) operations serialized into the blob, grouped by opset:
  *          <opset>::<op>[@<schema>]+<op>...,<opset>::...  Every op must be known by the consumer with the same
  *          schema version (see internal_op_schema_versions() in runtime_requirements.cpp).
- * - caps - host capabilities required by the transformed graph, e.g. "avx2" for RMS or compressed FC,
- *          "amx_bf16" for LLMMLP/QKVProjection.
+ * - caps - host capabilities required by the transformed graph, each op requires only what it really uses: e.g.
+ *          "ov.avx2" for RMS (ov::with_cpu_x86_avx2()), "dnnl.avx2" for snippets and compressed matmuls (oneDNN),
+ *          "ov.amx_bf16" for LLMMLP/QKVProjection. The "ov." and "dnnl." prefixes name the ISA view (OV_CPU_MAX_ISA vs
+ *          ONEDNN_MAX_CPU_ISA) the capability is checked in.
  *
  * @param model  Transformed model which is serialized into the blob.
  * @param config Configuration the model was transformed with.

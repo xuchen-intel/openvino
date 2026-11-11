@@ -17,6 +17,7 @@
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "config.h"
@@ -45,6 +46,10 @@
 #    include "transformations/cpu_opset/x64/op/llm_mlp.hpp"
 #    include "transformations/cpu_opset/x64/op/qkv_proj.hpp"
 #    include "transformations/snippets/x64/op/brgemm_utils.hpp"
+#elif defined(OPENVINO_ARCH_ARM64)
+#    include "cpu/aarch64/cpu_isa_traits.hpp"
+#elif defined(OPENVINO_ARCH_RISCV64)
+#    include "nodes/kernels/riscv64/cpu_isa_traits.hpp"
 #endif
 
 namespace ov::intel_cpu {
@@ -157,9 +162,33 @@ const std::map<std::string, Predicate, std::less<>>& capabilities() {
          [] {
              return hasFp8WeightsDecompressionSupport(ov::element::f16);
          }},
+#elif defined(OPENVINO_ARCH_ARM64)
+        {"dnnl.asimd",
+         [] {
+             return dnnl::impl::cpu::aarch64::mayiuse(dnnl::impl::cpu::aarch64::asimd);
+         }},
+#elif defined(OPENVINO_ARCH_RISCV64)
+        {"ov.rvv",
+         [] {
+             return ov::intel_cpu::riscv64::mayiuse(ov::intel_cpu::riscv64::gv);
+         }},
 #endif
     };
     return caps;
+}
+
+// What the snippets code generator needs on the current architecture: the host ISA selection of the Subgraph node
+// (getHostIsa() in nodes/subgraph.cpp) and the snippets gate of the transformation pipeline.
+std::string subgraph_capability() {
+#if defined(OPENVINO_ARCH_X86_64)
+    return "dnnl.avx2";
+#elif defined(OPENVINO_ARCH_ARM64)
+    return "dnnl.asimd";
+#elif defined(OPENVINO_ARCH_RISCV64)
+    return "ov.rvv";  // riscv64::gv: G + the vector extension (RVV 1.0)
+#else
+    return {};
+#endif
 }
 
 std::optional<bool> has_capability(std::string_view name) {
@@ -235,13 +264,15 @@ private:
                 m_has_bf16_tensors |= output.get_element_type() == ov::element::bf16;
             }
         }
+        if (ov::is_type<ov::snippets::op::Subgraph>(&node)) {
+            if (auto cap = subgraph_capability(); !cap.empty()) {
+                m_caps.insert(std::move(cap));
+            }
+        }
 #if defined(OPENVINO_ARCH_X86_64)
-        // RMSNorm checks only ov::with_cpu_x86_avx2(), snippets select the ISA with oneDNN mayiuse()
+        // RMSNorm checks only ov::with_cpu_x86_avx2()
         if (ov::is_type<ov::op::internal::RMS>(&node)) {
             m_caps.insert("ov.avx2");
-        }
-        if (ov::is_type<ov::snippets::op::Subgraph>(&node)) {
-            m_caps.insert("dnnl.avx2");
         }
         if (in_snippets && (ov::is_type<ov::op::v0::MatMul>(&node) || ov::is_type<ov::snippets::op::Brgemm>(&node))) {
             for (const auto& input : node.inputs()) {

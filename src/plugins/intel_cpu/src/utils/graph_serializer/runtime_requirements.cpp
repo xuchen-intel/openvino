@@ -253,8 +253,15 @@ private:
 
     void collect_op(const ov::Node& node) {
         auto opset = get_opset_name(node);
-        if (!is_standard_opset(opset)) {
-            m_ops[opset].insert(node.get_type_info().name);
+        if (is_standard_opset(opset)) {
+            return;
+        }
+        // Only the operations of the plugin itself (its bundled extensions) are recorded and checked. Operations that
+        // the user registered with Core::add_extension() are resolved by the importing Core when the model is read:
+        // the plugin cannot see them (ICore does not expose the registered extensions), and the Core is the authority.
+        const std::string name = node.get_type_info().name;
+        if (known_internal_ops().count(opset + "::" + name) != 0) {
+            m_ops[opset].insert(name);
         }
     }
 

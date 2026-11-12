@@ -4,7 +4,6 @@
 
 #include "transformations/op_conversions/convert_fc_to_compressed.hpp"
 
-#include <algorithm>
 #include <memory>
 #include <tuple>
 
@@ -170,16 +169,9 @@ ConvertFullyConnectedToFullyConnectedCompressed::process_compressed_weights(
     return std::make_tuple(fc_input_b, fc_input_scale, fc_input_zp);
 }
 
-size_t ConvertFullyConnectedToFullyConnectedCompressed::get_ic_groups_num(const std::shared_ptr<ov::Node>& scale,
-                                                                          const std::shared_ptr<ov::Node>& zero_point) {
-    auto groups_num = [](const std::shared_ptr<ov::Node>& param) -> size_t {
-        if (!param) {
-            return 1;
-        }
-        const auto& shape = param->get_output_shape(0);
-        return shape.empty() || ov::shape_size(shape) <= 1 ? 1 : shape.back();
-    };
-    return std::max(groups_num(scale), groups_num(zero_point));
+size_t ConvertFullyConnectedToFullyConnectedCompressed::get_ic_groups_num(const ov::Shape& processed_scale_shape) {
+    return processed_scale_shape.empty() || ov::shape_size(processed_scale_shape) <= 1 ? 1
+                                                                                       : processed_scale_shape.back();
 }
 
 ConvertFullyConnectedToFullyConnectedCompressed::ConvertFullyConnectedToFullyConnectedCompressed(
@@ -224,7 +216,8 @@ ConvertFullyConnectedToFullyConnectedCompressed::ConvertFullyConnectedToFullyCon
 
         const size_t IC = *(weights_shape.rbegin());
         const size_t OC = *(weights_shape.rbegin() + 1);
-        const size_t G = get_ic_groups_num(fc_input_scale, fc_input_zp);
+        const auto& processed_scale_shape = fc_input_scale->get_output_shape(0);
+        const size_t G = get_ic_groups_num(processed_scale_shape);
         // The flags are not copyable and are needed by supports_config
         if (ov::is_conversion_disabled(fc, element::f16)) {
             ov::disable_conversion(new_fc, element::f16);

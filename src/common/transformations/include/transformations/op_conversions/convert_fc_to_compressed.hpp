@@ -8,6 +8,7 @@
 #include <tuple>
 #include <vector>
 
+#include "openvino/core/shape.hpp"
 #include "openvino/pass/matcher_pass.hpp"
 #include "openvino/pass/pattern/matcher.hpp"
 #include "ov_ops/fully_connected.hpp"
@@ -57,11 +58,9 @@ public:
                                std::vector<std::shared_ptr<ov::Node>>& result_nodes);
 
     /**
-     * @brief Returns the number of decompression groups along IC of processed scales and zero points.
+     * @brief Returns the number of decompression groups along IC of processed scales.
      *
-     * @param scale Decompression scale returned by process_compressed_weights
-     * @param zero_point Decompression zero point returned by process_compressed_weights
+     * @param processed_scale_shape Shape of the decompression scale returned by process_compressed_weights
      */
-    static size_t get_ic_groups_num(const std::shared_ptr<ov::Node>& scale,
-                                    const std::shared_ptr<ov::Node>& zero_point);
+    static size_t get_ic_groups_num(const ov::Shape& processed_scale_shape);
 };

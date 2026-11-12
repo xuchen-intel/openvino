@@ -142,6 +142,19 @@ bool FullyConnected::isSupportedOperation(const std::shared_ptr<const ov::Node>&
     return true;
 }
 
+#if defined(OPENVINO_ARCH_X86_64)
+// Number of IC groups of a decompression scale / zero point, i.e. its innermost (IC) dimension.
+// It may exceed the G reported by ConvertFullyConnectedToFullyConnectedCompressed, which only counts
+// reshape-grouped params, e.g. per-IC scales [1, IC] give IC groups of size 1 there while G is 1.
+static size_t getDecompressionParamGroupsNum(const ov::Output<ov::Node>& param) {
+    const auto& shape = param.get_partial_shape();
+    if (shape.rank().is_dynamic() || shape.size() < 2 || !shape.is_static() || ov::shape_size(shape.to_shape()) <= 1) {
+        return 1;
+    }
+    return shape.to_shape().back();
+}
+#endif
+
 // @todo replace 'inferencePrecision' check with 'fc->get_input_element_type(0) == ov::element::bf16'
 // after bf16 pipeline is moved to ConvertPrecision
 bool FullyConnected::isSupportedCompressedOperation([[maybe_unused]] const std::shared_ptr<ov::Node>& op,
@@ -158,6 +171,14 @@ bool FullyConnected::isSupportedCompressedOperation([[maybe_unused]] const std::
 
         if (!ov::with_cpu_x86_avx2()) {
             return false;
+        }
+
+        // Account for per-IC scales / zero points, which the group size checks below must reject:
+        // oneDNN brgemm decompression processes IC in VNNI pairs for bf16 and divides by zero on 1-element groups.
+        for (const auto idx : {WEIGHT_SCALES, WEIGHT_ZERO_POINTS}) {
+            if (op->get_input_size() > idx) {
+                G = std::max(G, getDecompressionParamGroupsNum(op->input_value(idx)));
+            }
         }
 
         const auto weightsPrecision = op->get_input_element_type(WEIGHTS);

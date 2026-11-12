@@ -72,10 +72,8 @@ ov::pass::ConvertGatherMatmulToGatherMatmulCompressed::ConvertGatherMatmulToGath
 
         const size_t IC = *(weights_shape.rbegin());
         const size_t OC = *(weights_shape.rbegin() + 1);
-        size_t G = 1;
-        if (grouped) {
-            G = has_transpose ? *(scale_shape.rbegin() + 2) : *(scale_shape.rbegin() + 1);
-        }
+        const size_t G =
+            ov::pass::ConvertFullyConnectedToFullyConnectedCompressed::get_ic_groups_num(bgm_input_scale, bgm_input_zp);
         if (supports_config && !supports_config(new_bgm, IC, OC, G)) {
             return false;
         }

@@ -201,8 +201,7 @@ const std::vector<ConvertBGMToCompressedGroupsNumParams> groups_num_params = {
     {{16, 5, 4, 64}, {16, 5, 4, 1}, {16, 5, 4, 1}, 4},
     // per-IC: G = IC
     {{16, 5, 256}, {16, 1, 256}, {}, 256},
-    // per-OC scale with per-IC zero point: the finer grouping wins
-    {{16, 5, 256}, {16, 5, 1}, {16, 1, 256}, 256},
+    {{16, 5, 256}, {16, 1, 256}, {16, 1, 256}, 256},
 };
 }  // namespace
 

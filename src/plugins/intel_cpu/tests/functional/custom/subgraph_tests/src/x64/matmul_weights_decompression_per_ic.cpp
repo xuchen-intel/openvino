@@ -21,46 +21,45 @@ namespace ov::test {
 //        |
 //    Convert(f32)   ZP [IC, 1] (opt)
 //            \       /
-//            Subtract(opt)   Scale [IC, 1] or [1, OC]
+//            Subtract(opt)   Scale [IC, 1]
 //                   \       /
 //    Data(f32)      Multiply
 //          \         /
 //            MatMul
 using MatMulWeightsDecompressionPerICParams = std::tuple<ov::Shape,  // data shape
-                                                         bool>;      // per-IC zero point + per-OC scale
+                                                         bool>;      // with per-IC zero point (u8 weights)
 
 class MatMulWeightsDecompressionPerIC : public testing::WithParamInterface<MatMulWeightsDecompressionPerICParams>,
                                         virtual public SubgraphBaseTest {
 public:
     static std::string getTestCaseName(const testing::TestParamInfo<MatMulWeightsDecompressionPerICParams>& obj) {
-        const auto& [data_shape, per_ic_zp] = obj.param;
+        const auto& [data_shape, with_zp] = obj.param;
         std::ostringstream result;
-        result << "IS=" << data_shape << "_perICZp=" << per_ic_zp;
+        result << "IS=" << data_shape << "_withZp=" << with_zp;
         return result.str();
     }
 
 protected:
     void SetUp() override {
         targetDevice = utils::DEVICE_CPU;
-        const auto& [data_shape, per_ic_zp] = GetParam();
+        const auto& [data_shape, with_zp] = GetParam();
         const size_t IC = data_shape.back();
         const size_t OC = 64;
 
         init_input_shapes(static_shapes_to_test_representation({data_shape}));
         auto data = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, inputDynamicShapes[0]);
 
-        const auto weights_precision = per_ic_zp ? ov::element::u8 : ov::element::i8;
+        const auto weights_precision = with_zp ? ov::element::u8 : ov::element::i8;
         auto weights = utils::make_constant(weights_precision,
                                             ov::Shape{IC, OC},
-                                            utils::InputGenerateData(per_ic_zp ? 0 : -8, 16, 1, 1));
+                                            utils::InputGenerateData(with_zp ? 0 : -8, 16, 1, 1));
         std::shared_ptr<ov::Node> decompressed = std::make_shared<ov::op::v0::Convert>(weights, ov::element::f32);
-        if (per_ic_zp) {
+        if (with_zp) {
             auto zp = utils::make_constant(ov::element::u8, ov::Shape{IC, 1}, utils::InputGenerateData(6, 4, 1, 2));
             auto zp_convert = std::make_shared<ov::op::v0::Convert>(zp, ov::element::f32);
             decompressed = std::make_shared<ov::op::v1::Subtract>(decompressed, zp_convert);
         }
-        const auto scale_shape = per_ic_zp ? ov::Shape{1, OC} : ov::Shape{IC, 1};
-        auto scale = utils::make_constant(ov::element::f32, scale_shape, utils::InputGenerateData(0, 1, 100, 3));
+        auto scale = utils::make_constant(ov::element::f32, ov::Shape{IC, 1}, utils::InputGenerateData(0, 1, 100, 3));
         auto mul = std::make_shared<ov::op::v1::Multiply>(decompressed, scale);
         auto matmul = std::make_shared<ov::op::v0::MatMul>(data, mul);
 

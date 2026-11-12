@@ -302,8 +302,7 @@ const std::vector<ConvertFCToCompressedGroupsNumParams> groups_num_params = {
     // per-IC: G = IC
     {{32, 64}, {32, 1}, {}, true, 32},
     {{768, 2304}, {768, 1}, {}, true, 768},
-    // per-OC scale with per-IC zero point: the finer grouping wins
-    {{32, 64}, {1, 64}, {32, 1}, true, 32},
+    {{32, 64}, {32, 1}, {32, 1}, true, 32},
 };
 }  // namespace
 

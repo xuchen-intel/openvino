@@ -57,14 +57,10 @@ public:
                                std::vector<std::shared_ptr<ov::Node>>& result_nodes);
 
     /**
-     * @brief Returns the number of decompression groups along IC (G) of processed scales and zero points.
-     *
-     * Processed params are laid out as [..., OC or 1, G], so G is their innermost dimension: 1 for per-tensor and
-     * per-OC params, IC / group_size for grouped params and IC for per-IC params. The finer grouping of the scale
-     * and the zero point is returned, so that IC / G is the smallest group size the compressed op has to support.
+     * @brief Returns the number of decompression groups along IC of processed scales and zero points.
      *
      * @param scale Decompression scale returned by process_compressed_weights
-     * @param zero_point Decompression zero point returned by process_compressed_weights (may be an empty Constant)
+     * @param zero_point Decompression zero point returned by process_compressed_weights
      */
     static size_t get_ic_groups_num(const std::shared_ptr<ov::Node>& scale,
                                     const std::shared_ptr<ov::Node>& zero_point);

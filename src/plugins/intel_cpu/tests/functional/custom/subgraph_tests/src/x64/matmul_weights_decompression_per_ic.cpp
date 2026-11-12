@@ -82,13 +82,12 @@ TEST_P(MatMulWeightsDecompressionPerIC, CompareWithRefs) {
 namespace {
 
 // M <= 4 uses the immediate decompression algorithm, larger M uses prepacking.
-INSTANTIATE_TEST_SUITE_P(smoke_MatMulWeightsDecompressionPerIC,
-                         MatMulWeightsDecompressionPerIC,
-                         ::testing::Combine(::testing::Values(ov::Shape{1, 1, 64},
-                                                              ov::Shape{1, 16, 64},
-                                                              ov::Shape{1, 64, 768}),
-                                            ::testing::Values(false, true)),
-                         MatMulWeightsDecompressionPerIC::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(
+    smoke_MatMulWeightsDecompressionPerIC,
+    MatMulWeightsDecompressionPerIC,
+    ::testing::Combine(::testing::Values(ov::Shape{1, 1, 64}, ov::Shape{1, 16, 64}, ov::Shape{1, 64, 768}),
+                       ::testing::Values(false, true)),
+    MatMulWeightsDecompressionPerIC::getTestCaseName);
 
 }  // namespace
 

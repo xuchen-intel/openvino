@@ -231,15 +231,12 @@ TEST_F(TransformationTestsF, ConvertFCToCompressedRank0ScaleZpWithTranspose) {
     }
 }
 
-// The supports predicate must receive G = number of decompression groups along IC, taken from the finer grouping of
-// the scale and the zero point. Per-IC params (e.g. scale [IC, 1] for weights [IC, OC] followed by a Transpose, as in
-// int8 ONNX models) are not reshape-grouped but still form IC groups of size 1.
 namespace {
 struct ConvertFCToCompressedGroupsNumParams {
-    ov::Shape wei_shape;  // weights Constant shape, see `transposed`
+    ov::Shape wei_shape;
     ov::Shape scale_shape;
-    ov::Shape zp_shape;  // empty: no zero point
-    bool transposed;     // weights [IC, OC] followed by Transpose, otherwise [OC, IC] or grouped [OC, G, IC / G]
+    ov::Shape zp_shape;
+    bool transposed;
     size_t expected_G;
 };
 

@@ -13,21 +13,19 @@
 
 namespace ov::test {
 
-// Weights decompression params broadcast along IC (e.g. scale [IC, 1] for MatMul weights [IC, OC], as in
-// gpt2-wikitext2-int8) form IC groups of size 1. oneDNN brgemm decompression processes IC in VNNI pairs for
-// bf16 and used to crash with SIGFPE on such groups, so these weights must not be kept compressed.
+// Subgraph pattern:
 //
 //    Weights(WP)
 //        |
-//    Convert(f32)   ZP [IC, 1] (opt)
+//    Convert(f32)   ZP [IC, 1] (opt.)
 //            \       /
-//            Subtract(opt)   Scale [IC, 1]
+//            Subtract(opt.)  Scale [IC, 1]
 //                   \       /
 //    Data(f32)      Multiply
 //          \         /
 //            MatMul
 using MatMulWeightsDecompressionPerICParams = std::tuple<ov::Shape,  // data shape
-                                                         bool>;      // with per-IC zero point (u8 weights)
+                                                         bool>;      // with per-IC zero point
 
 class MatMulWeightsDecompressionPerIC : public testing::WithParamInterface<MatMulWeightsDecompressionPerICParams>,
                                         virtual public SubgraphBaseTest {
@@ -80,7 +78,6 @@ TEST_P(MatMulWeightsDecompressionPerIC, CompareWithRefs) {
 
 namespace {
 
-// M <= 4 uses the immediate decompression algorithm, larger M uses prepacking.
 INSTANTIATE_TEST_SUITE_P(
     smoke_MatMulWeightsDecompressionPerIC,
     MatMulWeightsDecompressionPerIC,

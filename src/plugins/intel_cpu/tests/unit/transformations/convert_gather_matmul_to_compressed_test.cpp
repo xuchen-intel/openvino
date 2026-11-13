@@ -139,13 +139,11 @@ const auto params = std::vector<ConvertBGMToCompressedParams>{
 
 INSTANTIATE_TEST_SUITE_P(TransformationTests, ConvertBGMToCompressed, ::testing::ValuesIn(params));
 
-// The supports predicate must receive G = number of decompression groups along IC, including per-IC params
-// (scale [E, 1, IC] for weights [E, OC, IC]) which are not reshape-grouped but form IC groups of size 1.
 namespace {
 struct ConvertBGMToCompressedGroupsNumParams {
     ov::Shape wei_shape;  // [E, OC, IC] or grouped [E, OC, G, IC / G]
     ov::Shape scale_shape;
-    ov::Shape zp_shape;  // empty: no zero point
+    ov::Shape zp_shape;
     size_t expected_G;
 };
 

@@ -327,6 +327,22 @@ TEST_F(TransformationTestsF, reshape_arithmetical_reduce_elimination_keep_dims_f
     manager.register_pass<ov::pass::NopElimination>(false);
 }
 
+// Transpose(order={2,1,0}) after Reduce(keep_dims=false) converted to Reshape by TransposeToReshape:
+// {1,1,2} -> Reshape({2,0,1}, special_zero=true) -> {2,1,1}. Reduction axis 2 does not exist in the
+// reduce output any more, so the Reshape must be kept (GitHub issue #37959).
+TEST_F(TransformationTestsF, reshape_arithmetical_reduce_elimination_keep_dims_false_special_zero_negative) {
+    auto data = std::make_shared<op::v0::Parameter>(element::i32, Shape{1, 1, 2, 2});
+    auto axes = op::v0::Constant::create<int64_t>(element::i64, Shape{1}, {2});
+
+    auto reduce = std::make_shared<op::v1::ReduceMax>(data, axes, false);
+    auto reshape_pattern = op::v0::Constant::create<int64_t>(element::i64, Shape{3}, {2, 0, 1});
+    auto reshape = std::make_shared<op::v1::Reshape>(reduce, reshape_pattern, true);
+
+    model = std::make_shared<ov::Model>(OutputVector{reshape}, ParameterVector{data});
+
+    manager.register_pass<ov::pass::NopElimination>(false);
+}
+
 TEST(nop_elimination, reshape_logical_reduce_elimination_dynamic) {
     auto arg = std::make_shared<op::v0::Parameter>(element::boolean, PartialShape({-1, 96, 100, 100}));
     auto reduce_axes = v0::Constant::create(element::i64, Shape{2}, {2, 3});

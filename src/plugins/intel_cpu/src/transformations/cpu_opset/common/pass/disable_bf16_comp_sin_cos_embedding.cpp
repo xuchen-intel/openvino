@@ -26,7 +26,6 @@ DisableBF16CompSinCosEmbedding::DisableBF16CompSinCosEmbedding() {
     MATCHER_SCOPE(DisableBF16CompSinCosEmbedding);
     using namespace ov::pass::pattern;
 
-    // Multiply is commutative, so the matcher also accepts the Constant on the first input.
     auto freq_m = wrap_type<ov::op::v0::Constant>();
     auto mul_m = wrap_type<ov::op::v1::Multiply>({any_input(), freq_m});
     auto sin_or_cos_m = wrap_type<ov::op::v0::Sin, ov::op::v0::Cos>({mul_m});

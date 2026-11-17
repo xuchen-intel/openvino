@@ -27,7 +27,6 @@ using namespace ov::intel_cpu;
 
 namespace {
 
-// Names used to look up matched nodes after the pass has run.
 const std::string name_scale_mul = "scale_mul";
 const std::string name_unsqueeze = "unsqueeze";
 const std::string name_freq_mul = "freq_mul";
@@ -36,9 +35,6 @@ const std::string name_cos = "cos";
 const std::string name_concat = "concat";
 const std::string name_relu = "relu";
 
-// Diffusion timestep embedding:
-//   timestep -> Multiply(1000) -> Unsqueeze -> Multiply(freqs) -> Sin, Cos -> Concat.
-// freq_on_first_input puts the frequency Constant on the first Multiply input.
 std::shared_ptr<ov::Model> create_timestep_embedding_model(bool freq_on_first_input) {
     auto timestep = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::PartialShape{-1});
 
@@ -66,7 +62,7 @@ std::shared_ptr<ov::Model> create_timestep_embedding_model(bool freq_on_first_in
     return std::make_shared<ov::Model>(ov::OutputVector{concat}, ov::ParameterVector{timestep});
 }
 
-// Sin is fed by a Multiply of two runtime tensors (no frequency Constant) - must not match.
+// Sin is fed by a Multiply of two runtime tensors without a frequency Constant, so it must not match.
 std::shared_ptr<ov::Model> create_model_mul_without_constant() {
     auto a = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::PartialShape{1, 128});
     auto b = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::PartialShape{1, 128});
@@ -80,7 +76,7 @@ std::shared_ptr<ov::Model> create_model_mul_without_constant() {
     return std::make_shared<ov::Model>(ov::OutputVector{sin}, ov::ParameterVector{a, b});
 }
 
-// Sin is fed by a non-Multiply op - must not match.
+// Sin is fed by a non-Multiply op, so it must not match.
 std::shared_ptr<ov::Model> create_model_sin_after_relu() {
     auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::PartialShape{1, 128});
 

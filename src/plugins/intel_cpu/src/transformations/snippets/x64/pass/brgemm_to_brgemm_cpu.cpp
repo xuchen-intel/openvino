@@ -70,8 +70,15 @@ bool pass::BrgemmToBrgemmCPU::run_on_model(const std::shared_ptr<ov::Model>& mod
         bool are_wei_constant = false;
         auto brgemm_parent_1 = brgemm->get_input_node_shared_ptr(1);
         auto orig_wei_type = etype_b;
-        // EnforcePrecision pass might insert ConvertSaturation before Brgemm
-        if (ov::is_type<ov::snippets::op::ConvertSaturation>(brgemm_parent_1)) {
+        // EnforcePrecision pass might insert ConvertSaturation before Brgemm.
+        // It can be fused into BrgemmCopyB only if BrgemmCopyB kernel supports such weights conversion
+        // on the current platform, otherwise ConvertSaturation is kept as a separate op
+        const bool fuse_wei_convert = ov::is_type<ov::snippets::op::ConvertSaturation>(brgemm_parent_1) &&
+                                      brgemm_utils::BrgemmConfig::is_wei_conversion_supported(
+                                          etype_a,
+                                          etype_b,
+                                          brgemm_parent_1->get_input_element_type(0));
+        if (fuse_wei_convert) {
             orig_wei_type = brgemm_parent_1->get_input_element_type(0);
             brgemm_parent_1 = brgemm_parent_1->get_input_node_shared_ptr(0);
         }
@@ -104,8 +111,10 @@ bool pass::BrgemmToBrgemmCPU::run_on_model(const std::shared_ptr<ov::Model>& mod
         std::shared_ptr<BrgemmCopyB> brgemm_copy_b = nullptr;
 
         if (brgemm_config.with_wei_repacking()) {
-            // BrgemmCopyB supports precision conversion, so we can skip explicit convert in this case
-            if (auto* convert = ov::as_type<ov::snippets::op::ConvertSaturation>(brgemm_in1.get_node())) {
+            // BrgemmCopyB performs precision conversion, so we can skip explicit convert in this case
+            if (fuse_wei_convert) {
+                const auto* convert = ov::as_type<ov::snippets::op::ConvertSaturation>(brgemm_in1.get_node());
+                OPENVINO_ASSERT(convert, "Expected ConvertSaturation on Brgemm weights input");
                 brgemm_in1 = convert->input_value(0);
             }
             brgemm_copy_b =

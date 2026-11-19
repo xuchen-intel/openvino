@@ -78,6 +78,17 @@ public:
         return m_wei_k_blk;
     }
 
+    /**
+     * @brief Returns true if conversion of weights from `orig_wei_dt` to `wei_dt` can be fused into BrgemmCopyB
+     *        for Brgemm with `src_dt` and `wei_dt` input precisions.
+     *        Note: OneDNN BrgemmCopyB kernel supports on-the-fly weights down-conversion (e.g. f32 -> bf16/f16)
+     *        only on AVX512 platforms (it uses `vcvtneps2bf16 ymm, zmm`-like instructions), so on AVX2 platforms
+     *        (e.g. avx2_vnni_2) the explicit ConvertSaturation must be kept in the body.
+     */
+    static bool is_wei_conversion_supported(const ov::element::Type& src_dt,
+                                            const ov::element::Type& wei_dt,
+                                            const ov::element::Type& orig_wei_dt);
+
 private:
     void validate() const;
 

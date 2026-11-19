@@ -25,6 +25,7 @@
 #include "snippets/op/buffer.hpp"
 #include "snippets/op/convert_saturation.hpp"
 #include "snippets/op/memory_access.hpp"
+#include "snippets/op/rank_normalization.hpp"
 #include "snippets/utils/utils.hpp"
 #include "transformations/snippets/x64/op/brgemm_copy_b.hpp"
 #include "transformations/snippets/x64/op/brgemm_cpu.hpp"
@@ -69,12 +70,20 @@ bool pass::BrgemmToBrgemmCPU::run_on_model(const std::shared_ptr<ov::Model>& mod
 
         bool are_wei_constant = false;
         auto brgemm_parent_1 = brgemm->get_input_node_shared_ptr(1);
-        auto orig_wei_type = etype_b;
         // EnforcePrecision pass might insert ConvertSaturation before Brgemm
-        if (ov::is_type<ov::snippets::op::ConvertSaturation>(brgemm_parent_1)) {
-            orig_wei_type = brgemm_parent_1->get_input_element_type(0);
-            brgemm_parent_1 = brgemm_parent_1->get_input_node_shared_ptr(0);
+        const auto wei_convert = ov::as_type_ptr<ov::snippets::op::ConvertSaturation>(brgemm_parent_1);
+        if (wei_convert) {
+            brgemm_parent_1 = wei_convert->get_input_node_shared_ptr(0);
         }
+        // Weights are repacked at compile time outside the Subgraph body (by EliminateBrgemmCopyB and
+        // RepackMatMulWeights passes) only if BrgemmCopyB input is Parameter (optionally via RankNormalization)
+        const bool is_wei_param_directly = [&]() {
+            auto node = brgemm_parent_1;
+            if (ov::is_type<ov::snippets::op::RankNormalization>(node)) {
+                node = node->get_input_node_shared_ptr(0);
+            }
+            return ov::is_type<ov::op::v0::Parameter>(node);
+        }();
         const auto shape_infer_leaf =
             ov::snippets::utils::get_leaf_node_of_first_parent_shape_infer_seq(brgemm_parent_1);
         if (shape_infer_leaf) {
@@ -85,6 +94,22 @@ bool pass::BrgemmToBrgemmCPU::run_on_model(const std::shared_ptr<ov::Model>& mod
             OPENVINO_ASSERT(param_idx < model->get_parameters().size(),
                             "Parameter index is invalid in BrgemmToBrgemmCPU transformation");
             are_wei_constant = m_constant_inputs_idxs.count(param_idx) > 0;
+        }
+        // ConvertSaturation on weights can be fused into BrgemmCopyB if:
+        //  - BrgemmCopyB kernel supports such weights conversion on the current platform, or
+        //  - weights are constant and will be repacked (and converted) at compile time by OneDNN reorder,
+        //    so BrgemmCopyB kernel is not used for them.
+        // Otherwise, ConvertSaturation is kept as a separate op in the body.
+        const bool fuse_wei_convert =
+            wei_convert && ((are_wei_constant && is_wei_param_directly) ||
+                            brgemm_utils::BrgemmConfig::is_wei_conversion_supported(
+                                etype_a,
+                                etype_b,
+                                wei_convert->get_input_element_type(0)));
+        const auto orig_wei_type = fuse_wei_convert ? wei_convert->get_input_element_type(0) : etype_b;
+        if (wei_convert && !fuse_wei_convert) {
+            // Weights go through the explicit conversion in the body, so they can't be considered as constant
+            are_wei_constant = false;
         }
 
         const auto brgemm_config = brgemm_utils::BrgemmConfig(etype_a,
@@ -104,8 +129,10 @@ bool pass::BrgemmToBrgemmCPU::run_on_model(const std::shared_ptr<ov::Model>& mod
         std::shared_ptr<BrgemmCopyB> brgemm_copy_b = nullptr;
 
         if (brgemm_config.with_wei_repacking()) {
-            // BrgemmCopyB supports precision conversion, so we can skip explicit convert in this case
-            if (auto* convert = ov::as_type<ov::snippets::op::ConvertSaturation>(brgemm_in1.get_node())) {
+            // BrgemmCopyB performs precision conversion, so we can skip explicit convert in this case
+            if (fuse_wei_convert) {
+                const auto* convert = ov::as_type<ov::snippets::op::ConvertSaturation>(brgemm_in1.get_node());
+                OPENVINO_ASSERT(convert, "Expected ConvertSaturation on Brgemm weights input");
                 brgemm_in1 = convert->input_value(0);
             }
             brgemm_copy_b =

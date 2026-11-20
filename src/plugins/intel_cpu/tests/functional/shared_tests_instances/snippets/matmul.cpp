@@ -134,6 +134,18 @@ INSTANTIATE_TEST_SUITE_P(smoke_Snippets_MatMulTransposeB, MatMulTransposeB,
                              ::testing::Values(CPUTestUtils::empty_plugin_config)),
                          MatMul::getTestCaseName);
 
+// f32 inputs + bf16 inference precision: f32 -> bf16 weights conversion is fused into transposed BrgemmCopyB
+INSTANTIATE_TEST_SUITE_P(smoke_Snippets_MatMulTransposeBEnforceBF16, MatMulTransposeB,
+                         ::testing::Combine(
+                             ::testing::ValuesIn(transpose_b_shapes),
+                             ::testing::ValuesIn(precision_f32(2)),
+                             ::testing::Values(MatMulType::MatMul),
+                             ::testing::Values(expected_num_nodes),
+                             ::testing::Values(1), // Tokenized MatMul
+                             ::testing::Values(ov::test::utils::DEVICE_CPU),
+                             ::testing::Values(CPUTestUtils::cpu_bf16_plugin_config)),
+                         MatMul::getTestCaseName);
+
 std::vector<std::vector<ov::test::InputShape>> input_shapes_bias{
     { {{}, {{1, 2, 69, 43}}},   {{}, {{2, 1, 43, 49}}},    {{}, {{1, 1, 69, 49}}} },
     { {{}, {{1, 2, 95, 1023}}}, {{}, {{1, 2, 1023, 255}}}, {{}, {{1, 2, 95, 255}}} },

@@ -138,13 +138,6 @@ dnnl::impl::cpu::x64::cpu_isa_t BrgemmConfig::get_prim_isa(const ov::element::Ty
 #undef RETURN_IF_SUPPORTED
 }
 
-bool BrgemmConfig::is_wei_conversion_supported(const ov::element::Type& src_dt,
-                                               const ov::element::Type& wei_dt,
-                                               const ov::element::Type& orig_wei_dt) {
-    const bool is_down_conversion = orig_wei_dt.bitwidth() > wei_dt.bitwidth();
-    return !is_down_conversion || is_superset(get_prim_isa(src_dt, wei_dt), avx512_core);
-}
-
 bool BrgemmConfig::is_amx() const {
     return is_superset(m_isa, cpu_isa_t::amx_tile);
 }

@@ -6,7 +6,6 @@
 
 #include <algorithm>
 #include <cstddef>
-#include <cstdint>
 #include <functional>
 #include <map>
 #include <memory>
@@ -15,7 +14,6 @@
 #include <sstream>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -72,22 +70,6 @@ constexpr std::string_view cpu_architecture() {
 #else
 #    error "Undefined system processor"
 #endif
-}
-
-// Schema versions of internal operations serialized into the blob, keyed by "<opset>::<op>".
-// Ops which are not listed have schema version 1. Bump the version of an op when its serialized form or semantics
-// change incompatibly, so that blobs produced by older runtimes containing this op are rejected.
-// E.g. adding {"ie_internal_opset::FullyConnectedCompressed", 2} makes new blobs record "FullyConnectedCompressed@2" in
-// the "ops" field, while blobs without the suffix (version 1) are rejected for this op.
-const std::unordered_map<std::string, uint32_t>& internal_op_schema_versions() {
-    static const std::unordered_map<std::string, uint32_t> versions = {};
-    return versions;
-}
-
-uint32_t get_internal_op_schema_version(const std::string& op) {
-    const auto& versions = internal_op_schema_versions();
-    const auto it = versions.find(op);
-    return it == versions.end() ? 1 : it->second;
 }
 
 // Non-standard operations the current runtime is able to deserialize, keyed by "<opset>::<op>"
@@ -214,10 +196,6 @@ public:
             ss << (opset == m_ops.begin() ? "" : ",") << opset->first << "::";
             for (auto op = opset->second.begin(); op != opset->second.end(); ++op) {
                 ss << (op == opset->second.begin() ? "" : "+") << *op;
-                const auto schema = get_internal_op_schema_version(opset->first + "::" + *op);
-                if (schema != 1) {
-                    ss << "@" << schema;
-                }
             }
         }
         return ss.str();
@@ -351,27 +329,15 @@ std::string check_ops(const std::string& ops) {
             return "malformed ops entry '" + group + "'";
         }
         const auto opset = group.substr(0, pos);
-        for (const auto& op_entry : split(group.substr(pos + 2), '+')) {
-            const auto at = op_entry.find('@');
-            const auto op = opset + "::" + op_entry.substr(0, at);
-            if (op_entry.empty() || at == 0) {
+        for (const auto& op_name : split(group.substr(pos + 2), '+')) {
+            if (op_name.empty()) {
                 return "malformed ops entry '" + group + "'";
             }
+            std::string op = opset;
+            op += "::";
+            op += op_name;
             if (known_ops.count(op) == 0) {
                 return "operation " + op + " is not supported by this runtime";
-            }
-            uint32_t schema = 1;
-            if (at != std::string::npos) {
-                const auto schema_str = op_entry.substr(at + 1);
-                if (schema_str.empty() || schema_str.find_first_not_of("0123456789") != std::string::npos ||
-                    schema_str.size() > 9) {
-                    return "malformed schema version of " + op;
-                }
-                schema = static_cast<uint32_t>(std::stoul(schema_str));
-            }
-            if (schema != get_internal_op_schema_version(op)) {
-                return "operation " + op + " schema version " + std::to_string(schema) + " differs from runtime's " +
-                       std::to_string(get_internal_op_schema_version(op));
             }
         }
     }

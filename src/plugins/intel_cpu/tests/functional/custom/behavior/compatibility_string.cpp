@@ -343,7 +343,6 @@ TEST_F(RuntimeRequirementsCPU, MismatchesUnsupported) {
     const std::vector<std::string> incompatible = {
         replace_field(requirements, "arch", "unknown_arch"),
         replace_field(requirements, "ops", "cpu_plugin_opset::UnknownOp"),
-        replace_field(requirements, "ops", "ie_internal_opset::FullyConnected@2"),
         replace_field(requirements, "ops", "malformed"),
         replace_field(requirements, "caps", "unknown_capability"),
         replace_field(requirements, "ov", "2026.x.0"),

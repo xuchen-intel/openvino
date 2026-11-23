@@ -170,8 +170,7 @@ ConvertFullyConnectedToFullyConnectedCompressed::process_compressed_weights(
 }
 
 size_t ConvertFullyConnectedToFullyConnectedCompressed::get_ic_groups_num(const ov::Shape& processed_scale_shape) {
-    return processed_scale_shape.empty() || ov::shape_size(processed_scale_shape) <= 1 ? 1
-                                                                                       : processed_scale_shape.back();
+    return ov::shape_size(processed_scale_shape) <= 1 ? 1 : processed_scale_shape.back();
 }
 
 ConvertFullyConnectedToFullyConnectedCompressed::ConvertFullyConnectedToFullyConnectedCompressed(

@@ -241,8 +241,13 @@ struct ConvertFCToCompressedGroupsNumParams {
     size_t expected_G;
 };
 
+// Weights are [OC, IC] or grouped [OC, G, IC / G]; transposed weights are [IC, OC] or grouped [G, IC / G, OC]
+int64_t get_oc(const ConvertFCToCompressedGroupsNumParams& p) {
+    return static_cast<int64_t>(p.transposed ? p.wei_shape.back() : p.wei_shape.front());
+}
+
 int64_t get_ic(const ConvertFCToCompressedGroupsNumParams& p) {
-    return static_cast<int64_t>(p.transposed ? p.wei_shape[0] : ov::shape_size(p.wei_shape) / p.wei_shape[0]);
+    return static_cast<int64_t>(ov::shape_size(p.wei_shape)) / get_oc(p);
 }
 
 std::shared_ptr<ov::Model> getModel(const ConvertFCToCompressedGroupsNumParams& p) {
@@ -258,9 +263,8 @@ std::shared_ptr<ov::Model> getModel(const ConvertFCToCompressedGroupsNumParams& 
     auto scale_const = ov::op::v0::Constant::create(ov::element::f32, p.scale_shape, {1});
     weights = std::make_shared<ov::op::v1::Multiply>(weights, scale_const);
     if (p.wei_shape.size() == 3) {
-        auto shape = ov::op::v0::Constant::create(ov::element::i64,
-                                                  ov::Shape{2},
-                                                  std::vector<int64_t>{static_cast<int64_t>(p.wei_shape[0]), IC});
+        const auto target = p.transposed ? std::vector<int64_t>{IC, get_oc(p)} : std::vector<int64_t>{get_oc(p), IC};
+        auto shape = ov::op::v0::Constant::create(ov::element::i64, ov::Shape{2}, target);
         weights = std::make_shared<ov::op::v1::Reshape>(weights, shape, false);
     }
     if (p.transposed) {
@@ -277,7 +281,7 @@ std::shared_ptr<ov::Model> getModelRef(const ConvertFCToCompressedGroupsNumParam
     auto perm = ov::op::v0::Constant::create(ov::element::i32, ov::Shape{2}, std::vector<int32_t>{1, 0});
     auto make_const = [&](ov::element::Type type, ov::Shape shape) -> std::shared_ptr<ov::Node> {
         if (shape.size() == 3) {
-            shape = ov::Shape{shape[0], shape[1] * shape[2]};
+            shape = p.transposed ? ov::Shape{shape[0] * shape[1], shape[2]} : ov::Shape{shape[0], shape[1] * shape[2]};
         }
         std::shared_ptr<ov::Node> node = ov::op::v0::Constant::create(type, shape, {1});
         if (p.transposed && ov::shape_size(shape) > 1) {
@@ -349,7 +353,11 @@ const std::vector<ConvertFCToCompressedGroupsNumParams> groups_num_params = {
     // grouped: G = 4
     {{64, 4, 8}, {64, 4, 1}, {}, false, 4},
     {{64, 4, 8}, {64, 4, 1}, {64, 4, 1}, false, 4},
+    {{4, 8, 64}, {4, 1, 64}, {}, true, 4},
+    {{4, 8, 64}, {4, 1, 64}, {4, 1, 64}, true, 4},
     // per-IC: G = IC
+    {{64, 32}, {1, 32}, {}, false, 32},
+    {{64, 32}, {1, 32}, {1, 32}, false, 32},
     {{32, 64}, {32, 1}, {}, true, 32},
     {{768, 2304}, {768, 1}, {}, true, 768},
     {{32, 64}, {32, 1}, {32, 1}, true, 32},

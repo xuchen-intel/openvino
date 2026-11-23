@@ -58,7 +58,8 @@ public:
                                std::vector<std::shared_ptr<ov::Node>>& result_nodes);
 
     /**
-     * @brief Returns the number of decompression groups along IC of processed scales.
+     * @brief Returns the number of decompression groups along IC of processed scales,
+     * i.e. the last scale dimension: 1 for per-tensor and per-OC, n_groups for grouped, IC for per-IC.
      *
      * @param processed_scale_shape Shape of the decompression scale returned by process_compressed_weights
      */

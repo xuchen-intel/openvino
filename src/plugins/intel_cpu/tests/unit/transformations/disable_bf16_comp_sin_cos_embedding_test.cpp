@@ -22,8 +22,6 @@
 #include "openvino/op/unsqueeze.hpp"
 #include "transformations/rt_info/disable_precision_conversion.hpp"
 
-using namespace ov::intel_cpu;
-
 namespace sin_cos_embedding_test {
 namespace {
 
@@ -104,7 +102,7 @@ class DisableBF16CompSinCosEmbeddingTest : public TransformationTestsF {
 protected:
     void SetUp() override {
         TransformationTestsF::SetUp();
-        manager.register_pass<DisableBF16CompSinCosEmbedding>();
+        manager.register_pass<ov::intel_cpu::DisableBF16CompSinCosEmbedding>();
     }
 
     void TearDown() override {

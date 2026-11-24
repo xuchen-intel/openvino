@@ -16,6 +16,7 @@
 #include "openvino/pass/matcher_pass.hpp"
 #include "openvino/pass/pattern/matcher.hpp"
 #include "openvino/pass/pattern/op/label.hpp"
+#include "openvino/pass/pattern/op/pattern.hpp"
 #include "openvino/pass/pattern/op/wrap_type.hpp"
 #include "openvino/util/pp.hpp"
 #include "transformations/rt_info/disable_precision_conversion.hpp"
@@ -26,8 +27,20 @@ DisableBF16CompSinCosEmbedding::DisableBF16CompSinCosEmbedding() {
     MATCHER_SCOPE(DisableBF16CompSinCosEmbedding);
     using namespace ov::pass::pattern;
 
-    auto freq_m = wrap_type<ov::op::v0::Constant>();
-    auto mul_m = wrap_type<ov::op::v1::Multiply>({any_input(), freq_m});
+    // Match only the embedding's signature, so that the fp32 island does not spread over unrelated Sin/Cos:
+    // the outer product [N, 1] x [1, K] of the timestep and the frequencies, feeding both Sin and Cos.
+    auto feeds_sin_and_cos = [](const ov::Output<ov::Node>& output) {
+        bool has_sin = false;
+        bool has_cos = false;
+        for (const auto& input : output.get_target_inputs()) {
+            has_sin |= ov::is_type<ov::op::v0::Sin>(input.get_node());
+            has_cos |= ov::is_type<ov::op::v0::Cos>(input.get_node());
+        }
+        return has_sin && has_cos;
+    };
+    auto x_m = any_input(shape_matches("[?, 1]"));
+    auto freq_m = wrap_type<ov::op::v0::Constant>(shape_matches("[1, ?]"));
+    auto mul_m = wrap_type<ov::op::v1::Multiply>({x_m, freq_m}, feeds_sin_and_cos);
     auto sin_or_cos_m = wrap_type<ov::op::v0::Sin, ov::op::v0::Cos>({mul_m});
 
     ov::matcher_pass_callback callback = [OV_CAPTURE_CPY_AND_THIS](Matcher& m) {

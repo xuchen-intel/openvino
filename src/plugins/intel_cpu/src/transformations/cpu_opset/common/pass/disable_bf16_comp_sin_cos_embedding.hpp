@@ -12,7 +12,7 @@ namespace ov::intel_cpu {
  * @brief Keeps sinusoidal embeddings, such as diffusion timestep embeddings, in fp32
  *        when the CPU plugin infers in BF16.
  *
- *      angle = x * Constant(freq)  ->  Sin / Cos
+ *      angle = x[N, 1] * Constant(freq)[1, K]  ->  Sin and Cos
  *
  *  Diffusion models embed the timestep this way, with x in [0, 1000] and freq up
  *  to 1.0, so angles reach ~1000 rad. Such values have exponent 9, i.e. lie in
@@ -23,6 +23,7 @@ namespace ov::intel_cpu {
  *
  *  The matched nodes are marked with @ref ov::disable_conversion(node, f32, bf16);
  *  EnforceInferencePrecision then keeps the surrounding angle computation in fp32.
+ *  Only this signature is matched, so other Sin/Cos stay in BF16.
  */
 class DisableBF16CompSinCosEmbedding : public ov::pass::MatcherPass {
 public:

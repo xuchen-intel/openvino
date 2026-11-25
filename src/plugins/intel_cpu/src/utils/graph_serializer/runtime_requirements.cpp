@@ -67,11 +67,9 @@ constexpr std::string_view cpu_architecture() {
 #endif
 }
 
-// The full version of the running OpenVINO. Internal operations and their semantics are not versioned, so a blob is
-// valid only for exactly the version that produced it.
 std::string runtime_version() {
     std::string version = ov::get_openvino_version().buildNumber;
-    std::replace(version.begin(), version.end(), ';', '_');  // ';' separates the fields of the descriptor
+    std::replace(version.begin(), version.end(), ';', '_');
     return version;
 }
 

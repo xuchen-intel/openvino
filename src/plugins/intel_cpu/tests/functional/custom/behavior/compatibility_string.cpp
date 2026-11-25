@@ -308,7 +308,6 @@ public:
 TEST_F(RuntimeRequirementsCPU, DescriptorFormat) {
     SKIP_IF_CURRENT_TEST_IS_DISABLED();
     EXPECT_EQ(requirements.rfind("meta=2.0;", 0), 0u) << requirements;
-    // the full version of the runtime, not only major.minor.patch
     EXPECT_EQ(get_field(requirements, "ov"), std::string(ov::get_openvino_version().buildNumber)) << requirements;
     EXPECT_FALSE(get_field(requirements, "arch").empty()) << requirements;
     EXPECT_NE(requirements.find(";caps="), std::string::npos) << requirements;
@@ -324,7 +323,6 @@ TEST_F(RuntimeRequirementsCPU, PlainModelHasNoCapabilityRequirements) {
     EXPECT_EQ(get_field(fp32_requirements, "caps"), "") << fp32_requirements;
 }
 
-// Only the exact version of the producer is accepted: older, newer and other builds of the same version are not
 std::vector<std::string> other_versions(const std::string& version) {
     return {"2026.0.0", std::to_string(OPENVINO_VERSION_MAJOR + 1) + ".0.0", version + "-other_build"};
 }
@@ -362,7 +360,6 @@ TEST_F(RuntimeRequirementsCPU, ImportFollowsRequirements) {
     std::stringstream same_blob(blob);
     ov::CompiledModel imported;
     OV_ASSERT_NO_THROW(imported = core.import_model(same_blob, ov::test::utils::DEVICE_CPU));
-    // the producer requirements are kept for re-export
     EXPECT_EQ(imported.get_property(ov::runtime_requirements), requirements);
 
     for (const auto& version : other_versions(get_field(requirements, "ov"))) {

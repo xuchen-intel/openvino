@@ -26,9 +26,9 @@ static constexpr uint64_t runtime_requirements_max_size = 4096;
  *
  * - ov   - producer OpenVINO version. The blob can be imported by the same or a newer runtime.
  * - arch - CPU architecture of the producer. Must match.
- * - ops  - non-standard operations of the plugin in the blob, grouped by opset: <opset>::<op>+<op>...,<opset>::...
- *          Every op must be provided by the consumer. Ops registered by the user are not recorded, the importing Core
- *          resolves them. Signatures of these ops stay compatible within a major OpenVINO version.
+ * - ops  - internal (non-standard opset) operations serialized into the blob, grouped by opset:
+ *          <opset>::<op>[@<schema>]+<op>...,<opset>::...  Every op must be known by the consumer with the same
+ *          schema version (see internal_op_schema_versions() in runtime_requirements.cpp).
  * - caps - host capabilities the graph needs, each op requires only what it really uses. "ov." capabilities are
  *          checked with the OpenVINO CPU feature detection, "dnnl." capabilities with oneDNN. Examples: ov.avx2 for
  *          RMS, ov.amx_bf16 for LLMMLP and QKVProjection, dnnl.avx2 for compressed matmuls. A snippets Subgraph

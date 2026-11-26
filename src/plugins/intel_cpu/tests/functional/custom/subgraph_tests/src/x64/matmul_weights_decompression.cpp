@@ -672,14 +672,6 @@ INSTANTIATE_TEST_SUITE_P(smoke_MatMulCompressedWeights_3D_Weights,
                                             ::testing::Values(false)),
                          MatmulWeightsDecompression::getTestCaseName);
 
-std::vector<ov::AnyMap> filter_additional_config_per_ic() {
-    std::vector<ov::AnyMap> additional_config = filter_additional_config_basic();
-    if (ov::with_cpu_x86_bfloat16())
-        additional_config.push_back(
-            {{ov::hint::dynamic_quantization_group_size(0), ov::hint::inference_precision(ov::element::bf16)}});
-    return additional_config;
-}
-
 const std::vector<MatMulDecompressionShapeParams> input_shapes_per_ic = {
     {{{}, {{1, 1, 64}}}, {64, 64}},
     {{{}, {{1, 16, 64}}}, {64, 64}},
@@ -695,7 +687,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_MatMulCompressedWeights_per_ic,
                                             ::testing::Values(DecompressionType::per_ic),
                                             ::testing::Values(DecompressionType::per_ic, DecompressionType::empty),
                                             ::testing::ValuesIn(reshape_on_decompression),
-                                            ::testing::ValuesIn(filter_additional_config_per_ic()),
+                                            ::testing::ValuesIn(filter_additional_config_basic()),
                                             ::testing::ValuesIn(fusing_params),
                                             ::testing::Values(false)),
                          MatmulWeightsDecompression::getTestCaseName);

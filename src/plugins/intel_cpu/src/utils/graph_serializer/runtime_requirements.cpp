@@ -213,8 +213,9 @@ private:
     }
 
 #if defined(OPENVINO_ARCH_X86_64)
-    // The compressed matmuls are executed with oneDNN. FullyConnected::isSupportedCompressedOperation() checks avx2
-    // with the OpenVINO feature detection, GatherMatmul::isSupportedCompressedOperation() with oneDNN.
+    // The compressed matmuls are executed with oneDNN, hence dnnl.avx2.
+    // FullyConnected::isSupportedCompressedOperation() additionally checks avx2 with the OpenVINO feature detection,
+    // hence ov.avx2 for FullyConnectedCompressed.
     void collect_compressed_matmul_caps(const ov::Node& node) {
         m_caps.insert("dnnl.avx2");
         if (ov::is_type<ov::op::internal::FullyConnectedCompressed>(&node)) {

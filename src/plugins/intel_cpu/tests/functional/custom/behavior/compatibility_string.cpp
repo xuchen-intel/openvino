@@ -416,14 +416,14 @@ TEST_F(CompatibilityStringCPU, CacheKeyIsSharedByCpusOfSameArchitecture) {
 }
 
 #if defined(OPENVINO_ARCH_X86_64)
-// Golden blobs: compiled models stored in the repository (data/blobs/*.blob, x86_64 only), produced once by an earlier
-// build. They check that the current runtime still reads such blobs: blob layout, requirements descriptor and the
-// serialized graph with its internal operations. The producer version in the descriptor never equals the version of the
-// build under test, so the test replaces it with the current one, everything else is used as it was stored.
+// Golden blobs: compiled model blobs stored in the repository as data/blobs/*.blob, produced once by an earlier build.
+// They check that the current runtime still reads such blobs: blob layout, requirements descriptor and the serialized
+// graph with its internal operations. The producer version in the descriptor never equals the version of the build
+// under test, so the test replaces it with the current one, everything else is used as it was stored.
 //
-// To regenerate the blobs (only for an intentional change of the blob format or of the internal operations, mention it
-// in the PR), on a host with f16 support: OV_CPU_GOLDEN_BLOBS_GENERATE=<dir> ov_cpu_func_tests
-// --gtest_filter=GoldenBlobsCPU.*, then copy <dir>/*.blob to data/blobs/.
+// To regenerate the blobs only for an intentional change of the blob format or of the internal operations, on a host
+// with f16 support: OV_CPU_GOLDEN_BLOBS_GENERATE=<dir> ov_cpu_func_tests --gtest_filter=GoldenBlobsCPU.*, then copy
+// <dir>/*.blob to data/blobs/.
 std::vector<float> make_values(size_t size, float scale) {
     std::vector<float> values(size);
     for (size_t i = 0; i < size; ++i) {

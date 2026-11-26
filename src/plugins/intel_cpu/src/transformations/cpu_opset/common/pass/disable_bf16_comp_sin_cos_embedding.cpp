@@ -12,6 +12,7 @@
 #include "openvino/op/constant.hpp"
 #include "openvino/op/cos.hpp"
 #include "openvino/op/multiply.hpp"
+#include "openvino/op/parameter.hpp"
 #include "openvino/op/sin.hpp"
 #include "openvino/pass/matcher_pass.hpp"
 #include "openvino/pass/pattern/matcher.hpp"
@@ -27,7 +28,7 @@ DisableBF16CompSinCosEmbedding::DisableBF16CompSinCosEmbedding() {
     MATCHER_SCOPE(DisableBF16CompSinCosEmbedding);
     using namespace ov::pass::pattern;
 
-    // Match only the embedding's signature, so that the fp32 island does not spread over unrelated Sin/Cos:
+    // Match only the embedding's signature, so that unrelated Sin/Cos stay in BF16:
     // the outer product [N, 1] x [1, K] of the timestep and the frequencies, feeding both Sin and Cos.
     auto feeds_sin_and_cos = [](const ov::Output<ov::Node>& output) {
         bool has_sin = false;
@@ -51,8 +52,14 @@ DisableBF16CompSinCosEmbedding::DisableBF16CompSinCosEmbedding() {
             return false;
         }
 
-        ov::disable_conversion(pattern_map.at(mul_m).get_node_shared_ptr(), ov::element::f32, ov::element::bf16);
-        ov::disable_conversion(sin_or_cos, ov::element::f32, ov::element::bf16);
+        // Keep exactly these nodes in their original precision, without spreading to the rest of the graph.
+        // x is marked too, so that it is not rounded to BF16 before the Multiply.
+        auto x = pattern_map.at(x_m).get_node_shared_ptr();
+        if (!ov::is_type<ov::op::v0::Parameter>(x)) {
+            ov::disable_conversion(x, ov::element::f16);
+        }
+        ov::disable_conversion(pattern_map.at(mul_m).get_node_shared_ptr(), ov::element::f16);
+        ov::disable_conversion(sin_or_cos, ov::element::f16);
         return false;
     };
 

@@ -111,9 +111,9 @@ protected:
             return;
         }
         for (const auto& op : model->get_ops()) {
-            EXPECT_EQ(ov::is_conversion_disabled(op, ov::element::f32, ov::element::bf16),
+            EXPECT_EQ(ov::is_conversion_disabled(op, ov::element::f16),
                       expected_marked.count(op->get_friendly_name()) > 0)
-                << "Unexpected BF16 conversion mark on node: " << op->get_friendly_name();
+                << "Unexpected precision conversion mark on node: " << op->get_friendly_name();
         }
     }
 
@@ -121,7 +121,7 @@ protected:
         expected_marked = names;
         for (const auto& op : model_ref->get_ops()) {
             if (names.count(op->get_friendly_name())) {
-                ov::disable_conversion(op, ov::element::f32, ov::element::bf16);
+                ov::disable_conversion(op, ov::element::f16);
             }
         }
     }
@@ -132,12 +132,19 @@ protected:
 TEST_F(DisableBF16CompSinCosEmbeddingTest, TimestepEmbedding) {
     model = create_timestep_embedding_model(false);
     model_ref = create_timestep_embedding_model(false);
-    expect_marked({name_freq_mul, name_sin, name_cos});
+    expect_marked({name_unsqueeze, name_freq_mul, name_sin, name_cos});
 }
 
 TEST_F(DisableBF16CompSinCosEmbeddingTest, ConstantOnFirstInput) {
     model = create_timestep_embedding_model(true);
     model_ref = create_timestep_embedding_model(true);
+    expect_marked({name_unsqueeze, name_freq_mul, name_sin, name_cos});
+}
+
+// x comes straight from a Parameter, so only the Multiply, Sin and Cos are marked.
+TEST_F(DisableBF16CompSinCosEmbeddingTest, ParameterInput) {
+    model = create_angle_model({-1, 1}, {1, 128});
+    model_ref = create_angle_model({-1, 1}, {1, 128});
     expect_marked({name_freq_mul, name_sin, name_cos});
 }
 

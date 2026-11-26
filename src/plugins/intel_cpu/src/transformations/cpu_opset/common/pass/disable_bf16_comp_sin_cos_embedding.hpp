@@ -21,8 +21,9 @@ namespace ov::intel_cpu {
  *  the high-frequency channels into noise and corrupts the embedding that
  *  conditions the whole model.
  *
- *  The matched nodes are marked with @ref ov::disable_conversion(node, f32, bf16);
- *  EnforceInferencePrecision then keeps the surrounding angle computation in fp32.
+ *  The node producing x, the Multiply, Sin and Cos are marked with
+ *  @ref ov::disable_conversion(node, f16), so EnforceInferencePrecision keeps
+ *  exactly these nodes in fp32, without spreading to their neighbours.
  *  Only this signature is matched, so other Sin/Cos stay in BF16.
  */
 class DisableBF16CompSinCosEmbedding : public ov::pass::MatcherPass {

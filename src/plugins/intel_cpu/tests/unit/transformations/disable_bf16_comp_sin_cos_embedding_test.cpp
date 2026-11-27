@@ -132,13 +132,13 @@ protected:
 TEST_F(DisableBF16CompSinCosEmbeddingTest, TimestepEmbedding) {
     model = create_timestep_embedding_model(false);
     model_ref = create_timestep_embedding_model(false);
-    expect_marked({name_unsqueeze, name_freq_mul, name_sin, name_cos});
+    expect_marked({name_scale_mul, name_unsqueeze, name_freq_mul, name_sin, name_cos});
 }
 
 TEST_F(DisableBF16CompSinCosEmbeddingTest, ConstantOnFirstInput) {
     model = create_timestep_embedding_model(true);
     model_ref = create_timestep_embedding_model(true);
-    expect_marked({name_unsqueeze, name_freq_mul, name_sin, name_cos});
+    expect_marked({name_scale_mul, name_unsqueeze, name_freq_mul, name_sin, name_cos});
 }
 
 // x comes straight from a Parameter, so only the Multiply, Sin and Cos are marked.

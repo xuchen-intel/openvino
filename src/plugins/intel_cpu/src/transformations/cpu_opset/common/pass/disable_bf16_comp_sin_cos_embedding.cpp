@@ -13,7 +13,9 @@
 #include "openvino/op/cos.hpp"
 #include "openvino/op/multiply.hpp"
 #include "openvino/op/parameter.hpp"
+#include "openvino/op/reshape.hpp"
 #include "openvino/op/sin.hpp"
+#include "openvino/op/unsqueeze.hpp"
 #include "openvino/pass/matcher_pass.hpp"
 #include "openvino/pass/pattern/matcher.hpp"
 #include "openvino/pass/pattern/op/label.hpp"
@@ -53,9 +55,14 @@ DisableBF16CompSinCosEmbedding::DisableBF16CompSinCosEmbedding() {
         }
 
         // Keep exactly these nodes in their original precision, without spreading to the rest of the graph.
-        // x is marked too, so that it is not rounded to BF16 before the Multiply.
+        // x must not be rounded to BF16 either, so mark the node computing it, together with the shape-only
+        // ops, such as Unsqueeze, between that node and the Multiply.
         auto x = pattern_map.at(x_m).get_node_shared_ptr();
-        if (!ov::is_type<ov::op::v0::Parameter>(x)) {
+        while (ov::is_type<ov::op::v0::Unsqueeze>(x) || ov::is_type<ov::op::v1::Reshape>(x)) {
+            ov::disable_conversion(x, ov::element::f16);
+            x = x->get_input_node_shared_ptr(0);
+        }
+        if (!ov::is_type<ov::op::v0::Parameter>(x) && !ov::is_type<ov::op::v0::Constant>(x)) {
             ov::disable_conversion(x, ov::element::f16);
         }
         ov::disable_conversion(pattern_map.at(mul_m).get_node_shared_ptr(), ov::element::f16);

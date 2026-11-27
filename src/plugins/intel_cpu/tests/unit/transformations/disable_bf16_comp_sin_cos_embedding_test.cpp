@@ -33,7 +33,6 @@ const std::string name_cos = "cos";
 const std::string name_concat = "concat";
 const std::string name_relu = "relu";
 
-// Feeds `angle` to Sin and, if with_cos, to Cos, and concatenates the results.
 std::shared_ptr<ov::Model> create_sin_cos_model(const ov::Output<ov::Node>& angle,
                                                 const ov::ParameterVector& params,
                                                 bool with_cos = true) {
@@ -68,7 +67,6 @@ std::shared_ptr<ov::Model> create_timestep_embedding_model(bool freq_on_first_in
     return create_sin_cos_model(freq_mul, {timestep});
 }
 
-// angle = x * Constant(freq) with the given shapes.
 std::shared_ptr<ov::Model> create_angle_model(const ov::PartialShape& x_shape,
                                               const ov::Shape& freq_shape,
                                               bool with_cos = true) {
@@ -79,7 +77,6 @@ std::shared_ptr<ov::Model> create_angle_model(const ov::PartialShape& x_shape,
     return create_sin_cos_model(freq_mul, {x}, with_cos);
 }
 
-// Outer-product shapes, but the frequencies are a runtime tensor instead of a Constant, so it must not match.
 std::shared_ptr<ov::Model> create_model_mul_without_constant() {
     auto x = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::PartialShape{-1, 1});
     auto freqs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::PartialShape{1, 128});
@@ -88,7 +85,6 @@ std::shared_ptr<ov::Model> create_model_mul_without_constant() {
     return create_sin_cos_model(freq_mul, {x, freqs});
 }
 
-// Sin and Cos are fed by a non-Multiply op, so it must not match.
 std::shared_ptr<ov::Model> create_model_sin_after_relu() {
     auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::PartialShape{1, 128});
     auto relu = std::make_shared<ov::op::v0::Relu>(input);
@@ -141,7 +137,6 @@ TEST_F(DisableBF16CompSinCosEmbeddingTest, ConstantOnFirstInput) {
     expect_marked({name_scale_mul, name_unsqueeze, name_freq_mul, name_sin, name_cos});
 }
 
-// x comes straight from a Parameter, so only the Multiply, Sin and Cos are marked.
 TEST_F(DisableBF16CompSinCosEmbeddingTest, ParameterInput) {
     model = create_angle_model({-1, 1}, {1, 128});
     model_ref = create_angle_model({-1, 1}, {1, 128});

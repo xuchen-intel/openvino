@@ -30,8 +30,6 @@ DisableBF16CompSinCosEmbedding::DisableBF16CompSinCosEmbedding() {
     MATCHER_SCOPE(DisableBF16CompSinCosEmbedding);
     using namespace ov::pass::pattern;
 
-    // Match only the embedding's signature, so that unrelated Sin/Cos stay in BF16:
-    // the outer product [N, 1] x [1, K] of the timestep and the frequencies, feeding both Sin and Cos.
     auto feeds_sin_and_cos = [](const ov::Output<ov::Node>& output) {
         bool has_sin = false;
         bool has_cos = false;

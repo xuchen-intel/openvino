@@ -19,6 +19,7 @@
 #include "openvino/pass/matcher_pass.hpp"
 #include "openvino/pass/pattern/matcher.hpp"
 #include "openvino/pass/pattern/op/label.hpp"
+#include "openvino/pass/pattern/op/or.hpp"
 #include "openvino/pass/pattern/op/pattern.hpp"
 #include "openvino/pass/pattern/op/wrap_type.hpp"
 #include "openvino/util/pp.hpp"
@@ -29,6 +30,7 @@ namespace ov::intel_cpu {
 DisableBF16CompSinCosEmbedding::DisableBF16CompSinCosEmbedding() {
     MATCHER_SCOPE(DisableBF16CompSinCosEmbedding);
     using namespace ov::pass::pattern;
+    using ov::pass::operator|;
 
     auto feeds_sin_and_cos = [](const ov::Output<ov::Node>& output) {
         bool has_sin = false;
@@ -39,7 +41,12 @@ DisableBF16CompSinCosEmbedding::DisableBF16CompSinCosEmbedding() {
         }
         return has_sin && has_cos;
     };
-    auto x_m = any_input(shape_matches("[?, 1]"));
+    // x is reshaped to [N, 1] by an Unsqueeze or Reshape, or is produced with that shape directly.
+    auto x_src_m = any_input();
+    auto x_reshaped_m =
+        wrap_type<ov::op::v0::Unsqueeze, ov::op::v1::Reshape>({x_src_m, any_input()}, shape_matches("[?, 1]"));
+    auto x_direct_m = any_input(shape_matches("[?, 1]"));
+    auto x_m = x_reshaped_m | x_direct_m;
     auto freq_m = wrap_type<ov::op::v0::Constant>(shape_matches("[1, ?]"));
     auto mul_m = wrap_type<ov::op::v1::Multiply>({x_m, freq_m}, feeds_sin_and_cos);
     auto sin_or_cos_m = wrap_type<ov::op::v0::Sin, ov::op::v0::Cos>({mul_m});
@@ -53,12 +60,14 @@ DisableBF16CompSinCosEmbedding::DisableBF16CompSinCosEmbedding() {
         }
 
         // Keep exactly these nodes in their original precision, without spreading to the rest of the graph.
-        // x must not be rounded to BF16 either, so mark the node computing it, together with the shape-only
-        // ops, such as Unsqueeze, between that node and the Multiply.
-        auto x = pattern_map.at(x_m).get_node_shared_ptr();
-        while (ov::is_type<ov::op::v0::Unsqueeze>(x) || ov::is_type<ov::op::v1::Reshape>(x)) {
-            ov::disable_conversion(x, ov::element::f16);
-            x = x->get_input_node_shared_ptr(0);
+        // x must not be rounded to BF16 either, so mark the node computing it, together with the Unsqueeze or
+        // Reshape between that node and the Multiply.
+        std::shared_ptr<ov::Node> x;
+        if (pattern_map.count(x_reshaped_m)) {
+            ov::disable_conversion(pattern_map.at(x_reshaped_m).get_node_shared_ptr(), ov::element::f16);
+            x = pattern_map.at(x_src_m).get_node_shared_ptr();
+        } else {
+            x = pattern_map.at(x_direct_m).get_node_shared_ptr();
         }
         if (!ov::is_type<ov::op::v0::Parameter>(x) && !ov::is_type<ov::op::v0::Constant>(x)) {
             ov::disable_conversion(x, ov::element::f16);
